@@ -1,0 +1,28 @@
+{
+  "name": "@komyaku/desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "check": "vite build",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@komyaku/conversation-schema": "workspace:*",
+    "@komyaku/editor-core": "workspace:*",
+    "@komyaku/i18n": "workspace:*",
+    "@tauri-apps/api": "^2.8.0",
+    "@tauri-apps/plugin-sql": "^2.3.0",
+    "i18next": "^25.5.2",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-i18next": "^15.7.3"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.8.4",
+    "@vitejs/plugin-react": "^5.0.2",
+    "vite": "^7.1.5"
+  }
+}

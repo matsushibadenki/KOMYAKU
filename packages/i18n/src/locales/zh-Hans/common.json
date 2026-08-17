@@ -1,0 +1,14 @@
+{
+  "app": {
+    "title": "不仅保存文章，也保存每次改写的历程。"
+  },
+  "settings": {
+    "language": "界面语言"
+  },
+  "foundation": {
+    "status": "正在构建基础",
+    "title": "不丢失文档，记住每一次变化。",
+    "description": "我们正在准备 KOMYAKU 的本地优先文档与版本基础架构。"
+  }
+}
+

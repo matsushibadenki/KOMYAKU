@@ -1,0 +1,20 @@
+{
+  "name": "komyaku",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "bun@1.3.11",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun run --filter @komyaku/desktop dev",
+    "dev:server": "bun run --filter @komyaku/server dev",
+    "db:migrate": "bun run --filter @komyaku/server migrate",
+    "storage:init": "bun run --filter @komyaku/server storage:init",
+    "build": "bun run --filter '*' build",
+    "test": "bun test",
+    "check": "bun run --filter '*' check",
+    "tauri": "bun run --filter @komyaku/desktop tauri"
+  }
+}

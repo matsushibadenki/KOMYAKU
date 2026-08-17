@@ -1,0 +1,12 @@
+{
+  "name": "@komyaku/api-client",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": "./src/index.js",
+  "scripts": {
+    "build": "bun -e \"import('./src/index.js')\"",
+    "check": "bun -e \"import('./src/index.js')\""
+  }
+}
+

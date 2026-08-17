@@ -1,0 +1,14 @@
+{
+  "app": {
+    "title": "書き直した道のりも残す。"
+  },
+  "settings": {
+    "language": "表示言語"
+  },
+  "foundation": {
+    "status": "基盤構築中",
+    "title": "文書の変化を、失わずに記憶する。",
+    "description": "KOMYAKUのローカルファーストな文書・版管理基盤を準備しています。"
+  }
+}
+

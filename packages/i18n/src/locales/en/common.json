@@ -1,0 +1,14 @@
+{
+  "app": {
+    "title": "Keep the path of every rewrite."
+  },
+  "settings": {
+    "language": "Interface language"
+  },
+  "foundation": {
+    "status": "Foundation in progress",
+    "title": "Remember every change without losing the document.",
+    "description": "We are preparing KOMYAKU’s local-first document and version foundation."
+  }
+}
+

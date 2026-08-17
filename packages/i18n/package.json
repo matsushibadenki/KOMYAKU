@@ -1,0 +1,15 @@
+{
+  "name": "@komyaku/i18n",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": "./src/index.js",
+  "scripts": {
+    "build": "bun -e \"import('./src/index.js')\"",
+    "check": "bun -e \"import('./src/index.js')\""
+  },
+  "dependencies": {
+    "i18next": "^25.5.2"
+  }
+}
+
