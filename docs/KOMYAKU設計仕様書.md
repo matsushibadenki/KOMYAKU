@@ -1075,6 +1075,81 @@ Structured text: paragraph / word / grapheme diff
 PDF binary: metadata / file hash / generated-source relation
 ```
 
+## 25.2 First-class Content Node
+
+文章以外を一律の添付ファイルとして扱わず、対応する形式はCanonical Document Schemaの第一級Nodeとして扱う。
+
+```text
+Document
+├ Text / Heading / List
+├ Table
+├ Math / LaTeX
+├ Code
+├ Diagram / Basic SVG / Mermaid
+├ Image / Illustration
+└ Generic File / PDF / Design Asset
+```
+
+各Blockは少なくとも、安定した`id`、`type`、`schema_version`、`metadata`を持つ。画像と図には`alt_text`と`caption`を設定可能にし、表示言語はDocumentまたはBlockの`lang`で管理する。
+
+コンテンツは次の責務を分離する。
+
+```text
+Content Node
+├ canonical source / data
+├ render representation reference
+├ asset references
+├ metadata / accessibility
+└ version lineage
+```
+
+Preview、生成SVG、生成PDF等は再生成可能な表現であり、原文または編集可能なCanonical Dataを置き換えない。
+
+## 25.3 Document VersionとNode履歴
+
+MVPではImmutable Document SnapshotをVersionの正本とする。各Nodeの安定IDをVersion間で維持し、そのIDと内容HashからNode単位の系譜を導出する。
+
+```text
+Document V18                  Document V19
+├ Paragraph A (stable ID)  →  ├ Paragraph A (unchanged)
+├ Equation B  (stable ID)  →  ├ Equation B  (changed)
+└ Figure C    (stable ID)  →  └ Figure C    (unchanged)
+```
+
+Node revision番号やNode履歴Tableは、検索や性能のためのProjectionとして将来追加できる。ただし、それらだけを復元の正本にはしない。これによりAtomic Snapshot、Offline編集、Schema Migrationを単純に保ちながら、「Figure 3が追加・変更されたVersion」を追跡できる。
+
+Versionには変更内容を表す`change_kinds`を付与できるようにする。
+
+```text
+TEXT
+MATH
+DIAGRAM
+IMAGE
+TABLE
+CODE
+ASSET
+STRUCTURE
+```
+
+Graph表示は色だけに依存せず、Label、Icon、Shapeを併用する。
+
+## 25.4 Content-type Diff
+
+Diffは共通DispatcherからNode形式別Engineへ振り分ける。
+
+```text
+Diff Dispatcher
+├ Text Diff
+├ Math Source / Semantic Diff
+├ Diagram Node / Edge Diff
+├ Image Side-by-side / Overlay Diff
+├ Table Diff
+├ Code Diff
+└ Binary Asset Metadata Diff
+```
+
+MVPではText、LaTeX/Mermaid source、CodeをGrapheme-safeに比較し、Binary Assetは追加・置換・削除・Media Type・Size・Hashの変化を示す。Math semantic Diff、Diagram構造Diff、Image visual Diffは後続Stageで追加する。
+
 ---
 
 # 26. MVPで扱わない高度な組版
@@ -2069,6 +2144,10 @@ asset_id
 で参照する。
 
 Attachment metadataには最低限、`media_type`、`byte_size`、`content_hash`、`storage_key`、`created_by`を持たせる。PDFの公開可否はDocumentの公開設定だけで暗黙に決めず、公開Versionから参照され、かつ公開可能と判定されたAssetだけを短時間URLまたは認証済み配信APIで提供する。
+
+大容量AssetはContent Hashによる重複排除へ拡張可能にする。同じAssetを複数Versionから参照してもObjectを複製せず、Document SnapshotにはAsset参照を保存する。
+
+重複排除の境界は当初Workspace内とし、Hash一致をAccess権限として扱わない。異なるTenantに同一Contentが存在する事実を推測できるResponse、Timing、APIを提供しない。Asset削除は参照数、Trash、Retention Policy、公開Version、法的保持を確認してから行う。Original、Preview、Generated Artifactには派生関係と生成元Versionを記録する。
 
 ---
 
@@ -3633,13 +3712,26 @@ Project
 ## Stage 3 — Document
 
 ```text
-Document Schema
-Editor
-Local Draft
-Cloud Save
+Canonical Document Schema v1
+Stable Node ID
+
+Text / Heading / List / Table
+Image / Math / LaTeX / Code
+Basic SVG / Mermaid / Generic File
+
+Canonical source
+Render representation
+Asset reference / provenance
+
+Workspace-scoped content-addressed Asset
+Secure isolated renderer
+
+Structured Editor
+Local Draft / Cloud Save
+Accessible alt text / caption
 ```
 
-## Stage 4 — Version Engine
+## Stage 4 — Document Evolution and Diff
 
 ```text
 Version
@@ -3647,23 +3739,40 @@ Version Parents
 Branch
 Immutable Snapshot
 Hash
-```
 
-## Stage 5 — Version Graph
+Node lineage projection
+Change kind
 
-```text
 Graph rendering
 Version selection
 Branch visualization
+
+Unicode segmentation
+Content-type Diff dispatcher
+Text / Math source / Diagram
+Image / Table / Code / Binary Asset
+Diff UI
 ```
 
-## Stage 6 — Diff
+## Stage 5 — Semantic and Visual Content History
 
 ```text
-Unicode segmentation
-Paragraph Diff
-Word/Grapheme Diff
-Diff UI
+Editable Diagram canonical model
+Math AST / MathML normalization
+Semantic Math Diff
+Diagram node / edge Diff
+SVG structural Diff
+Image visual comparison
+Node lineage search
+```
+
+## Stage 6 — Specialized Design and Media
+
+```text
+CAD / 3D read-only preview adapters
+External editor reference
+Original / Preview provenance
+Audio / Video / Scientific data extension
 ```
 
 ## Stage 7 — Recovery
@@ -3794,6 +3903,7 @@ ADR-011 AI Training Opt-out
 ADR-012 Local-first Freemium and Entitlements
 ADR-013 Modular Monolith and Horizontal Scaling
 ADR-014 Conversation Archive and AI Handoff
+ADR-027 First-class Content Nodes and Asset Lineage
 ```
 
 を作成する。
