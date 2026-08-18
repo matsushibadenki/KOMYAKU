@@ -59,7 +59,8 @@ Stage status: [Done] Foundation complete
 - [Later] Diff dispatcher with Text, Math source, Diagram, Image, Table, Code, and Binary Asset engines
 - [Later] Grapheme-safe Text/LaTeX/Mermaid Diff and binary added/replaced/deleted/hash/size comparison
 - [Later] Recovery snapshots, offline sync queue, and conflict branches
-- [Later] Backup, export, and automated restore verification
+- [Later] Publish the open `.komyaku` Archive specification, schemas, conformance fixtures, and compatibility policy alongside its first implementation
+- [Later] Backup, open Archive export/import, and automated restore verification
 
 ## Stage 5 — Semantic and Visual Content History
 

@@ -1592,6 +1592,24 @@ novel.komyaku
 
 実体は標準的なArchive形式を使用する。
 
+`.komyaku`は公開されたOpen Formatとし、KOMYAKU本体だけが読み書きできる非公開形式にしない。最初の実装と同時に、少なくとも次を`docs/formats/komyaku-archive-format.md`へ公開する。
+
+```text
+format identifier / media type
+container and compression rules
+directory layout and path safety rules
+manifest and graph schemas
+canonical document schema references
+asset hashing and integrity verification
+required and optional fields
+extension and unknown-field handling
+format versioning and compatibility policy
+security limits
+deterministic conformance fixtures
+```
+
+仕様書は実装Codeから推測しなければならない状態にせず、JSON Schema等の機械可読Schemaと、最小Archive・分岐・Merge・Asset・未知拡張を含むTest Fixtureを併記する。第三者実装がKOMYAKU Serverへ接続せずArchiveを検査・復元できることを受け入れ条件とする。
+
 内部：
 
 ```text
