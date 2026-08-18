@@ -9,7 +9,9 @@
     "build": "bun build src/index.js --target=bun --outdir=dist",
     "check": "bun test",
     "migrate": "bun scripts/migrate.js",
-    "storage:init": "bun scripts/storage-init.js"
+    "storage:init": "bun scripts/storage-init.js",
+    "jobs:dead-letters": "bun scripts/dead-letter-cli.js",
+    "maintenance:retention": "bun scripts/retention-maintenance.js"
   },
   "dependencies": {
     "@komyaku/ai-gateway": "workspace:*",

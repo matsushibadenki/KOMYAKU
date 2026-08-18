@@ -3,13 +3,15 @@ import { v7 as uuidv7 } from "uuid";
 export function createDeadLetterRepository(sql) {
   if (!sql?.begin) throw new Error("SQL transaction client is required");
   return Object.freeze({
-    async list({ limit = 50 } = {}) {
+    async list({ limit = 50, cursorTime = null, cursorId = null } = {}) {
       const rows = await sql`
         SELECT id, job_type, partition_key, job_status, attempt_count, max_attempts,
                created_at, completed_at
         FROM jobs
         WHERE job_status IN ('failed', 'dead_letter')
-        ORDER BY completed_at DESC NULLS LAST, created_at DESC
+          AND (${cursorTime}::timestamptz IS NULL OR
+               (COALESCE(completed_at, created_at), id) < (${cursorTime}::timestamptz, ${cursorId}::uuid))
+        ORDER BY COALESCE(completed_at, created_at) DESC, id DESC
         LIMIT ${limit}
       `;
       return rows.map((row) => ({

@@ -25,8 +25,16 @@ import {
   createSmtpNotificationService,
   createSmtpTransport
 } from "./notifications/smtp-notification-service.js";
+import { createStructuredLogger } from "./logging/structured-logger.js";
 
 const config = loadRuntimeConfig();
+const logger = createStructuredLogger({
+  level: config.logLevel,
+  service: config.serviceName,
+  environment: config.nodeEnv,
+  instanceId: config.instanceId
+});
+const log = logger.log;
 const database = createDatabase(config);
 let notificationService = null;
 let authRoutes = null;
@@ -47,7 +55,8 @@ if (config.deploymentMode !== "api") {
     batchSize: config.outboxBatchSize,
     leaseSeconds: config.outboxLeaseSeconds,
     pollIntervalMs: config.outboxPollIntervalMs,
-    maxAttempts: config.outboxMaxAttempts
+    maxAttempts: config.outboxMaxAttempts,
+    log
   });
   jobRunner = createJobRunner({
     repository: createJobRepository(database.sql),
@@ -60,7 +69,8 @@ if (config.deploymentMode !== "api") {
     instanceId: config.instanceId,
     batchSize: config.jobBatchSize,
     leaseSeconds: config.jobLeaseSeconds,
-    pollIntervalMs: config.jobPollIntervalMs
+    pollIntervalMs: config.jobPollIntervalMs,
+    log
   });
 }
 
@@ -106,7 +116,7 @@ if (config.authRoutesEnabled) {
   });
 }
 
-const corsOrigins = ["http://localhost:1420", "http://127.0.0.1:1420"];
+const corsOrigins = [...config.corsOrigins];
 if (config.publicAppOrigin && !corsOrigins.includes(config.publicAppOrigin)) {
   corsOrigins.push(config.publicAppOrigin);
 }
@@ -114,6 +124,8 @@ const { app, runtimeState } = createApp({
   authRoutes,
   conversationImportRoutes,
   corsOrigins,
+  aiTrainingDefault: config.aiTrainingDefault,
+  log,
   readinessCheck: database.checkHealth
 });
 
@@ -125,7 +137,7 @@ const server = Bun.serve({
 outboxDispatcher?.start();
 jobRunner?.start();
 
-console.info(JSON.stringify({
+log({
   level: "info",
   event: "server_started",
   instanceId: config.instanceId,
@@ -133,7 +145,7 @@ console.info(JSON.stringify({
   hostname: config.hostname,
   port: config.port,
   jobBackend: config.jobBackend
-}));
+});
 
 let shutdownStarted = false;
 
@@ -142,13 +154,13 @@ async function shutdown(signal) {
   shutdownStarted = true;
   runtimeState.beginShutdown();
 
-  console.info(JSON.stringify({
+  log({
     level: "info",
     event: "server_shutdown_started",
     instanceId: config.instanceId,
     signal,
     graceMs: config.shutdownGraceMs
-  }));
+  });
 
   const forceTimer = setTimeout(() => server.stop(true), config.shutdownGraceMs);
   forceTimer.unref();
@@ -160,11 +172,11 @@ async function shutdown(signal) {
   objectStorageClient?.destroy();
   notificationService?.close();
 
-  console.info(JSON.stringify({
+  log({
     level: "info",
     event: "server_shutdown_completed",
     instanceId: config.instanceId
-  }));
+  });
 }
 
 process.once("SIGTERM", () => void shutdown("SIGTERM"));

@@ -2,6 +2,8 @@
 
 ## Stage 1 — Foundation
 
+Stage status: [Done] Foundation complete
+
 - [Done] Bun workspace and repository structure
 - [Done] React, Vite, and Tauri 2 shell
 - [Done] Bun and Hono API shell
@@ -17,12 +19,12 @@
 - [Done] Canonical Conversation schema and AI Handoff review package
 - [Done] S3-compatible immutable storage client and local bucket initializer
 - [Done] Raw conversation archive service and generic JSON importer
-- [Next] Complete logging configuration and production environment validation
-- [Next] Provider-independent Plan catalog and Entitlement key package
+- [Done] Structured logging configuration and fail-fast production environment validation
+- [Done] Provider-independent Plan catalog and Entitlement key package
 - [Done] PostgreSQL Transactional Outbox dispatcher with leases and idempotent Job creation
 - [Done] Durable Job Runner, attempt history, lease recovery, and conversation archive verification
 - [Done] Mutation idempotency middleware and audited Dead Letter service boundary
-- [Next] Authenticated operator API/CLI, dead-letter pagination, and retention policy
+- [Done] Controlled Operator CLI, dead-letter pagination, and audited retention policy
 
 ## Stage 2 — Identity
 

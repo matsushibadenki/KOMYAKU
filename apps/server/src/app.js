@@ -69,12 +69,12 @@ export function createApp({
 
   app.notFound((context) => context.json({ error: "not_found" }, 404));
   app.onError((error, context) => {
-    log(JSON.stringify({
+    log({
       level: "error",
       event: "request_failed",
       requestId: context.get("requestId"),
       errorName: error.name
-    }));
+    });
     return context.json({ error: "internal_error" }, 500);
   });
 

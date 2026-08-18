@@ -32,6 +32,8 @@ RUN_DB_INTEGRATION=1 bun test apps/server/test/integration/conversation-import-r
 
 環境変数や秘密鍵をGitへCommitしない。`.env.example`には開発用の例だけを記載し、本番Credentialを保存しない。
 
+Productionでは`NODE_ENV=production`を設定すると、Local Database、HTTP Object Storage、開発Credential、HTTP CORS、弱いSecret、AI学習許可の既定値が起動前に拒否される。詳細は`production-readiness.md`を参照する。
+
 `SESSION_TTL_SECONDS`はCloud Sessionの有効期間で、開発時の既定例は2,592,000秒（30日）。変更後は新規発行Sessionから適用される。
 
 `AUTH_RATE_LIMIT_SECRET`はEmailやNetwork IdentifierをRate Limit保存前にHMAC化するKey。`.env.example`の値はLocal開発専用であり、ProductionではSecret Managerから32文字以上のランダム値を設定する。

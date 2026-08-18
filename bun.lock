@@ -92,6 +92,13 @@
         "prosemirror-view": "^1.41.3",
       },
     },
+    "packages/entitlements": {
+      "name": "@komyaku/entitlements",
+      "version": "0.1.0",
+      "dependencies": {
+        "zod": "^4.1.5",
+      },
+    },
     "packages/i18n": {
       "name": "@komyaku/i18n",
       "version": "0.1.0",
@@ -277,6 +284,8 @@
     "@komyaku/document-schema": ["@komyaku/document-schema@workspace:packages/document-schema"],
 
     "@komyaku/editor-core": ["@komyaku/editor-core@workspace:packages/editor-core"],
+
+    "@komyaku/entitlements": ["@komyaku/entitlements@workspace:packages/entitlements"],
 
     "@komyaku/i18n": ["@komyaku/i18n@workspace:packages/i18n"],
 

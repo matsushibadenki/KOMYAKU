@@ -74,4 +74,38 @@ describe("runtime configuration", () => {
       "IDEMPOTENCY_SECRET"
     );
   });
+
+  test("rejects development defaults and insecure origins in production", () => {
+    expect(() => loadRuntimeConfig({ NODE_ENV: "production" })).toThrow("SERVER_HOST");
+    expect(() => loadRuntimeConfig({
+      NODE_ENV: "production",
+      SERVER_HOST: "0.0.0.0",
+      DATABASE_URL: "postgres://komyaku:komyaku@127.0.0.1:5432/komyaku",
+      OBJECT_STORAGE_ENDPOINT: "http://127.0.0.1:9000",
+      OBJECT_STORAGE_BUCKET: "komyaku",
+      OBJECT_STORAGE_ACCESS_KEY: "komyaku",
+      OBJECT_STORAGE_SECRET_KEY: "change-me-now",
+      IDEMPOTENCY_SECRET: "production-idempotency-secret-long-enough",
+      CORS_ORIGINS: "http://app.example.com"
+    })).toThrow("DATABASE_URL");
+  });
+
+  test("accepts an explicit production-safe baseline", () => {
+    const config = loadRuntimeConfig({
+      NODE_ENV: "production",
+      LOG_LEVEL: "warn",
+      SERVER_HOST: "0.0.0.0",
+      DATABASE_URL: "postgres://komyaku:long-random-password@db.internal.example/komyaku",
+      OBJECT_STORAGE_ENDPOINT: "https://objects.example.com",
+      OBJECT_STORAGE_BUCKET: "komyaku-production",
+      OBJECT_STORAGE_ACCESS_KEY: "production-access",
+      OBJECT_STORAGE_SECRET_KEY: "production-secret",
+      IDEMPOTENCY_SECRET: "production-idempotency-secret-long-enough",
+      CORS_ORIGINS: "https://app.example.com",
+      AI_TRAINING_DEFAULT: "deny"
+    });
+    expect(config).toMatchObject({
+      nodeEnv: "production", logLevel: "warn", corsOrigins: ["https://app.example.com"]
+    });
+  });
 });

@@ -1,5 +1,7 @@
 const DEPLOYMENT_MODES = new Set(["single", "api", "worker"]);
 const JOB_BACKENDS = new Set(["postgres-outbox"]);
+const NODE_ENVIRONMENTS = new Set(["development", "test", "production"]);
+const LOG_LEVELS = new Set(["debug", "info", "warn", "error"]);
 
 function parsePositiveInteger(value, fallback, name) {
   const parsed = Number(value ?? fallback);
@@ -36,9 +38,52 @@ function parseOrigin(value, name) {
   }
 }
 
+function parseCorsOrigins(value, nodeEnv) {
+  const raw = value
+    ? value.split(",").map((item) => item.trim()).filter(Boolean)
+    : nodeEnv === "production" ? [] : ["http://localhost:1420", "http://127.0.0.1:1420"];
+  return [...new Set(raw.map((origin) => parseOrigin(origin, "CORS_ORIGINS")))];
+}
+
+function validateProduction(config, env) {
+  const required = [
+    "SERVER_HOST", "DATABASE_URL", "OBJECT_STORAGE_ENDPOINT", "OBJECT_STORAGE_BUCKET",
+    "OBJECT_STORAGE_ACCESS_KEY", "OBJECT_STORAGE_SECRET_KEY", "IDEMPOTENCY_SECRET", "CORS_ORIGINS"
+  ];
+  for (const name of required) {
+    if (!env[name]) throw new Error(`${name} is required in production`);
+  }
+  const database = new URL(config.databaseUrl);
+  if (!new Set(["postgres:", "postgresql:"]).has(database.protocol)) {
+    throw new Error("DATABASE_URL must use PostgreSQL in production");
+  }
+  if (!database.password || database.password === "komyaku" || ["localhost", "127.0.0.1"].includes(database.hostname)) {
+    throw new Error("DATABASE_URL must not use local development credentials in production");
+  }
+  const storage = new URL(config.objectStorage.endpoint);
+  if (storage.protocol !== "https:" || ["localhost", "127.0.0.1"].includes(storage.hostname)) {
+    throw new Error("OBJECT_STORAGE_ENDPOINT must be a non-local HTTPS endpoint in production");
+  }
+  if (config.objectStorage.accessKeyId === "komyaku" || config.objectStorage.secretAccessKey === "change-me-now") {
+    throw new Error("Object storage development credentials are forbidden in production");
+  }
+  if (config.idempotencySecret.includes("local-development") || config.aiTrainingDefault !== "deny") {
+    throw new Error("Production requires a unique idempotency secret and AI_TRAINING_DEFAULT=deny");
+  }
+  if (config.corsOrigins.some((origin) => !origin.startsWith("https://"))) {
+    throw new Error("Production CORS origins must use HTTPS");
+  }
+  if (config.authRoutesEnabled && !config.publicAppOrigin.startsWith("https://")) {
+    throw new Error("PUBLIC_APP_ORIGIN must use HTTPS in production");
+  }
+}
+
 export function loadRuntimeConfig(env = Bun.env) {
+  const nodeEnv = env.NODE_ENV || "development";
   const deploymentMode = env.DEPLOYMENT_MODE || "single";
   const jobBackend = env.JOB_BACKEND || "postgres-outbox";
+
+  if (!NODE_ENVIRONMENTS.has(nodeEnv)) throw new Error(`Unsupported NODE_ENV: ${nodeEnv}`);
 
   if (!DEPLOYMENT_MODES.has(deploymentMode)) {
     throw new Error(`Unsupported DEPLOYMENT_MODE: ${deploymentMode}`);
@@ -46,6 +91,8 @@ export function loadRuntimeConfig(env = Bun.env) {
   if (!JOB_BACKENDS.has(jobBackend)) {
     throw new Error(`Unsupported JOB_BACKEND: ${jobBackend}`);
   }
+  const logLevel = env.LOG_LEVEL || (nodeEnv === "production" ? "info" : "debug");
+  if (!LOG_LEVELS.has(logLevel)) throw new Error(`Unsupported LOG_LEVEL: ${logLevel}`);
 
   const authRoutesEnabled = parseBoolean(env.AUTH_ROUTES_ENABLED, false, "AUTH_ROUTES_ENABLED");
   const authRateLimitSecret = env.AUTH_RATE_LIMIT_SECRET || null;
@@ -80,7 +127,10 @@ export function loadRuntimeConfig(env = Bun.env) {
     if (!smtp?.from) throw new Error("Complete SMTP configuration is required when authentication routes are enabled");
   }
 
-  return Object.freeze({
+  const config = {
+    nodeEnv,
+    logLevel,
+    serviceName: env.SERVICE_NAME || "komyaku-server",
     hostname: env.SERVER_HOST || "127.0.0.1",
     port: parsePositiveInteger(env.SERVER_PORT, 3000, "SERVER_PORT"),
     deploymentMode,
@@ -126,6 +176,13 @@ export function loadRuntimeConfig(env = Bun.env) {
       accessKeyId: env.OBJECT_STORAGE_ACCESS_KEY || "komyaku",
       secretAccessKey: env.OBJECT_STORAGE_SECRET_KEY || "change-me-now",
       forcePathStyle: true
-    })
-  });
+    }),
+    aiTrainingDefault: env.AI_TRAINING_DEFAULT || "deny",
+    corsOrigins: parseCorsOrigins(env.CORS_ORIGINS, nodeEnv)
+  };
+  if (!new Set(["deny", "allow"]).has(config.aiTrainingDefault)) {
+    throw new Error("AI_TRAINING_DEFAULT must be deny or allow");
+  }
+  if (nodeEnv === "production") validateProduction(config, env);
+  return Object.freeze(config);
 }

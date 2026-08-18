@@ -236,3 +236,9 @@ POST /api/v1/billing/webhooks/:provider
 ```
 
 PriceとPlan説明はLocale-aware resourceとして返し、UI文字列をBackendへHard-codeしない。
+
+## 10. Implemented Catalog Package
+
+`@komyaku/entitlements`はCatalog Version、安定したEntitlement Key、Local / Free / Personal / Pro / Team / EnterpriseのDefaultを提供する。Local Document、Version Graph、Basic Diff、Branch、Basic Exportは全Planで有効。Cloud容量はFree 1 GiB、Personal 50 GiB、Pro 200 GiBを初期仮説とし、Version数では制限しない。
+
+ResolutionはPlan、Subscription、Workspace、Enterprise Contractの順にOverrideする。Packageへ価格、Currency、Tax、Stripe等のProvider IDを含めない。BackendがCloud機能の最終Authorityとなり、Local CoreはResolverなしでも動作する。

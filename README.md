@@ -24,6 +24,8 @@ The repository already contains working infrastructure, schemas, security bounda
 | Durable job execution | Implemented foundation | Registered handlers, attempt history, retries, dead letters, and raw archive verification |
 | Mutation idempotency | Implemented foundation | HMAC-protected keys, exact request fingerprints, and reference-only replay |
 | Dead-letter operations | Implemented internal boundary | Exact-job retry with preserved history and atomic operator audit; no public endpoint |
+| Plan catalog and entitlements | Implemented foundation | Provider-independent stable keys, typed limits, local core, and layered overrides |
+| Production configuration and logging | Implemented foundation | Fail-fast environment validation and redacted JSON Lines |
 | S3-compatible storage | Implemented foundation | Immutable writes, checksums, MinIO development setup |
 | Identity and sessions | Implemented domain layer | Argon2id passwords, hashed sessions, revocation, verification/reset tokens |
 | Distributed authentication rate limits | Implemented domain layer | PostgreSQL-shared counters with HMAC-protected identifiers |
@@ -428,6 +430,10 @@ The complete development example is in [.env.example](.env.example).
 |---|---|---|
 | `SERVER_HOST` | API bind address | `127.0.0.1` |
 | `SERVER_PORT` | API port | `3000` |
+| `NODE_ENV` | Runtime safety profile | `development` |
+| `LOG_LEVEL` | Structured log threshold | `debug` |
+| `SERVICE_NAME` | Structured log service identity | `komyaku-server` |
+| `CORS_ORIGINS` | Explicit comma-separated browser origins | Local Vite origins |
 | `DEPLOYMENT_MODE` | `single`, `api`, or `worker` runtime role | `single` |
 | `INSTANCE_ID` | Observable instance identity | Generated when empty |
 | `SHUTDOWN_GRACE_MS` | Graceful shutdown deadline | `10000` |
@@ -467,6 +473,8 @@ Production credentials must come from an appropriate secret manager. Never commi
 | `bun run tauri dev` | Start the native Tauri development application |
 | `bun run db:migrate` | Apply pending PostgreSQL migrations |
 | `bun run storage:init` | Create the configured object storage bucket |
+| `bun run --filter @komyaku/server jobs:dead-letters list` | Inspect payload-free Dead Letter summaries |
+| `bun run --filter @komyaku/server maintenance:retention` | Preview retention candidates without deletion |
 | `bun test` | Run the default test suite |
 | `bun run check` | Run checks in every workspace |
 | `bun run build` | Build every workspace |
@@ -614,6 +622,8 @@ Start with these documents:
 - [Distributed runtime architecture](docs/architecture/distributed-runtime.md)
 - [Conversation archive and AI handoff](docs/architecture/conversation-archive-and-ai-handoff.md)
 - [Entitlements and billing](docs/architecture/entitlements-and-billing.md)
+- [Production readiness](docs/guides/production-readiness.md)
+- [Operator maintenance](docs/guides/operator-maintenance.md)
 - [Pricing hypotheses](docs/product/pricing-and-plans.md)
 - [Development setup](docs/guides/development-setup.md)
 - [Identity and sessions](docs/guides/identity-and-sessions.md)
