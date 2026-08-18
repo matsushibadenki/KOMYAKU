@@ -71,5 +71,6 @@ exports/
 *.keystore
 
 # web-componentsのエイリアス
+web-componentsのエイリアス
 web-componentsのエイリアス/
 .web-componentsのエイリアス
