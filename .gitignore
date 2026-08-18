@@ -70,3 +70,5 @@ exports/
 *.jks
 *.keystore
 
+# web-componentsのエイリアス
+web-componentsのエイリアス/
