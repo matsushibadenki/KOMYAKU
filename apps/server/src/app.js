@@ -8,6 +8,9 @@ import { createRuntimeState } from "./runtime-state.js";
 
 export function createApp({
   aiTrainingDefault = parseAiTrainingPolicy(Bun.env.AI_TRAINING_DEFAULT),
+  authRoutes = null,
+  conversationImportRoutes = null,
+  corsOrigins = ["http://localhost:1420", "http://127.0.0.1:1420"],
   log = console.info,
   runtimeState = createRuntimeState(),
   readinessCheck = async () => true
@@ -20,9 +23,10 @@ export function createApp({
   app.use(
     "/api/*",
     cors({
-      origin: ["http://localhost:1420", "http://127.0.0.1:1420"],
+      origin: corsOrigins,
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-      allowHeaders: ["Content-Type", "Authorization", "X-Request-ID"]
+      allowHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "X-Request-ID"],
+      exposeHeaders: ["Idempotency-Replayed", "Retry-After", "X-RateLimit-Remaining", "X-Request-ID"]
     })
   );
 
@@ -59,6 +63,9 @@ export function createApp({
   app.get("/api/v1/privacy/ai-training-policy", (context) =>
     context.json({ defaultPolicy: aiTrainingDefault, userOverrideSupported: true })
   );
+
+  if (authRoutes) app.route("/api/v1/auth", authRoutes);
+  if (conversationImportRoutes) app.route("/api/v1", conversationImportRoutes);
 
   app.notFound((context) => context.json({ error: "not_found" }, 404));
   app.onError((error, context) => {

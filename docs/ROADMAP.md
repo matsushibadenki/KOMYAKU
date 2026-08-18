@@ -19,7 +19,10 @@
 - [Done] Raw conversation archive service and generic JSON importer
 - [Next] Complete logging configuration and production environment validation
 - [Next] Provider-independent Plan catalog and Entitlement key package
-- [Next] PostgreSQL Transactional Outbox dispatcher and idempotency middleware
+- [Done] PostgreSQL Transactional Outbox dispatcher with leases and idempotent Job creation
+- [Done] Durable Job Runner, attempt history, lease recovery, and conversation archive verification
+- [Done] Mutation idempotency middleware and audited Dead Letter service boundary
+- [Next] Authenticated operator API/CLI, dead-letter pagination, and retention policy
 
 ## Stage 2 — Identity
 
@@ -28,7 +31,8 @@
 - [Done] Hashed session tokens, revocation service, and Bearer authentication middleware
 - [Done] PostgreSQL distributed authentication rate limits and HMAC-protected identifiers
 - [Done] Single-use email verification and password reset token domain flows
-- [Next] Production notification adapter and rate-limited public authentication routes
+- [Done] SMTP notification adapter and feature-gated, rate-limited public authentication routes
+- [Next] Notification delivery reconciliation, endpoint load testing, and external security review
 - [Later] Workspace subscription and Usage Meter schema
 - [Later] Passkey, OAuth, MFA, OIDC, SAML, and SCIM extension points
 - [Later] Re-evaluate TanStack Start v1 for a separate Cloud Web app; keep Tauri Desktop on Vite SPA until validated
@@ -46,7 +50,9 @@
 - [Later] Separate Worker process and durable queue adapter
 - [Later] Horizontal API / Worker replicas behind a load balancer
 - [Later] PostgreSQL HA, read replicas, and partitioning based on measured load
-- [Next] Raw-object reconciliation job and authenticated conversation import API
+- [Done] Raw conversation archive metadata verification job
+- [Done] Authenticated, idempotent Generic JSON conversation import and status API
+- [Next] Orphan-object reconciliation scan and provider export fixtures
 - [Next] ChatGPT / Claude / Gemini import adapters based on maintained export fixtures
 - [Later] Local/BYOK AI provider gateway, handoff review, and continuation branches
 - [Later] Managed AI credits and Workspace AI connections

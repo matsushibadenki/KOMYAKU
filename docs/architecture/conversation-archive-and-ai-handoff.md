@@ -188,8 +188,9 @@ Import処理はBackground Jobへ移せるようにし、ParserはNetwork接続�
 - Dangling Edge、Duplicate Edge、Cycleの拒否
 - SHA-256、Parser名・Version、Import IDによるProvenance
 - Raw Asset、Canonical Graph、Import Record、Outbox Eventの永続化
+- `conversation.imported` JobによるRaw ObjectのSize・SHA-256 Metadata照合
 
-公開Import RouteはIdentity・Workspace Authorization完成後に追加する。Application Serviceは`authorizeImport`を必須Dependencyとし、認証なしで直接公開しない。
+認証済みImport Routeは`/api/v1/workspaces/:workspaceId/conversation-imports`へ実装済み。Bearer Session、Email確認済みWorkspace Role、10 MiB上限、JSON Content Type、Idempotency Keyを必須とする。BodyはRaw Sourceそのもので、初期RouteはPrivate・AI学習拒否に固定する。Archive VerificationはObjectが見つからない場合に再試行し、SizeまたはHashが一致しない場合は永久失敗としてAttemptへ記録する。検証失敗を隠すために原本を自動削除しない。
 
 ### 4.2 Failure boundary
 

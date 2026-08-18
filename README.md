@@ -20,12 +20,17 @@ The repository already contains working infrastructure, schemas, security bounda
 | Japanese, English, Simplified Chinese UI | Implemented foundation | Initial i18n resources and locale switching |
 | Structured editor model | Implemented foundation | ProseMirror schema, including LaTeX and Mermaid source nodes |
 | PostgreSQL cloud schema | Implemented foundation | Identity, workspace, conversation, job, and outbox tables |
+| Durable outbox dispatch | Implemented foundation | PostgreSQL leases and atomic, idempotent Outbox-to-Job publication |
+| Durable job execution | Implemented foundation | Registered handlers, attempt history, retries, dead letters, and raw archive verification |
+| Mutation idempotency | Implemented foundation | HMAC-protected keys, exact request fingerprints, and reference-only replay |
+| Dead-letter operations | Implemented internal boundary | Exact-job retry with preserved history and atomic operator audit; no public endpoint |
 | S3-compatible storage | Implemented foundation | Immutable writes, checksums, MinIO development setup |
 | Identity and sessions | Implemented domain layer | Argon2id passwords, hashed sessions, revocation, verification/reset tokens |
 | Distributed authentication rate limits | Implemented domain layer | PostgreSQL-shared counters with HMAC-protected identifiers |
 | Conversation archive | Implemented foundation | Canonical DAG, generic JSON importer, immutable raw archive service |
+| Authenticated conversation import API | Implemented, gated | Idempotent raw JSON POST and membership-checked status GET |
 | AI handoff | Implemented review boundary | Context-bound preview and explicit confirmation; provider sending is not enabled |
-| Public authentication endpoints | Not enabled | Awaiting a production notification adapter and final security audit |
+| Public authentication endpoints | Implemented, disabled by default | SMTP delivery and rate-limited routes exist behind an explicit production feature gate |
 | Document editing UI and Version Graph | Planned next stages | Domain and storage foundations exist; product workflow is not complete |
 | Public/restricted/unlisted sharing | Designed | Database and policy model are planned; public APIs are not yet exposed |
 | Billing | Architecture only | No payment provider is connected |
@@ -427,9 +432,24 @@ The complete development example is in [.env.example](.env.example).
 | `INSTANCE_ID` | Observable instance identity | Generated when empty |
 | `SHUTDOWN_GRACE_MS` | Graceful shutdown deadline | `10000` |
 | `DATABASE_POOL_MAX` | Maximum Bun SQL pool size | `10` |
+| `JOB_BACKEND` | Durable work backend | `postgres-outbox` |
+| `OUTBOX_BATCH_SIZE` | Events claimed in one dispatcher pass | `25` |
+| `OUTBOX_LEASE_SECONDS` | Time before another worker may reclaim processing | `30` |
+| `OUTBOX_POLL_INTERVAL_MS` | Idle polling interval | `1000` |
+| `OUTBOX_MAX_ATTEMPTS` | Attempts before an event is marked failed | `10` |
+| `JOB_BATCH_SIZE` | Jobs claimed per registered handler pass | `10` |
+| `JOB_LEASE_SECONDS` | Worker lease before crash recovery | `60` |
+| `JOB_POLL_INTERVAL_MS` | Idle Job Runner polling interval | `1000` |
 | `DATABASE_URL` | PostgreSQL connection string | Local development database |
 | `SESSION_TTL_SECONDS` | Lifetime of newly issued cloud sessions | `2592000` |
 | `AUTH_RATE_LIMIT_SECRET` | HMAC key protecting stored rate-limit identifiers | Development-only example |
+| `IDEMPOTENCY_SECRET` | HMAC key protecting stored mutation keys | Development-only example |
+| `AUTH_ROUTES_ENABLED` | Mount public authentication routes | `false` |
+| `PUBLIC_APP_ORIGIN` | Origin used for verification and reset links | `http://localhost:1420` |
+| `TRUSTED_PROXY_HOPS` | Controlled proxy hops trusted for client addresses | `0` |
+| `SMTP_HOST`, `SMTP_PORT` | SMTP delivery endpoint | Empty host, port `587` |
+| `SMTP_SECURE`, `SMTP_REQUIRE_TLS` | Implicit TLS or required STARTTLS policy | `false`, `true` |
+| `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | SMTP credentials and sender | Empty |
 | `OBJECT_STORAGE_ENDPOINT` | S3-compatible endpoint | `http://127.0.0.1:9000` |
 | `OBJECT_STORAGE_REGION` | S3 region | `us-east-1` |
 | `OBJECT_STORAGE_BUCKET` | Object bucket | `komyaku-local` |
@@ -489,6 +509,11 @@ The test strategy includes:
 - 256-bit hashed session and one-time tokens;
 - session revocation;
 - concurrent distributed rate-limit attempts;
+- concurrent Outbox leases and idempotent Job publication;
+- Job attempt history, lease-expiry recovery, retry, and dead-letter transitions;
+- concurrent mutation ownership and reference-only idempotent replay;
+- atomic Dead Letter retry and operator audit records;
+- conversation archive size and SHA-256 metadata verification;
 - PostgreSQL transaction integration;
 - AI handoff payload binding and explicit confirmation.
 
@@ -520,7 +545,7 @@ The generic importer accepts a top-level message array or an object with a `mess
 
 Omitting `parentId` creates an implicit link from the previous message. `parentId: null` creates a root. Multiple messages may point to the same parent to represent branches.
 
-The importer can currently be called from the application layer, but no unauthenticated upload endpoint is exposed.
+When authentication routes are explicitly enabled, verified workspace owners, admins, and editors can submit the exact source JSON to `POST /api/v1/workspaces/:workspaceId/conversation-imports`. The request requires a bearer session, JSON content type, and an idempotency key. Imports are private and deny AI training by default. Status is available from the corresponding workspace-scoped GET route. No unauthenticated upload endpoint is exposed.
 
 ## Authentication security
 
@@ -538,7 +563,11 @@ The implemented identity foundation uses:
 - PostgreSQL-shared rate limits for future horizontal API replicas;
 - HMAC-SHA-256 identifiers so raw email and network values are not stored in the rate-limit table.
 
-Public registration and login routes are deliberately not mounted yet. A production notification adapter, endpoint-level rate-limit wiring, secret-safe logging review, and final API tests are required first.
+Public authentication routes and a provider-independent SMTP notification adapter are implemented. They are deliberately not mounted unless `AUTH_ROUTES_ENABLED=true`. Enabling the gate requires a 32-character-or-longer rate-limit secret, an HTTP(S) public application origin, and complete SMTP configuration; the server verifies SMTP connectivity before listening.
+
+The mounted surface covers registration, login, session inspection, single/all-session logout, email verification, and password reset under `/api/v1/auth`. Authentication responses are non-cacheable, JSON bodies are limited to 16 KiB, distributed limits run before expensive password work, and password-reset requests do not reveal account existence. Email templates support Japanese, English, and Simplified Chinese and contain only the required one-time action link, never document content.
+
+Client network identity comes from the direct socket by default. `X-Forwarded-For` is ignored until an operator configures an exact positive `TRUSTED_PROXY_HOPS` value behind a controlled proxy that overwrites incoming forwarding headers. Delivery reconciliation, endpoint load testing, and an external security review remain required before production launch.
 
 See [docs/guides/identity-and-sessions.md](docs/guides/identity-and-sessions.md).
 
@@ -588,6 +617,7 @@ Start with these documents:
 - [Pricing hypotheses](docs/product/pricing-and-plans.md)
 - [Development setup](docs/guides/development-setup.md)
 - [Identity and sessions](docs/guides/identity-and-sessions.md)
+- [Dead-letter operations](docs/guides/dead-letter-operations.md)
 - [Generic conversation import](docs/guides/conversation-json-import.md)
 - [AI training opt-out](docs/guides/ai-training-opt-out.md)
 - [Architecture Decision Records](docs/adr/)

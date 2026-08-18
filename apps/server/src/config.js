@@ -9,6 +9,33 @@ function parsePositiveInteger(value, fallback, name) {
   return parsed;
 }
 
+function parseNonnegativeInteger(value, fallback, name) {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new Error(`${name} must be a nonnegative integer`);
+  }
+  return parsed;
+}
+
+function parseBoolean(value, fallback, name) {
+  const normalized = value === undefined || value === "" ? String(fallback) : String(value);
+  if (normalized === "true") return true;
+  if (normalized === "false") return false;
+  throw new Error(`${name} must be true or false`);
+}
+
+function parseOrigin(value, name) {
+  try {
+    const url = new URL(value);
+    if (!new Set(["http:", "https:"]).has(url.protocol) || url.username || url.password || url.search || url.hash) {
+      throw new Error();
+    }
+    return url.origin;
+  } catch {
+    throw new Error(`${name} must be an HTTP(S) origin`);
+  }
+}
+
 export function loadRuntimeConfig(env = Bun.env) {
   const deploymentMode = env.DEPLOYMENT_MODE || "single";
   const jobBackend = env.JOB_BACKEND || "postgres-outbox";
@@ -18,6 +45,39 @@ export function loadRuntimeConfig(env = Bun.env) {
   }
   if (!JOB_BACKENDS.has(jobBackend)) {
     throw new Error(`Unsupported JOB_BACKEND: ${jobBackend}`);
+  }
+
+  const authRoutesEnabled = parseBoolean(env.AUTH_ROUTES_ENABLED, false, "AUTH_ROUTES_ENABLED");
+  const authRateLimitSecret = env.AUTH_RATE_LIMIT_SECRET || null;
+  const idempotencySecret = env.IDEMPOTENCY_SECRET || "local-development-idempotency-secret-change-this";
+  const publicAppOrigin = env.PUBLIC_APP_ORIGIN ? parseOrigin(env.PUBLIC_APP_ORIGIN, "PUBLIC_APP_ORIGIN") : null;
+  const smtp = env.SMTP_HOST
+    ? Object.freeze({
+        host: env.SMTP_HOST,
+        port: parsePositiveInteger(env.SMTP_PORT, 587, "SMTP_PORT"),
+        secure: parseBoolean(env.SMTP_SECURE, false, "SMTP_SECURE"),
+        requireTls: parseBoolean(env.SMTP_REQUIRE_TLS, true, "SMTP_REQUIRE_TLS"),
+        user: env.SMTP_USER || null,
+        password: env.SMTP_PASSWORD || null,
+        from: env.SMTP_FROM || null
+      })
+    : null;
+
+  if (Boolean(smtp?.user) !== Boolean(smtp?.password)) {
+    throw new Error("SMTP_USER and SMTP_PASSWORD must be provided together");
+  }
+  if (Boolean(env.OBJECT_STORAGE_ACCESS_KEY) !== Boolean(env.OBJECT_STORAGE_SECRET_KEY)) {
+    throw new Error("OBJECT_STORAGE_ACCESS_KEY and OBJECT_STORAGE_SECRET_KEY must be provided together");
+  }
+  if (idempotencySecret.length < 32) {
+    throw new Error("IDEMPOTENCY_SECRET must contain at least 32 characters");
+  }
+  if (authRoutesEnabled) {
+    if (!authRateLimitSecret || authRateLimitSecret.length < 32) {
+      throw new Error("AUTH_RATE_LIMIT_SECRET must contain at least 32 characters when authentication routes are enabled");
+    }
+    if (!publicAppOrigin) throw new Error("PUBLIC_APP_ORIGIN is required when authentication routes are enabled");
+    if (!smtp?.from) throw new Error("Complete SMTP configuration is required when authentication routes are enabled");
   }
 
   return Object.freeze({
@@ -41,7 +101,31 @@ export function loadRuntimeConfig(env = Bun.env) {
       30 * 24 * 60 * 60,
       "SESSION_TTL_SECONDS"
     ),
-    authRateLimitSecret: env.AUTH_RATE_LIMIT_SECRET || null,
-    jobBackend
+    authRoutesEnabled,
+    authRateLimitSecret,
+    idempotencySecret,
+    publicAppOrigin,
+    trustedProxyHops: parseNonnegativeInteger(env.TRUSTED_PROXY_HOPS, 0, "TRUSTED_PROXY_HOPS"),
+    smtp,
+    jobBackend,
+    outboxBatchSize: parsePositiveInteger(env.OUTBOX_BATCH_SIZE, 25, "OUTBOX_BATCH_SIZE"),
+    outboxLeaseSeconds: parsePositiveInteger(env.OUTBOX_LEASE_SECONDS, 30, "OUTBOX_LEASE_SECONDS"),
+    outboxPollIntervalMs: parsePositiveInteger(
+      env.OUTBOX_POLL_INTERVAL_MS,
+      1_000,
+      "OUTBOX_POLL_INTERVAL_MS"
+    ),
+    outboxMaxAttempts: parsePositiveInteger(env.OUTBOX_MAX_ATTEMPTS, 10, "OUTBOX_MAX_ATTEMPTS"),
+    jobBatchSize: parsePositiveInteger(env.JOB_BATCH_SIZE, 10, "JOB_BATCH_SIZE"),
+    jobLeaseSeconds: parsePositiveInteger(env.JOB_LEASE_SECONDS, 60, "JOB_LEASE_SECONDS"),
+    jobPollIntervalMs: parsePositiveInteger(env.JOB_POLL_INTERVAL_MS, 1_000, "JOB_POLL_INTERVAL_MS"),
+    objectStorage: Object.freeze({
+      endpoint: env.OBJECT_STORAGE_ENDPOINT || "http://127.0.0.1:9000",
+      region: env.OBJECT_STORAGE_REGION || "us-east-1",
+      bucket: env.OBJECT_STORAGE_BUCKET || "komyaku-local",
+      accessKeyId: env.OBJECT_STORAGE_ACCESS_KEY || "komyaku",
+      secretAccessKey: env.OBJECT_STORAGE_SECRET_KEY || "change-me-now",
+      forcePathStyle: true
+    })
   });
 }

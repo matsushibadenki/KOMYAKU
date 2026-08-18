@@ -92,6 +92,20 @@ Idempotent handler
 
 QueueやBrokerを導入しても、Domain Event SchemaとHandlerは維持する。
 
+現在の実装では、`single`と`worker` ModeがPostgreSQL Outbox Dispatcherを実行し、`api` ModeはHTTP処理だけを担当する。複数Dispatcherは`FOR UPDATE SKIP LOCKED`と期限付きLeaseで競合を避ける。Outboxから`jobs`への書き込みとOutboxの`published`化は同じTransactionで行い、`outbox:<event_id>`のUnique Idempotency KeyでCrash後の重複作成を防ぐ。
+
+```mermaid
+flowchart LR
+    A["Business transaction"] --> B["outbox_events: pending"]
+    B --> C["Lease with SKIP LOCKED"]
+    C --> D["Atomic job insert + publish"]
+    D --> E["jobs: queued"]
+    C -->|"temporary failure"| F["Backoff and retry"]
+    C -->|"attempt limit"| G["outbox_events: failed"]
+```
+
+Job Runnerも`single`と`worker` Modeで動作し、登録済みJob Typeだけを期限付きLeaseで取得する。各実行は`job_attempts`へ記録される。Worker停止でLeaseが失効した場合はAttemptを`lease_expired`として閉じ、残り試行があれば再取得し、上限なら`dead_letter`へ移す。未知のJob Typeは誤って成功扱いにせずQueueへ保持する。
+
 ## 5. Job分類
 
 | Job | Partition Key | Retry | 注意点 |
@@ -111,6 +125,8 @@ Job Payloadへ本文を直接埋め込まない。
 外部からのMutation Requestは`Idempotency-Key`を受け付けられる構造にする。KeyはUser / Workspace / Operation ScopeとRequest Fingerprintへ関連付ける。
 
 同じKeyで異なるRequestが来た場合はConflictとして拒否する。保存済みResponseを無期限保持せず、OperationごとのRetentionを定義する。
+
+現在の実装はKey原文をScope付きHMAC、受信Bodyの完全なByte列をSHA-256として保存する。Response BodyやSession Tokenは保存せず、Statusと非秘密のResource ReferenceだけをReplayする。Middlewareは対象Mutationへ明示的にMountし、秘密Credentialを返す認証Routeには自動適用しない。
 
 Job Handlerは、対象Resourceの完了状態または一意Constraintを確認して重複実行を無害化する。
 
@@ -185,4 +201,3 @@ Document本文、秘密共有Token、認証TokenをLogやTraceへ含めない。
 - Deploy時の停止許容時間
 
 User数だけをScale Triggerにしない。
-

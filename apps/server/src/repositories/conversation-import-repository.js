@@ -18,6 +18,29 @@ export function createConversationImportRepository(sql) {
   if (!sql?.begin) throw new Error("SQL transaction client is required");
 
   return Object.freeze({
+    async findImportResult({ importId, workspaceId, userId }) {
+      const rows = await sql`
+        SELECT ci.id, ci.conversation_id, ci.source_hash, ci.import_status, ci.warnings
+        FROM conversation_imports ci
+        JOIN workspace_members wm ON wm.workspace_id = ci.workspace_id
+        JOIN users u ON u.id = wm.user_id
+        WHERE ci.id = ${importId}
+          AND ci.workspace_id = ${workspaceId}
+          AND wm.user_id = ${userId}
+          AND wm.revoked_at IS NULL
+          AND u.email_verified_at IS NOT NULL
+          AND u.deleted_at IS NULL
+        LIMIT 1
+      `;
+      const row = rows[0];
+      return row ? {
+        importId: row.id,
+        conversationId: row.conversation_id,
+        sourceHash: row.source_hash,
+        status: row.import_status,
+        warnings: row.warnings
+      } : null;
+    },
     async persistSuccessfulImport({
       archive,
       importRecord,

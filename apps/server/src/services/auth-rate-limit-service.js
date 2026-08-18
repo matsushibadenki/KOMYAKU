@@ -5,7 +5,9 @@ export const AUTH_RATE_LIMIT_POLICIES = Object.freeze({
   loginNetwork: Object.freeze({ scope: "login:network", limit: 30, windowSeconds: 900, blockSeconds: 900 }),
   registerNetwork: Object.freeze({ scope: "register:network", limit: 10, windowSeconds: 3600, blockSeconds: 3600 }),
   verificationIdentifier: Object.freeze({ scope: "verification:identifier", limit: 5, windowSeconds: 3600, blockSeconds: 3600 }),
-  resetIdentifier: Object.freeze({ scope: "reset:identifier", limit: 5, windowSeconds: 3600, blockSeconds: 3600 })
+  verificationNetwork: Object.freeze({ scope: "verification:network", limit: 60, windowSeconds: 3600, blockSeconds: 3600 }),
+  resetIdentifier: Object.freeze({ scope: "reset:identifier", limit: 5, windowSeconds: 3600, blockSeconds: 3600 }),
+  resetNetwork: Object.freeze({ scope: "reset:network", limit: 30, windowSeconds: 3600, blockSeconds: 3600 })
 });
 
 export function createAuthRateLimitService({ repository, secret }) {

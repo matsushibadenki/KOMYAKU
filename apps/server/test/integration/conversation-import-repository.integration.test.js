@@ -11,8 +11,15 @@ integration("conversation import PostgreSQL repository", () => {
   const sql = new SQL(Bun.env.DATABASE_URL ?? "postgres://komyaku:komyaku@127.0.0.1:5432/komyaku");
 
   beforeAll(async () => {
-    await sql`INSERT INTO users (id, email, display_name) VALUES (${userId}, ${`integration-${userId}@example.invalid`}, 'Importer')`;
+    await sql`
+      INSERT INTO users (id, email, display_name, email_verified_at)
+      VALUES (${userId}, ${`integration-${userId}@example.invalid`}, 'Importer', now())
+    `;
     await sql`INSERT INTO workspaces (id, name, created_by) VALUES (${workspaceId}, 'Import integration', ${userId})`;
+    await sql`
+      INSERT INTO workspace_members (workspace_id, user_id, member_role)
+      VALUES (${workspaceId}, ${userId}, 'owner')
+    `;
   });
 
   afterAll(async () => {
@@ -23,6 +30,7 @@ integration("conversation import PostgreSQL repository", () => {
       await tx`DELETE FROM conversation_messages WHERE conversation_id IN (SELECT id FROM conversations WHERE workspace_id = ${workspaceId})`;
       await tx`DELETE FROM conversations WHERE workspace_id = ${workspaceId}`;
       await tx`DELETE FROM assets WHERE workspace_id = ${workspaceId}`;
+      await tx`DELETE FROM workspace_members WHERE workspace_id = ${workspaceId}`;
       await tx`DELETE FROM workspaces WHERE id = ${workspaceId}`;
       await tx`DELETE FROM users WHERE id = ${userId}`;
     });
@@ -71,5 +79,12 @@ integration("conversation import PostgreSQL repository", () => {
     expect(messages[0].count).toBe(2);
     expect(edges[0].count).toBe(1);
     expect(events[0].count).toBe(1);
+    expect(await repository.findImportResult({
+      importId: result.importId, workspaceId, userId
+    })).toMatchObject({
+      importId: result.importId,
+      conversationId: result.conversationId,
+      status: "complete"
+    });
   });
 });
