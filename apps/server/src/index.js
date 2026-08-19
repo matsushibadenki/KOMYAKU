@@ -14,6 +14,7 @@ import { createIdentityService } from "./services/identity-service.js";
 import { createOutboxDispatcher } from "./services/outbox-dispatcher.js";
 import { createJobRunner } from "./services/job-runner.js";
 import { createConversationArchiveVerificationHandler } from "./services/conversation-archive-verification.js";
+import { createNotificationDeliveryHandler } from "./services/notification-delivery-handler.js";
 import { createConversationImportService } from "./services/conversation-import-service.js";
 import { createIdempotencyService } from "./services/idempotency-service.js";
 import { createObjectStore, createS3Client } from "@komyaku/storage-core";
@@ -26,6 +27,7 @@ import {
   createSmtpTransport
 } from "./notifications/smtp-notification-service.js";
 import { createStructuredLogger } from "./logging/structured-logger.js";
+import { createNotificationEnvelope } from "./notifications/notification-envelope.js";
 
 const config = loadRuntimeConfig();
 const logger = createStructuredLogger({
@@ -47,6 +49,13 @@ const objectStore = createObjectStore({
   client: objectStorageClient,
   bucket: config.objectStorage.bucket
 });
+let identityRepository = null;
+let notificationEnvelope = null;
+
+if (config.authRoutesEnabled || config.notificationWorkerEnabled) {
+  identityRepository = createIdentityRepository(database.sql);
+  notificationEnvelope = createNotificationEnvelope({ keyHex: config.notificationEncryptionKey });
+}
 
 if (config.deploymentMode !== "api") {
   outboxDispatcher = createOutboxDispatcher({
@@ -58,14 +67,29 @@ if (config.deploymentMode !== "api") {
     maxAttempts: config.outboxMaxAttempts,
     log
   });
+  const handlers = {
+    "conversation.imported": createConversationArchiveVerificationHandler({
+      repository: createConversationArchiveRepository(database.sql),
+      objectStore
+    })
+  };
+  if (config.notificationWorkerEnabled) {
+    const transport = createSmtpTransport(config.smtp);
+    notificationService = createSmtpNotificationService({
+      transport,
+      from: config.smtp.from,
+      publicAppOrigin: config.publicAppOrigin
+    });
+    await notificationService.verifyConnection();
+    handlers["notification.delivery_requested"] = createNotificationDeliveryHandler({
+      notificationEnvelope,
+      notificationService,
+      identityRepository
+    });
+  }
   jobRunner = createJobRunner({
     repository: createJobRepository(database.sql),
-    handlers: {
-      "conversation.imported": createConversationArchiveVerificationHandler({
-        repository: createConversationArchiveRepository(database.sql),
-        objectStore
-      })
-    },
+    handlers,
     instanceId: config.instanceId,
     batchSize: config.jobBatchSize,
     leaseSeconds: config.jobLeaseSeconds,
@@ -75,18 +99,11 @@ if (config.deploymentMode !== "api") {
 }
 
 if (config.authRoutesEnabled) {
-  const identityRepository = createIdentityRepository(database.sql);
-  const transport = createSmtpTransport(config.smtp);
-  notificationService = createSmtpNotificationService({
-    transport,
-    from: config.smtp.from,
-    publicAppOrigin: config.publicAppOrigin
-  });
-  await notificationService.verifyConnection();
   const identityService = createIdentityService({
     repository: identityRepository,
-    notificationService,
-    sessionTtlSeconds: config.sessionTtlSeconds
+    notificationEnvelope,
+    sessionTtlSeconds: config.sessionTtlSeconds,
+    passwordResetMinimumResponseMs: config.passwordResetMinimumResponseMs
   });
   const rateLimitService = createAuthRateLimitService({
     repository: createAuthRateLimitRepository(database.sql),

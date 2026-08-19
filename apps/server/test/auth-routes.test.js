@@ -145,4 +145,20 @@ describe("feature-gated authentication routes", () => {
     expect(await response.json()).toEqual({ error: "request_too_large" });
     expect(calls).toEqual([]);
   });
+
+  test("returns bounded generic errors and security headers for malformed input", async () => {
+    const { app } = harness();
+    const response = await app.request(new Request("http://localhost/api/v1/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{not-json"
+    }));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "validation_error" });
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(response.headers.get("Referrer-Policy")).toBe("no-referrer");
+    expect(response.headers.get("Permissions-Policy")).toContain("camera=()");
+  });
 });

@@ -12,11 +12,24 @@ function mapIdentity(row) {
   };
 }
 
+async function insertNotificationEvent(tx, event) {
+  if (!event) return;
+  await tx`
+    INSERT INTO outbox_events
+      (id, aggregate_type, aggregate_id, event_type, schema_version,
+       partition_key, idempotency_key, payload)
+    VALUES
+      (${event.id}, 'user', ${event.aggregateId}, 'notification.delivery_requested', 1,
+       ${event.partitionKey}, ${event.idempotencyKey},
+       ${JSON.stringify(event.payload)}::text::jsonb)
+  `;
+}
+
 export function createIdentityRepository(sql) {
   if (!sql?.begin) throw new Error("SQL transaction client is required");
 
   return Object.freeze({
-    async createPersonalAccount({ user, workspace, session, verificationToken }) {
+    async createPersonalAccount({ user, workspace, session, verificationToken, notificationEvent }) {
       await sql.begin(async (tx) => {
         await tx`
           INSERT INTO users
@@ -44,6 +57,7 @@ export function createIdentityRepository(sql) {
                     ${verificationToken.expiresAt})
           `;
         }
+        await insertNotificationEvent(tx, notificationEvent);
         await tx`
           INSERT INTO outbox_events
             (id, aggregate_type, aggregate_id, event_type, schema_version, partition_key, idempotency_key, payload)
@@ -75,7 +89,7 @@ export function createIdentityRepository(sql) {
       return mapIdentity(rows[0]);
     },
 
-    async replaceEmailVerificationToken(token) {
+    async replaceEmailVerificationToken(token, notificationEvent = null) {
       await sql.begin(async (tx) => {
         await tx`
           UPDATE email_verification_tokens
@@ -86,6 +100,7 @@ export function createIdentityRepository(sql) {
           INSERT INTO email_verification_tokens (id, user_id, token_hash, expires_at)
           VALUES (${token.id}, ${token.userId}, decode(${token.tokenHash}, 'hex'), ${token.expiresAt})
         `;
+        await insertNotificationEvent(tx, notificationEvent);
       });
     },
 
@@ -118,7 +133,7 @@ export function createIdentityRepository(sql) {
       });
     },
 
-    async replacePasswordResetToken(token) {
+    async replacePasswordResetToken(token, notificationEvent = null) {
       await sql.begin(async (tx) => {
         await tx`
           UPDATE password_reset_tokens
@@ -129,7 +144,35 @@ export function createIdentityRepository(sql) {
           INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at)
           VALUES (${token.id}, ${token.userId}, decode(${token.tokenHash}, 'hex'), ${token.expiresAt})
         `;
+        await insertNotificationEvent(tx, notificationEvent);
       });
+    },
+
+    async isOneTimeTokenActive({ kind, userId, tokenHash }) {
+      const table = kind === "email_verification"
+        ? "email_verification_tokens"
+        : kind === "password_reset"
+          ? "password_reset_tokens"
+          : null;
+      if (!table) return false;
+      const rows = table === "email_verification_tokens"
+        ? await sql`
+            SELECT 1 AS active
+            FROM email_verification_tokens
+            WHERE user_id = ${userId}
+              AND token_hash = decode(${tokenHash}, 'hex')
+              AND used_at IS NULL AND expires_at > now()
+            LIMIT 1
+          `
+        : await sql`
+            SELECT 1 AS active
+            FROM password_reset_tokens
+            WHERE user_id = ${userId}
+              AND token_hash = decode(${tokenHash}, 'hex')
+              AND used_at IS NULL AND expires_at > now()
+            LIMIT 1
+          `;
+      return rows.length === 1;
     },
 
     async resetPasswordWithToken({ tokenHash, passwordHash }) {

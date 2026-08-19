@@ -18,7 +18,7 @@ The repository already contains working infrastructure, schemas, security bounda
 |---|---|---|
 | React + Tauri desktop shell | Implemented foundation | Builds and runs with a local SQLite database |
 | Japanese, English, Simplified Chinese UI | Implemented foundation | Initial i18n resources and locale switching |
-| Structured editor model | Implemented foundation | ProseMirror schema, including LaTeX and Mermaid source nodes |
+| Structured document model | Implemented foundation | Versioned Canonical Schema, stable Node IDs, first-class content nodes, migrations, and ProseMirror adapters |
 | PostgreSQL cloud schema | Implemented foundation | Identity, workspace, conversation, job, and outbox tables |
 | Durable outbox dispatch | Implemented foundation | PostgreSQL leases and atomic, idempotent Outbox-to-Job publication |
 | Durable job execution | Implemented foundation | Registered handlers, attempt history, retries, dead letters, and raw archive verification |
@@ -26,7 +26,7 @@ The repository already contains working infrastructure, schemas, security bounda
 | Dead-letter operations | Implemented internal boundary | Exact-job retry with preserved history and atomic operator audit; no public endpoint |
 | Plan catalog and entitlements | Implemented foundation | Provider-independent stable keys, typed limits, local core, and layered overrides |
 | Production configuration and logging | Implemented foundation | Fail-fast environment validation and redacted JSON Lines |
-| S3-compatible storage | Implemented foundation | Immutable writes, checksums, MinIO development setup |
+| S3-compatible storage | Implemented foundation | Immutable writes, Workspace-scoped content addressing, verified deduplication, reference accounting, and MinIO development setup |
 | Identity and sessions | Implemented domain layer | Argon2id passwords, hashed sessions, revocation, verification/reset tokens |
 | Distributed authentication rate limits | Implemented domain layer | PostgreSQL-shared counters with HMAC-protected identifiers |
 | Conversation archive | Implemented foundation | Canonical DAG, generic JSON importer, immutable raw archive service |
@@ -326,11 +326,14 @@ database/
 docs/
 ├── adr/                      Accepted architecture decisions
 ├── architecture/             System architecture
+├── formats/                  Versioned data-format specifications
 ├── guides/                   Development and feature manuals
 ├── product/                  Pricing and product hypotheses
 ├── KOMYAKU設計仕様書.md       Primary detailed design specification
 └── ROADMAP.md                Implementation status
 ```
+
+The implemented Canonical Document JSON contract is specified in [docs/formats/canonical-document-v1.md](docs/formats/canonical-document-v1.md). It is intentionally separate from both ProseMirror JSON and the future open `.komyaku` archive container.
 
 ## Requirements
 
@@ -448,9 +451,12 @@ The complete development example is in [.env.example](.env.example).
 | `JOB_POLL_INTERVAL_MS` | Idle Job Runner polling interval | `1000` |
 | `DATABASE_URL` | PostgreSQL connection string | Local development database |
 | `SESSION_TTL_SECONDS` | Lifetime of newly issued cloud sessions | `2592000` |
+| `PASSWORD_RESET_MIN_RESPONSE_MS` | Minimum reset-request response time to reduce enumeration timing | `250` |
 | `AUTH_RATE_LIMIT_SECRET` | HMAC key protecting stored rate-limit identifiers | Development-only example |
 | `IDEMPOTENCY_SECRET` | HMAC key protecting stored mutation keys | Development-only example |
 | `AUTH_ROUTES_ENABLED` | Mount public authentication routes | `false` |
+| `NOTIFICATION_WORKER_ENABLED` | Deliver encrypted notification Jobs in this process | `false` |
+| `NOTIFICATION_ENCRYPTION_KEY` | AES-256-GCM key encoded as 64 hexadecimal characters | Development-only example |
 | `PUBLIC_APP_ORIGIN` | Origin used for verification and reset links | `http://localhost:1420` |
 | `TRUSTED_PROXY_HOPS` | Controlled proxy hops trusted for client addresses | `0` |
 | `SMTP_HOST`, `SMTP_PORT` | SMTP delivery endpoint | Empty host, port `587` |
@@ -475,6 +481,7 @@ Production credentials must come from an appropriate secret manager. Never commi
 | `bun run storage:init` | Create the configured object storage bucket |
 | `bun run --filter @komyaku/server jobs:dead-letters list` | Inspect payload-free Dead Letter summaries |
 | `bun run --filter @komyaku/server maintenance:retention` | Preview retention candidates without deletion |
+| `bun run --filter @komyaku/server test:auth-load` | Run the loopback authentication endpoint load regression |
 | `bun test` | Run the default test suite |
 | `bun run check` | Run checks in every workspace |
 | `bun run build` | Build every workspace |
@@ -523,7 +530,9 @@ The test strategy includes:
 - atomic Dead Letter retry and operator audit records;
 - conversation archive size and SHA-256 metadata verification;
 - PostgreSQL transaction integration;
-- AI handoff payload binding and explicit confirmation.
+- AI handoff payload binding and explicit confirmation;
+- encrypted transactional notification payloads and active-token delivery checks;
+- authentication endpoint load percentile regression.
 
 ## Generic conversation JSON format
 
@@ -563,6 +572,7 @@ The implemented identity foundation uses:
 - a minimum of 15 and maximum of 1,024 Unicode code points;
 - no arbitrary uppercase, number, or symbol composition rules;
 - generic login failure errors and dummy password verification for unknown email addresses;
+- a shared minimum response-time floor for known and unknown password-reset addresses;
 - 256-bit random bearer session tokens;
 - SHA-256 token hashes at rest;
 - single-session and all-session revocation;
@@ -571,13 +581,15 @@ The implemented identity foundation uses:
 - PostgreSQL-shared rate limits for future horizontal API replicas;
 - HMAC-SHA-256 identifiers so raw email and network values are not stored in the rate-limit table.
 
-Public authentication routes and a provider-independent SMTP notification adapter are implemented. They are deliberately not mounted unless `AUTH_ROUTES_ENABLED=true`. Enabling the gate requires a 32-character-or-longer rate-limit secret, an HTTP(S) public application origin, and complete SMTP configuration; the server verifies SMTP connectivity before listening.
+Public authentication routes and a provider-independent SMTP notification adapter are implemented. They are deliberately not mounted unless `AUTH_ROUTES_ENABLED=true`. One-time links are sealed with AES-256-GCM and committed to the Transactional Outbox beside their token hashes; a Durable Job confirms the token is still active before SMTP delivery. `NOTIFICATION_WORKER_ENABLED` allows delivery Workers to run independently from public API replicas.
 
 The mounted surface covers registration, login, session inspection, single/all-session logout, email verification, and password reset under `/api/v1/auth`. Authentication responses are non-cacheable, JSON bodies are limited to 16 KiB, distributed limits run before expensive password work, and password-reset requests do not reveal account existence. Email templates support Japanese, English, and Simplified Chinese and contain only the required one-time action link, never document content.
 
-Client network identity comes from the direct socket by default. `X-Forwarded-For` is ignored until an operator configures an exact positive `TRUSTED_PROXY_HOPS` value behind a controlled proxy that overwrites incoming forwarding headers. Delivery reconciliation, endpoint load testing, and an external security review remain required before production launch.
+Client network identity comes from the direct socket by default. `X-Forwarded-For` is ignored until an operator configures an exact positive `TRUSTED_PROXY_HOPS` value behind a controlled proxy that overwrites incoming forwarding headers. Encrypted delivery reconciliation and a reproducible local endpoint load harness are implemented. Representative PostgreSQL/SMTP/proxy load testing and an independent external security review remain required before production launch.
 
 See [docs/guides/identity-and-sessions.md](docs/guides/identity-and-sessions.md).
+
+Notification operation details are in [docs/guides/notification-delivery.md](docs/guides/notification-delivery.md).
 
 ## AI training refusal
 

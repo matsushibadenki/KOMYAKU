@@ -22,6 +22,7 @@ export const objectStorageConfigSchema = z.object({
 );
 
 const uuidSchema = z.string().uuid();
+const sha256HexSchema = z.string().regex(/^[a-f0-9]{64}$/);
 
 export function buildVersionObjectKey({ workspaceId, documentId, versionId }) {
   const workspace = uuidSchema.parse(workspaceId);
@@ -34,6 +35,12 @@ export function buildImportObjectKey({ workspaceId, importId }) {
   const workspace = uuidSchema.parse(workspaceId);
   const conversationImport = uuidSchema.parse(importId);
   return `workspaces/${workspace}/conversation-imports/${conversationImport}/source.bin`;
+}
+
+export function buildAssetObjectKey({ workspaceId, contentHash }) {
+  const workspace = uuidSchema.parse(workspaceId);
+  const hash = sha256HexSchema.parse(contentHash);
+  return `workspaces/${workspace}/assets/sha256/${hash.slice(0, 2)}/${hash}`;
 }
 
 export async function sha256(bytes) {
@@ -75,19 +82,47 @@ export function createObjectStore({ client, bucket }) {
   if (!client || typeof client.send !== "function") throw new Error("Object store client is required");
   const parsedBucket = z.string().min(3).parse(bucket);
 
+  async function putImmutable({ key, body, contentType, metadata = {} }) {
+    const checksum = await sha256(body);
+    await client.send(new PutObjectCommand({
+      Bucket: parsedBucket,
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+      Metadata: { ...metadata, "content-sha256": checksum.hex },
+      ChecksumSHA256: checksum.base64,
+      IfNoneMatch: "*"
+    }));
+    return { key, contentHash: checksum.hex };
+  }
+
   return Object.freeze({
-    async putImmutable({ key, body, contentType, metadata = {} }) {
+    putImmutable,
+
+    async putContentAddressed({ workspaceId, body, contentType, metadata = {} }) {
+      const byteLength = typeof body === "string"
+        ? new TextEncoder().encode(body).byteLength
+        : body?.byteLength;
+      if (!Number.isSafeInteger(byteLength) || byteLength < 0) {
+        throw new Error("Content-addressed object body must have a finite byte length");
+      }
       const checksum = await sha256(body);
-      await client.send(new PutObjectCommand({
-        Bucket: parsedBucket,
-        Key: key,
-        Body: body,
-        ContentType: contentType,
-        Metadata: { ...metadata, "content-sha256": checksum.hex },
-        ChecksumSHA256: checksum.base64,
-        IfNoneMatch: "*"
-      }));
-      return { key, contentHash: checksum.hex };
+      const key = buildAssetObjectKey({ workspaceId, contentHash: checksum.hex });
+      try {
+        await putImmutable({ key, body, contentType, metadata });
+        return { key, contentHash: checksum.hex, byteSize: byteLength, created: true };
+      } catch (error) {
+        const preconditionFailed = error?.$metadata?.httpStatusCode === 412
+          || error?.name === "PreconditionFailed";
+        if (!preconditionFailed) throw error;
+
+        const existing = await client.send(new HeadObjectCommand({ Bucket: parsedBucket, Key: key }));
+        const existingHash = existing.Metadata?.["content-sha256"];
+        if (existingHash !== checksum.hex || Number(existing.ContentLength) !== byteLength) {
+          throw new Error("Existing content-addressed object failed integrity verification");
+        }
+        return { key, contentHash: checksum.hex, byteSize: byteLength, created: false };
+      }
     },
 
     async head(key) {

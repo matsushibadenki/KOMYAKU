@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-18
+- Delivery update: Superseded in part by ADR-029 on 2026-08-19
 
 ## Context
 
@@ -40,4 +41,4 @@ POST /password-reset/confirm
 
 ## Consequences
 
-単体Serverで標準SMTPを利用して開始でき、将来はNotification Interfaceの背後へProvider APIやDurable Deliveryを追加できる。現時点の配送は同期実行であり、配送障害時はDomainが`pending`を返す。Raw Tokenを永続Queueへ置く再試行は行わず、Userが新しいTokenを再発行する。Transactional Notification Outbox、配信状態照合、負荷試験、外部Security Reviewは次段階とする。
+初期の同期配送方針はADR-029で置き換えられた。現在は暗号化Transactional Notification OutboxとDurable Jobを使用し、APIは`pending`を返す。外部Security ReviewとProduction-like負荷試験は引き続きProduction公開前の必須条件である。

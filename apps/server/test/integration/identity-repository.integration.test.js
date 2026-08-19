@@ -2,6 +2,8 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { SQL } from "bun";
 import { createIdentityRepository } from "../../src/repositories/identity-repository.js";
 import { createIdentityService } from "../../src/services/identity-service.js";
+import { createNotificationEnvelope } from "../../src/notifications/notification-envelope.js";
+import { hashOpaqueToken } from "../../src/security/session-tokens.js";
 
 const integration = Bun.env.RUN_DB_INTEGRATION === "1" ? describe : describe.skip;
 
@@ -29,8 +31,10 @@ integration("identity PostgreSQL repository", () => {
 
   test("registers an atomic personal account and enforces hashed revocable sessions", async () => {
     const repository = createIdentityRepository(sql);
+    const notificationEnvelope = createNotificationEnvelope({ keyHex: "55".repeat(32) });
     const service = createIdentityService({
       repository,
+      notificationEnvelope,
       sessionTtlSeconds: 300,
       exposeDevelopmentTokens: true
     });
@@ -61,8 +65,27 @@ integration("identity PostgreSQL repository", () => {
     });
     expect(accountRows[0].token_hash).toHaveLength(64);
     expect(accountRows[0].token_hash).not.toBe(registered.session.token);
+    const deliveryEvents = await sql`
+      SELECT payload
+      FROM outbox_events
+      WHERE aggregate_id = ${userId}
+        AND event_type = 'notification.delivery_requested'
+    `;
+    expect(deliveryEvents).toHaveLength(1);
+    expect(JSON.stringify(deliveryEvents[0].payload)).not.toContain(email);
+    expect(JSON.stringify(deliveryEvents[0].payload)).not.toContain(registered.verification.token);
+    expect(notificationEnvelope.open(deliveryEvents[0].payload.envelope)).toMatchObject({
+      kind: "email_verification", userId, email, token: registered.verification.token
+    });
+    const verificationTokenHash = await hashOpaqueToken(registered.verification.token);
+    expect(await repository.isOneTimeTokenActive({
+      kind: "email_verification", userId, tokenHash: verificationTokenHash
+    })).toBe(true);
     expect(await repository.canImportConversations({ workspaceId, userId })).toBe(false);
     expect(await service.verifyEmail(registered.verification.token)).toEqual({ userId });
+    expect(await repository.isOneTimeTokenActive({
+      kind: "email_verification", userId, tokenHash: verificationTokenHash
+    })).toBe(false);
     expect(await repository.canImportConversations({ workspaceId, userId })).toBe(true);
 
     const authenticated = await service.authenticateToken(registered.session.token);

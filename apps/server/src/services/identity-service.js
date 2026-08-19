@@ -61,11 +61,15 @@ export function createIdentityService({
   repository,
   passwordHasher = createPasswordHasher(),
   notificationService = noDelivery,
+  notificationEnvelope = null,
   sessionTtlSeconds = 30 * 24 * 60 * 60,
   emailVerificationTtlSeconds = 24 * 60 * 60,
   passwordResetTtlSeconds = 60 * 60,
+  passwordResetMinimumResponseMs = 250,
   exposeDevelopmentTokens = false,
-  now = () => new Date()
+  now = () => new Date(),
+  monotonicNow = () => performance.now(),
+  wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))
 }) {
   if (!repository) throw new Error("Identity repository is required");
   if (!Number.isSafeInteger(sessionTtlSeconds) || sessionTtlSeconds <= 0) {
@@ -76,6 +80,9 @@ export function createIdentityService({
   }
   if (!Number.isSafeInteger(passwordResetTtlSeconds) || passwordResetTtlSeconds <= 0) {
     throw new Error("Password reset TTL must be a positive integer");
+  }
+  if (!Number.isSafeInteger(passwordResetMinimumResponseMs) || passwordResetMinimumResponseMs < 0) {
+    throw new Error("Password reset minimum response time must be a nonnegative integer");
   }
 
   async function issueSession(userId) {
@@ -104,13 +111,35 @@ export function createIdentityService({
     };
   }
 
+  async function finishPasswordResetRequest(startedAt, result) {
+    const remaining = passwordResetMinimumResponseMs - (monotonicNow() - startedAt);
+    if (remaining > 0) await wait(remaining);
+    return result;
+  }
+
   async function deliver(method, payload) {
+    if (notificationEnvelope) return "pending";
     try {
       const result = await notificationService[method]?.(payload);
       return result?.accepted === true ? "accepted" : "pending";
     } catch {
       return "pending";
     }
+  }
+
+  function prepareNotification(kind, tokenId, payload) {
+    if (!notificationEnvelope) return null;
+    const id = uuidv7();
+    return {
+      id,
+      aggregateId: payload.userId,
+      partitionKey: payload.userId,
+      idempotencyKey: `notification:${kind}:${tokenId}`,
+      payload: {
+        deliveryId: id,
+        envelope: notificationEnvelope.seal({ kind, ...payload })
+      }
+    };
   }
 
   return Object.freeze({
@@ -122,6 +151,18 @@ export function createIdentityService({
       const passwordHash = await passwordHasher.hash(parsed.password);
       const session = await issueSession(userId);
       const verification = await issueOneTimeToken(userId, emailVerificationTtlSeconds);
+      const verificationPayload = {
+        userId,
+        email: normalizeEmail(parsed.email),
+        interfaceLocale: parsed.interfaceLocale,
+        token: verification.token,
+        expiresAt: verification.record.expiresAt
+      };
+      const notificationEvent = prepareNotification(
+        "email_verification",
+        verification.record.id,
+        verificationPayload
+      );
 
       try {
         await repository.createPersonalAccount({
@@ -138,7 +179,8 @@ export function createIdentityService({
             name: parsed.workspaceName ?? parsed.displayName
           },
           session: session.record,
-          verificationToken: verification.record
+          verificationToken: verification.record,
+          notificationEvent
         });
       } catch (error) {
         if (error?.errno === "23505" || error?.code === "23505") {
@@ -147,13 +189,7 @@ export function createIdentityService({
         throw error;
       }
 
-      const verificationDelivery = await deliver("sendEmailVerification", {
-        userId,
-        email: normalizeEmail(parsed.email),
-        interfaceLocale: parsed.interfaceLocale,
-        token: verification.token,
-        expiresAt: verification.record.expiresAt
-      });
+      const verificationDelivery = await deliver("sendEmailVerification", verificationPayload);
 
       return {
         user: {
@@ -215,14 +251,20 @@ export function createIdentityService({
       const identity = await repository.findIdentityById(userId);
       if (!identity) throw new IdentityError("identity_not_found", "Identity is unavailable");
       const verification = await issueOneTimeToken(userId, emailVerificationTtlSeconds);
-      await repository.replaceEmailVerificationToken(verification.record);
-      const delivery = await deliver("sendEmailVerification", {
+      const payload = {
         userId,
         email: identity.email,
         interfaceLocale: localeSchema.parse(identity.interfaceLocale),
         token: verification.token,
         expiresAt: verification.record.expiresAt
-      });
+      };
+      const notificationEvent = prepareNotification(
+        "email_verification",
+        verification.record.id,
+        payload
+      );
+      await repository.replaceEmailVerificationToken(verification.record, notificationEvent);
+      const delivery = await deliver("sendEmailVerification", payload);
       return {
         delivery,
         expiresAt: verification.record.expiresAt,
@@ -245,22 +287,31 @@ export function createIdentityService({
     },
 
     async requestPasswordReset(input) {
+      const startedAt = monotonicNow();
       const email = normalizeEmail(emailSchema.parse(input.email));
       const identity = await repository.findPasswordIdentityByEmail(email);
-      if (!identity?.passwordHash) return { accepted: true };
+      if (!identity?.passwordHash) {
+        return finishPasswordResetRequest(startedAt, { accepted: true });
+      }
       const reset = await issueOneTimeToken(identity.userId, passwordResetTtlSeconds);
-      await repository.replacePasswordResetToken(reset.record);
-      await deliver("sendPasswordReset", {
+      const payload = {
         userId: identity.userId,
         email: identity.email,
         interfaceLocale: identity.interfaceLocale,
         token: reset.token,
         expiresAt: reset.record.expiresAt
-      });
-      return {
+      };
+      const notificationEvent = prepareNotification(
+        "password_reset",
+        reset.record.id,
+        payload
+      );
+      await repository.replacePasswordResetToken(reset.record, notificationEvent);
+      await deliver("sendPasswordReset", payload);
+      return finishPasswordResetRequest(startedAt, {
         accepted: true,
         ...(exposeDevelopmentTokens ? { token: reset.token } : {})
-      };
+      });
     },
 
     async resetPassword({ token, password }) {

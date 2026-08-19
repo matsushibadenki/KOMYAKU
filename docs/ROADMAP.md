@@ -34,20 +34,22 @@ Stage status: [Done] Foundation complete
 - [Done] PostgreSQL distributed authentication rate limits and HMAC-protected identifiers
 - [Done] Single-use email verification and password reset token domain flows
 - [Done] SMTP notification adapter and feature-gated, rate-limited public authentication routes
-- [Next] Notification delivery reconciliation, endpoint load testing, and external security review
+- [Done] Encrypted transactional notification delivery, retry reconciliation, and reproducible local authentication endpoint load harness
+- [Next] Production-like PostgreSQL/SMTP load test and independent external security review
 - [Later] Workspace subscription and Usage Meter schema
 - [Later] Passkey, OAuth, MFA, OIDC, SAML, and SCIM extension points
 - [Later] Re-evaluate TanStack Start v1 for a separate Cloud Web app; keep Tauri Desktop on Vite SPA until validated
 
 ## Stage 3 — Structured Document MVP
 
-- [Next] Canonical Document Schema v1 with stable Node IDs, schema versioning, metadata, and language/direction attributes
-- [Next] First-class Text, Heading, List, Table, Image, Math/LaTeX, Code, Basic SVG/Mermaid, and Generic File nodes
-- [Next] Separate canonical source, render representation, Asset references, and provenance; never make previews the source of truth
-- [Next] Workspace-scoped content-addressed Asset storage, immutable originals, safe deduplication, and reference accounting
+- [Done] Canonical Document Schema v1 with stable Node IDs, schema versioning, metadata, and language/direction attributes
+- [Done] First-class Text, Heading, List, Table, Image, Math/LaTeX, Code, Basic SVG/Mermaid, and Generic File nodes
+- [Done] Separate canonical source, render representation, Asset references, and provenance; never make previews the source of truth
+- [Done] Workspace-scoped content-addressed Asset storage foundation, immutable originals, safe deduplication, and reference accounting
+- [Next] Asset orphan reconciliation, reference-zero quarantine/retention GC, media inspection, signed reads, and quota metering
 - [Next] Secure isolated renderers for Math/LaTeX, Mermaid/SVG, images, and PDF previews
 - [Next] Structured editor, local autosave, Asset insertion, accessible captions/alt text, and Japanese/English/Simplified Chinese UI
-- [Next] Canonical Schema migrations and round-trip fixtures that preserve unknown compatible metadata
+- [Done] Canonical Schema migration boundary, ProseMirror adapters, and round-trip fixtures that preserve compatible metadata
 - [Later] Native table editing, full LaTeX documents, richer SVG authoring, and PDF inspection
 
 ## Stage 4 — Document Evolution and Diff

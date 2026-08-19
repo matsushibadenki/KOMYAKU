@@ -9,6 +9,7 @@
     "check": "bun test"
   },
   "dependencies": {
+    "@komyaku/document-schema": "workspace:*",
     "prosemirror-commands": "^1.7.1",
     "prosemirror-history": "^1.4.1",
     "prosemirror-inputrules": "^1.5.0",

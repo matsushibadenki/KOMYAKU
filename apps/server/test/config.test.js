@@ -13,7 +13,10 @@ describe("runtime configuration", () => {
     expect(config.jobBatchSize).toBe(10);
     expect(config.jobLeaseSeconds).toBe(60);
     expect(config.idempotencySecret.length).toBeGreaterThanOrEqual(32);
+    expect(config.notificationEncryptionKey).toHaveLength(64);
+    expect(config.passwordResetMinimumResponseMs).toBe(250);
     expect(config.authRoutesEnabled).toBe(false);
+    expect(config.notificationWorkerEnabled).toBe(false);
     expect(config.smtp).toBeNull();
   });
 
@@ -41,10 +44,12 @@ describe("runtime configuration", () => {
       SMTP_REQUIRE_TLS: "true",
       SMTP_USER: "mailer",
       SMTP_PASSWORD: "secret",
-      SMTP_FROM: "KOMYAKU <no-reply@example.com>"
+      SMTP_FROM: "KOMYAKU <no-reply@example.com>",
+      NOTIFICATION_ENCRYPTION_KEY: "11".repeat(32)
     });
 
     expect(config.authRoutesEnabled).toBe(true);
+    expect(config.notificationWorkerEnabled).toBe(true);
     expect(config.publicAppOrigin).toBe("https://app.example.com");
     expect(config.trustedProxyHops).toBe(1);
     expect(config.smtp).toMatchObject({
@@ -54,6 +59,40 @@ describe("runtime configuration", () => {
       requireTls: true,
       user: "mailer"
     });
+  });
+
+  test("allows an API replica to queue notifications without SMTP", () => {
+    const config = loadRuntimeConfig({
+      DEPLOYMENT_MODE: "api",
+      AUTH_ROUTES_ENABLED: "true",
+      AUTH_RATE_LIMIT_SECRET: "a-production-secret-with-at-least-32-characters",
+      PUBLIC_APP_ORIGIN: "https://app.example.com",
+      NOTIFICATION_ENCRYPTION_KEY: "11".repeat(32)
+    });
+    expect(config.authRoutesEnabled).toBe(true);
+    expect(config.notificationWorkerEnabled).toBe(false);
+    expect(config.smtp).toBeNull();
+  });
+
+  test("allows a worker replica to deliver notifications without public auth routes", () => {
+    const config = loadRuntimeConfig({
+      DEPLOYMENT_MODE: "worker",
+      AUTH_ROUTES_ENABLED: "false",
+      NOTIFICATION_WORKER_ENABLED: "true",
+      PUBLIC_APP_ORIGIN: "https://app.example.com",
+      NOTIFICATION_ENCRYPTION_KEY: "11".repeat(32),
+      SMTP_HOST: "smtp.example.com",
+      SMTP_FROM: "KOMYAKU <no-reply@example.com>"
+    });
+    expect(config.authRoutesEnabled).toBe(false);
+    expect(config.notificationWorkerEnabled).toBe(true);
+  });
+
+  test("rejects notification work in the API-only deployment role", () => {
+    expect(() => loadRuntimeConfig({
+      DEPLOYMENT_MODE: "api",
+      NOTIFICATION_WORKER_ENABLED: "true"
+    })).toThrow("cannot be true in api deployment mode");
   });
 
   test("requires SMTP credentials to be paired", () => {
@@ -72,6 +111,12 @@ describe("runtime configuration", () => {
   test("rejects a weak idempotency secret", () => {
     expect(() => loadRuntimeConfig({ IDEMPOTENCY_SECRET: "too-short" })).toThrow(
       "IDEMPOTENCY_SECRET"
+    );
+  });
+
+  test("rejects an invalid notification encryption key", () => {
+    expect(() => loadRuntimeConfig({ NOTIFICATION_ENCRYPTION_KEY: "too-short" })).toThrow(
+      "NOTIFICATION_ENCRYPTION_KEY"
     );
   });
 

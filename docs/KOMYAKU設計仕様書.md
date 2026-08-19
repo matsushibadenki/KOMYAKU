@@ -952,6 +952,8 @@ schema_version
 
 をすべてのVersion Snapshotへ保存する。
 
+Canonical Document Schema v1とProseMirror変換境界は実装済みである。正確なField、Node Registry、互換性規則、制限値は`docs/formats/canonical-document-v1.md`を正本とする。ProseMirror JSONは編集用Projectionであり、永続形式の正本ではない。
+
 ---
 
 # 24. Document Schema Versioning
@@ -981,6 +983,8 @@ v2 document
 過去Versionそのものは破壊しない。
 
 必要に応じてViewer側でmigrationしたrepresentationを生成する。
+
+Migrationは未知Nodeや将来Versionを黙って破棄しない。表現できない情報がある場合は明示的に失敗し、変換成功を装ったData Lossを防ぐ。
 
 ---
 
@@ -2163,9 +2167,9 @@ asset_id
 
 Attachment metadataには最低限、`media_type`、`byte_size`、`content_hash`、`storage_key`、`created_by`を持たせる。PDFの公開可否はDocumentの公開設定だけで暗黙に決めず、公開Versionから参照され、かつ公開可能と判定されたAssetだけを短時間URLまたは認証済み配信APIで提供する。
 
-大容量AssetはContent Hashによる重複排除へ拡張可能にする。同じAssetを複数Versionから参照してもObjectを複製せず、Document SnapshotにはAsset参照を保存する。
+大容量AssetはContent Hashによる重複排除を行う。同じAssetを複数Versionから参照してもObjectを複製せず、Document SnapshotにはAsset参照を保存する。Workspace UUIDとSHA-256から決まるObject Key、条件付きImmutable Write、PostgreSQLの部分Unique Indexによる基盤は実装済みである。
 
-重複排除の境界は当初Workspace内とし、Hash一致をAccess権限として扱わない。異なるTenantに同一Contentが存在する事実を推測できるResponse、Timing、APIを提供しない。Asset削除は参照数、Trash、Retention Policy、公開Version、法的保持を確認してから行う。Original、Preview、Generated Artifactには派生関係と生成元Versionを記録する。
+重複排除の境界は当初Workspace内とし、Hash一致をAccess権限として扱わない。異なるTenantに同一Contentが存在する事実を推測できるResponse、Timing、APIを提供しない。Asset削除は参照数、Trash、Retention Policy、公開Version、法的保持を確認してから行う。参照解除ではObjectを即時削除せず`released_at`を記録し、物理削除は隔離・Retention Jobへ委ねる。Original、Preview、Generated Artifactには派生関係と生成元Versionを記録する。実装と運用境界は`docs/architecture/content-addressed-assets.md`を参照する。
 
 ---
 
@@ -3725,6 +3729,11 @@ User
 Session
 Personal Workspace
 Project
+
+Email Verification / Password Reset
+Encrypted Notification Outbox
+Durable SMTP Delivery / Reconciliation
+Authentication Load Regression
 ```
 
 ## Stage 3 — Document
@@ -3922,6 +3931,10 @@ ADR-012 Local-first Freemium and Entitlements
 ADR-013 Modular Monolith and Horizontal Scaling
 ADR-014 Conversation Archive and AI Handoff
 ADR-027 First-class Content Nodes and Asset Lineage
+ADR-028 Open KOMYAKU Archive Format
+ADR-029 Encrypted Transactional Notification Delivery
+ADR-030 Canonical Document Schema v1 and Editor Boundary
+ADR-031 Workspace-scoped Content-addressed Assets
 ```
 
 を作成する。

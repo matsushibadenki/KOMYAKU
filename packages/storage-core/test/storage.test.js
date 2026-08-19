@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { HeadObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import {
+  buildAssetObjectKey,
   buildVersionObjectKey,
   createObjectStore,
-  ensureBucket
+  ensureBucket,
+  sha256
 } from "../src/index.js";
 
 describe("object storage boundary", () => {
@@ -38,6 +40,62 @@ describe("object storage boundary", () => {
     expect(commands[0]).toBeInstanceOf(PutObjectCommand);
     expect(commands[0].input.IfNoneMatch).toBe("*");
     expect(result.contentHash).toHaveLength(64);
+  });
+
+  test("builds workspace-scoped content-addressed keys", async () => {
+    const workspaceId = crypto.randomUUID();
+    const hash = (await sha256("same bytes")).hex;
+    expect(buildAssetObjectKey({ workspaceId, contentHash: hash })).toBe(
+      `workspaces/${workspaceId}/assets/sha256/${hash.slice(0, 2)}/${hash}`
+    );
+    expect(() => buildAssetObjectKey({ workspaceId: "another tenant", contentHash: hash })).toThrow();
+  });
+
+  test("verifies an existing object before reporting a deduplicated write", async () => {
+    const commands = [];
+    const workspaceId = crypto.randomUUID();
+    const body = new TextEncoder().encode("deduplicated payload");
+    const hash = (await sha256(body)).hex;
+    const client = {
+      async send(command) {
+        commands.push(command);
+        if (command instanceof PutObjectCommand) {
+          const error = new Error("already exists");
+          error.name = "PreconditionFailed";
+          throw error;
+        }
+        return { ContentLength: body.byteLength, Metadata: { "content-sha256": hash } };
+      }
+    };
+    const store = createObjectStore({ bucket: "komyaku-test", client });
+
+    expect(await store.putContentAddressed({
+      workspaceId, body, contentType: "application/octet-stream"
+    })).toEqual({
+      key: buildAssetObjectKey({ workspaceId, contentHash: hash }),
+      contentHash: hash,
+      byteSize: body.byteLength,
+      created: false
+    });
+    expect(commands[1]).toBeInstanceOf(HeadObjectCommand);
+  });
+
+  test("rejects a conflicting object at a content-addressed key", async () => {
+    const body = new TextEncoder().encode("expected payload");
+    const client = {
+      async send(command) {
+        if (command instanceof PutObjectCommand) {
+          const error = new Error("already exists");
+          error.$metadata = { httpStatusCode: 412 };
+          throw error;
+        }
+        return { ContentLength: body.byteLength, Metadata: { "content-sha256": "0".repeat(64) } };
+      }
+    };
+    const store = createObjectStore({ bucket: "komyaku-test", client });
+    await expect(store.putContentAddressed({
+      workspaceId: crypto.randomUUID(), body, contentType: "application/octet-stream"
+    })).rejects.toThrow("integrity verification");
   });
 
   test("creates a missing bucket once", async () => {

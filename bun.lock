@@ -77,11 +77,16 @@
     "packages/document-schema": {
       "name": "@komyaku/document-schema",
       "version": "0.1.0",
+      "dependencies": {
+        "uuid": "^13.0.0",
+        "zod": "^4.1.5",
+      },
     },
     "packages/editor-core": {
       "name": "@komyaku/editor-core",
       "version": "0.1.0",
       "dependencies": {
+        "@komyaku/document-schema": "workspace:*",
         "prosemirror-commands": "^1.7.1",
         "prosemirror-history": "^1.4.1",
         "prosemirror-inputrules": "^1.5.0",

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { IdentityError, createIdentityService } from "../src/services/identity-service.js";
+import { createNotificationEnvelope } from "../src/notifications/notification-envelope.js";
 
 function fixture({ identity = null } = {}) {
   const events = [];
@@ -32,6 +33,7 @@ function fixture({ identity = null } = {}) {
       repository,
       passwordHasher,
       sessionTtlSeconds: 60,
+      passwordResetMinimumResponseMs: 0,
       now: () => new Date("2026-08-16T00:00:00.000Z")
     })
   };
@@ -117,7 +119,8 @@ describe("identity application service", () => {
       notificationService: {
         async sendEmailVerification(value) { events.push(["delivery", value]); return { accepted: true }; }
       },
-      exposeDevelopmentTokens: true
+      exposeDevelopmentTokens: true,
+      passwordResetMinimumResponseMs: 0
     });
     const result = await service.register({
       email: "verify@example.com",
@@ -130,6 +133,31 @@ describe("identity application service", () => {
     expect(events[0][1].verificationToken.tokenHash).toHaveLength(64);
     expect(events[0][1].verificationToken).not.toHaveProperty("token");
     expect(events[1][1].token).toBe(result.verification.token);
+  });
+
+  test("atomically queues an encrypted notification without storing its raw token", async () => {
+    const events = [];
+    const service = createIdentityService({
+      repository: {
+        async createPersonalAccount(value) { events.push(value); }
+      },
+      passwordHasher: { hash: async () => "hash", verify: async () => false },
+      notificationEnvelope: createNotificationEnvelope({ keyHex: "44".repeat(32) }),
+      exposeDevelopmentTokens: true,
+      passwordResetMinimumResponseMs: 0
+    });
+    const result = await service.register({
+      email: "queued@example.com",
+      password: "correct horse battery staple",
+      displayName: "Queued"
+    });
+
+    expect(result.verification.delivery).toBe("pending");
+    expect(events).toHaveLength(1);
+    expect(events[0].notificationEvent.idempotencyKey).toStartWith("notification:email_verification:");
+    expect(JSON.stringify(events[0].notificationEvent)).not.toContain(result.verification.token);
+    expect(JSON.stringify(events[0].notificationEvent)).not.toContain("queued@example.com");
+    expect(events[0].verificationToken).not.toHaveProperty("token");
   });
 
   test("uses single-use hashes for email verification and password reset", async () => {
@@ -155,7 +183,8 @@ describe("identity application service", () => {
         async hash(password) { events.push(["hash", password]); return "new-hash"; },
         async verify() { return true; }
       },
-      exposeDevelopmentTokens: true
+      exposeDevelopmentTokens: true,
+      passwordResetMinimumResponseMs: 0
     });
     const verification = await service.requestEmailVerification({ userId: identity.userId });
     expect(verification.token).toHaveLength(43);
@@ -175,5 +204,28 @@ describe("identity application service", () => {
     const { events, service } = fixture();
     expect(await service.requestPasswordReset({ email: "missing@example.com" })).toEqual({ accepted: true });
     expect(events.map(([name]) => name)).toEqual(["lookup"]);
+  });
+
+  test("applies the same minimum response floor to known and unknown reset addresses", async () => {
+    const waits = [];
+    let clock = 10;
+    const identity = {
+      userId: crypto.randomUUID(), email: "known@example.com", passwordHash: "hash",
+      interfaceLocale: "en"
+    };
+    const service = createIdentityService({
+      repository: {
+        async findPasswordIdentityByEmail(email) { return email === identity.email ? identity : null; },
+        async replacePasswordResetToken() {}
+      },
+      passwordResetMinimumResponseMs: 250,
+      monotonicNow: () => clock,
+      wait: async (milliseconds) => { waits.push(milliseconds); clock += milliseconds; }
+    });
+
+    expect(await service.requestPasswordReset({ email: "missing@example.com" })).toEqual({ accepted: true });
+    clock = 10;
+    expect(await service.requestPasswordReset({ email: identity.email })).toEqual({ accepted: true });
+    expect(waits).toEqual([250, 250]);
   });
 });

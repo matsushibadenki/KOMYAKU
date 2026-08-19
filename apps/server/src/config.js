@@ -2,6 +2,7 @@ const DEPLOYMENT_MODES = new Set(["single", "api", "worker"]);
 const JOB_BACKENDS = new Set(["postgres-outbox"]);
 const NODE_ENVIRONMENTS = new Set(["development", "test", "production"]);
 const LOG_LEVELS = new Set(["debug", "info", "warn", "error"]);
+const LOCAL_NOTIFICATION_ENCRYPTION_KEY = "11".repeat(32);
 
 function parsePositiveInteger(value, fallback, name) {
   const parsed = Number(value ?? fallback);
@@ -73,8 +74,13 @@ function validateProduction(config, env) {
   if (config.corsOrigins.some((origin) => !origin.startsWith("https://"))) {
     throw new Error("Production CORS origins must use HTTPS");
   }
-  if (config.authRoutesEnabled && !config.publicAppOrigin.startsWith("https://")) {
+  if ((config.authRoutesEnabled || config.notificationWorkerEnabled)
+    && !config.publicAppOrigin.startsWith("https://")) {
     throw new Error("PUBLIC_APP_ORIGIN must use HTTPS in production");
+  }
+  if ((config.authRoutesEnabled || config.notificationWorkerEnabled)
+    && !env.NOTIFICATION_ENCRYPTION_KEY) {
+    throw new Error("NOTIFICATION_ENCRYPTION_KEY is required for authentication notification processing in production");
   }
 }
 
@@ -95,8 +101,18 @@ export function loadRuntimeConfig(env = Bun.env) {
   if (!LOG_LEVELS.has(logLevel)) throw new Error(`Unsupported LOG_LEVEL: ${logLevel}`);
 
   const authRoutesEnabled = parseBoolean(env.AUTH_ROUTES_ENABLED, false, "AUTH_ROUTES_ENABLED");
+  const notificationWorkerEnabled = parseBoolean(
+    env.NOTIFICATION_WORKER_ENABLED,
+    authRoutesEnabled && deploymentMode !== "api",
+    "NOTIFICATION_WORKER_ENABLED"
+  );
+  if (deploymentMode === "api" && notificationWorkerEnabled) {
+    throw new Error("NOTIFICATION_WORKER_ENABLED cannot be true in api deployment mode");
+  }
   const authRateLimitSecret = env.AUTH_RATE_LIMIT_SECRET || null;
   const idempotencySecret = env.IDEMPOTENCY_SECRET || "local-development-idempotency-secret-change-this";
+  const notificationEncryptionKey = env.NOTIFICATION_ENCRYPTION_KEY
+    || LOCAL_NOTIFICATION_ENCRYPTION_KEY;
   const publicAppOrigin = env.PUBLIC_APP_ORIGIN ? parseOrigin(env.PUBLIC_APP_ORIGIN, "PUBLIC_APP_ORIGIN") : null;
   const smtp = env.SMTP_HOST
     ? Object.freeze({
@@ -119,12 +135,18 @@ export function loadRuntimeConfig(env = Bun.env) {
   if (idempotencySecret.length < 32) {
     throw new Error("IDEMPOTENCY_SECRET must contain at least 32 characters");
   }
+  if (!/^[0-9a-fA-F]{64}$/.test(notificationEncryptionKey)) {
+    throw new Error("NOTIFICATION_ENCRYPTION_KEY must be exactly 64 hexadecimal characters");
+  }
   if (authRoutesEnabled) {
     if (!authRateLimitSecret || authRateLimitSecret.length < 32) {
       throw new Error("AUTH_RATE_LIMIT_SECRET must contain at least 32 characters when authentication routes are enabled");
     }
     if (!publicAppOrigin) throw new Error("PUBLIC_APP_ORIGIN is required when authentication routes are enabled");
-    if (!smtp?.from) throw new Error("Complete SMTP configuration is required when authentication routes are enabled");
+  }
+  if (notificationWorkerEnabled) {
+    if (!publicAppOrigin) throw new Error("PUBLIC_APP_ORIGIN is required when the notification worker is enabled");
+    if (!smtp?.from) throw new Error("Complete SMTP configuration is required when the notification worker is enabled");
   }
 
   const config = {
@@ -151,9 +173,16 @@ export function loadRuntimeConfig(env = Bun.env) {
       30 * 24 * 60 * 60,
       "SESSION_TTL_SECONDS"
     ),
+    passwordResetMinimumResponseMs: parseNonnegativeInteger(
+      env.PASSWORD_RESET_MIN_RESPONSE_MS,
+      250,
+      "PASSWORD_RESET_MIN_RESPONSE_MS"
+    ),
     authRoutesEnabled,
+    notificationWorkerEnabled,
     authRateLimitSecret,
     idempotencySecret,
+    notificationEncryptionKey,
     publicAppOrigin,
     trustedProxyHops: parseNonnegativeInteger(env.TRUSTED_PROXY_HOPS, 0, "TRUSTED_PROXY_HOPS"),
     smtp,

@@ -53,14 +53,14 @@ export function createJobRunner({
           });
           if (result.status === "queued") summary.retried += 1;
           else summary.failed += 1;
-          log(JSON.stringify({
+          log({
             level: result.status === "queued" ? "warn" : "error",
             event: "job_execution_failed",
             jobId: job.id,
             jobType: job.jobType,
             errorCode,
             outcome: result.status
-          }));
+          });
         }
       }
     }
@@ -71,9 +71,9 @@ export function createJobRunner({
     if (stopped) return;
     timer = setTimeout(() => {
       activeRun = runOnce()
-        .catch((error) => log(JSON.stringify({
+        .catch((error) => log({
           level: "error", event: "job_poll_failed", errorName: error?.name ?? "Error"
-        })))
+        }))
         .finally(() => { activeRun = null; schedule(); });
     }, pollIntervalMs);
     timer.unref?.();
