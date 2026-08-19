@@ -44,6 +44,14 @@ function normalizeEmail(email) {
   return email.trim().toLowerCase();
 }
 
+function enforcePasswordPolicy(password) {
+  try {
+    return assertAcceptablePassword(password);
+  } catch {
+    throw new IdentityError("password_policy", "Password does not meet the required policy");
+  }
+}
+
 function sessionExpiry(now, ttlSeconds) {
   return new Date(now.getTime() + ttlSeconds * 1000).toISOString();
 }
@@ -145,7 +153,7 @@ export function createIdentityService({
   return Object.freeze({
     async register(input) {
       const parsed = registerSchema.parse(input);
-      assertAcceptablePassword(parsed.password);
+      enforcePasswordPolicy(parsed.password);
       const userId = uuidv7();
       const workspaceId = uuidv7();
       const passwordHash = await passwordHasher.hash(parsed.password);
@@ -315,7 +323,7 @@ export function createIdentityService({
     },
 
     async resetPassword({ token, password }) {
-      assertAcceptablePassword(password);
+      enforcePasswordPolicy(password);
       let tokenHash;
       try {
         tokenHash = await hashOpaqueToken(token);

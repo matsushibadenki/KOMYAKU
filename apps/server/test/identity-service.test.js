@@ -40,6 +40,17 @@ function fixture({ identity = null } = {}) {
 }
 
 describe("identity application service", () => {
+  test("maps password-policy violations to a stable domain error before persistence", async () => {
+    const { events, service } = fixture();
+    await expect(service.register({
+      email: "writer@example.com", password: "too short", displayName: "Writer"
+    })).rejects.toMatchObject({ name: "IdentityError", code: "password_policy" });
+    await expect(service.resetPassword({
+      token: "x".repeat(43), password: "too short"
+    })).rejects.toMatchObject({ name: "IdentityError", code: "password_policy" });
+    expect(events).toEqual([]);
+  });
+
   test("creates a user, owner membership, workspace, and hashed session as one repository operation", async () => {
     const { events, service } = fixture();
     const result = await service.register({

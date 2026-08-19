@@ -28,6 +28,8 @@ Stage status: [Done] Foundation complete
 
 ## Stage 2 — Identity
 
+Stage status: [Done] Identity engineering complete; production launch gates remain below
+
 - [Done] User, session, workspace, project, asset, and conversation database schema
 - [Done] Identity repositories, personal workspace transaction, and password authentication
 - [Done] Hashed session tokens, revocation service, and Bearer authentication middleware
@@ -35,10 +37,15 @@ Stage status: [Done] Foundation complete
 - [Done] Single-use email verification and password reset token domain flows
 - [Done] SMTP notification adapter and feature-gated, rate-limited public authentication routes
 - [Done] Encrypted transactional notification delivery, retry reconciliation, and reproducible local authentication endpoint load harness
-- [Next] Production-like PostgreSQL/SMTP load test and independent external security review
+- [Done] Isolated production-like PostgreSQL/SMTP load test, internal engineering review, and external-review package
 - [Later] Workspace subscription and Usage Meter schema
 - [Later] Passkey, OAuth, MFA, OIDC, SAML, and SCIM extension points
 - [Later] Re-evaluate TanStack Start v1 for a separate Cloud Web app; keep Tauri Desktop on Vite SPA until validated
+
+## Production Launch Gates
+
+- [Next] Repeat representative load and failure tests in the intended TLS/proxy, PostgreSQL, SMTP-provider, monitoring, and backup topology
+- [Next] Independent external security review, remediation, and retest using `docs/security/stage2-external-review-package.md`
 
 ## Stage 3 — Structured Document MVP
 

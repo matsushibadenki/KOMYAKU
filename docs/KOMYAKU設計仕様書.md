@@ -3734,7 +3734,14 @@ Email Verification / Password Reset
 Encrypted Notification Outbox
 Durable SMTP Delivery / Reconciliation
 Authentication Load Regression
+Isolated PostgreSQL / SMTP Production-like Load Baseline
+Internal Identity Security Review
+External Security Review Package
 ```
+
+Stage 2の完了は、Identity機能の実装、隔離された実PostgreSQL / SMTP経路での再現可能な負荷試験、内部Engineering Review、および外部評価者へ渡せるReview Packageの整備を意味する。これは本番公開の承認とは分離する。
+
+本番公開前には、実際に採用するTLS / Reverse Proxy、PostgreSQL、SMTP Provider、監視、Backup構成での再試験と、独立した外部Security Review、指摘修正、再試験をProduction Launch Gateとして必須にする。内部実装者は独立監査の完了を自己宣言しない。
 
 ## Stage 3 — Document
 
@@ -3935,6 +3942,7 @@ ADR-028 Open KOMYAKU Archive Format
 ADR-029 Encrypted Transactional Notification Delivery
 ADR-030 Canonical Document Schema v1 and Editor Boundary
 ADR-031 Workspace-scoped Content-addressed Assets
+ADR-032 Stage 2 Identity Engineering Completion and Launch Gate
 ```
 
 を作成する。

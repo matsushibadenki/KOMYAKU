@@ -5,7 +5,7 @@ import { IdentityError } from "../src/services/identity-service.js";
 
 const sessionToken = "s".repeat(43);
 
-function harness({ limits = {}, loginError = null } = {}) {
+function harness({ limits = {}, loginError = null, registerError = null } = {}) {
   const calls = [];
   const rateLimitService = {
     async consume(policy, identifier) {
@@ -24,6 +24,7 @@ function harness({ limits = {}, loginError = null } = {}) {
   const identityService = {
     async register(body) {
       calls.push(["register", body.email]);
+      if (registerError) throw registerError;
       return { user: { email: body.email }, session: { token: sessionToken } };
     },
     async login(body) {
@@ -160,5 +161,14 @@ describe("feature-gated authentication routes", () => {
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(response.headers.get("Referrer-Policy")).toBe("no-referrer");
     expect(response.headers.get("Permissions-Policy")).toContain("camera=()");
+  });
+
+  test("returns a bounded client error for password-policy violations", async () => {
+    const { app } = harness({ registerError: new IdentityError("password_policy") });
+    const response = await app.request(jsonRequest("/api/v1/auth/register", {
+      email: "writer@example.com", password: "short", displayName: "Writer"
+    }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "password_policy" });
   });
 });

@@ -27,7 +27,34 @@ services:
     volumes:
       - komyaku-minio:/data
 
+  postgres-stage2-load:
+    image: postgres:17-alpine
+    profiles: ["stage2-load"]
+    environment:
+      POSTGRES_DB: komyaku_stage2_load
+      POSTGRES_USER: komyaku_load
+      POSTGRES_PASSWORD: local-stage2-load-only
+    ports:
+      - "127.0.0.1:55432:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U komyaku_load -d komyaku_stage2_load"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  mailpit-stage2-load:
+    image: axllent/mailpit:v1.30.7
+    profiles: ["stage2-load"]
+    environment:
+      MP_MAX_MESSAGES: "500"
+      MP_DATABASE: /tmp/mailpit.db
+      MP_QUIET: "true"
+    ports:
+      - "127.0.0.1:51025:1025"
+      - "127.0.0.1:58025:8025"
+
 volumes:
   komyaku-postgres:
   komyaku-minio:
-

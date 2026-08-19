@@ -484,6 +484,7 @@ Production credentials must come from an appropriate secret manager. Never commi
 | `bun run --filter @komyaku/server jobs:dead-letters list` | Inspect payload-free Dead Letter summaries |
 | `bun run --filter @komyaku/server maintenance:retention` | Preview retention candidates without deletion |
 | `bun run --filter @komyaku/server test:auth-load` | Run the loopback authentication endpoint load regression |
+| `bun run --filter @komyaku/server test:auth-production-load` | Run the explicitly enabled isolated PostgreSQL/SMTP Stage 2 harness |
 | `bun test` | Run the default test suite |
 | `bun run check` | Run checks in every workspace |
 | `bun run build` | Build every workspace |

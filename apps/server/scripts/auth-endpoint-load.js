@@ -31,7 +31,7 @@ export function summarizeLatencies(latencies, elapsedMs) {
   };
 }
 
-async function reserveAvailablePort() {
+export async function reserveAvailablePort() {
   const probe = createServer();
   await new Promise((resolve, reject) => {
     probe.once("error", reject);
