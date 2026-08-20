@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { HeadObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  ListObjectsV2Command,
+  PutObjectCommand
+} from "@aws-sdk/client-s3";
 import {
   buildAssetObjectKey,
   buildVersionObjectKey,
@@ -96,6 +102,45 @@ describe("object storage boundary", () => {
     await expect(store.putContentAddressed({
       workspaceId: crypto.randomUUID(), body, contentType: "application/octet-stream"
     })).rejects.toThrow("integrity verification");
+  });
+
+  test("lists a bounded prefix page and deletes one exact key", async () => {
+    const commands = [];
+    const client = {
+      async send(command) {
+        commands.push(command);
+        if (command instanceof ListObjectsV2Command) {
+          return {
+            Contents: [{ Key: "workspaces/w/assets/sha256/aa/hash", Size: 42 }],
+            IsTruncated: true,
+            NextContinuationToken: "next-page"
+          };
+        }
+        return {};
+      }
+    };
+    const store = createObjectStore({ bucket: "komyaku-test", client });
+    expect(await store.listPrefix({ prefix: "workspaces/w/assets/", maxKeys: 20 })).toEqual({
+      objects: [{ key: "workspaces/w/assets/sha256/aa/hash", byteSize: 42 }],
+      nextContinuationToken: "next-page"
+    });
+    expect(await store.delete("workspaces/w/assets/sha256/aa/hash")).toEqual({
+      key: "workspaces/w/assets/sha256/aa/hash", deleted: true
+    });
+    expect(commands[0]).toBeInstanceOf(ListObjectsV2Command);
+    expect(commands[0].input.MaxKeys).toBe(20);
+    expect(commands[1]).toBeInstanceOf(DeleteObjectCommand);
+  });
+
+  test("reads only a bounded inspection range", async () => {
+    const commands = [];
+    const store = createObjectStore({
+      bucket: "komyaku-test",
+      client: { async send(command) { commands.push(command); return { Body: new Uint8Array() }; } }
+    });
+    await store.getRange("workspaces/w/assets/sha256/aa/hash", 0, 4095);
+    expect(commands[0]).toBeInstanceOf(GetObjectCommand);
+    expect(commands[0].input.Range).toBe("bytes=0-4095");
   });
 
   test("creates a missing bucket once", async () => {

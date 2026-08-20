@@ -1,8 +1,10 @@
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
   HeadBucketCommand,
   CreateBucketCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client
 } from "@aws-sdk/client-s3";
@@ -133,11 +135,59 @@ export function createObjectStore({ client, bucket }) {
       return client.send(new GetObjectCommand({ Bucket: parsedBucket, Key: key }));
     },
 
-    async createReadUrl(key, expiresIn = 300) {
+    async getRange(key, start = 0, end = 65_535) {
+      const parsedKey = z.string().min(1).max(1024).parse(key);
+      const parsedStart = z.number().int().min(0).parse(start);
+      const parsedEnd = z.number().int().min(parsedStart).max(parsedStart + 1_048_575).parse(end);
+      return client.send(new GetObjectCommand({
+        Bucket: parsedBucket, Key: parsedKey, Range: `bytes=${parsedStart}-${parsedEnd}`
+      }));
+    },
+
+    async listPrefix({ prefix, continuationToken, maxKeys = 100 }) {
+      const parsedPrefix = z.string().min(1).max(1024).parse(prefix);
+      const parsedMaxKeys = z.number().int().min(1).max(1000).parse(maxKeys);
+      const response = await client.send(new ListObjectsV2Command({
+        Bucket: parsedBucket,
+        Prefix: parsedPrefix,
+        ContinuationToken: continuationToken,
+        MaxKeys: parsedMaxKeys
+      }));
+      return {
+        objects: (response.Contents ?? [])
+          .filter((item) => typeof item.Key === "string" && Number.isSafeInteger(Number(item.Size)))
+          .map((item) => ({ key: item.Key, byteSize: Number(item.Size) })),
+        nextContinuationToken: response.IsTruncated ? response.NextContinuationToken : undefined
+      };
+    },
+
+    async delete(key) {
+      const parsedKey = z.string().min(1).max(1024).parse(key);
+      await client.send(new DeleteObjectCommand({ Bucket: parsedBucket, Key: parsedKey }));
+      return { key: parsedKey, deleted: true };
+    },
+
+    async createReadUrl(key, expiresIn = 300, response = {}) {
+      const parsedExpiresIn = z.number().int().min(30).max(300).parse(expiresIn);
+      const contentDisposition = response.contentDisposition
+        ? z.string().min(1).max(300).parse(response.contentDisposition)
+        : undefined;
+      const contentType = response.contentType
+        ? z.string().min(1).max(200).parse(response.contentType)
+        : undefined;
+      const cacheControl = response.cacheControl
+        ? z.string().min(1).max(200).parse(response.cacheControl)
+        : undefined;
       return getSignedUrl(
         client,
-        new GetObjectCommand({ Bucket: parsedBucket, Key: key }),
-        { expiresIn }
+        new GetObjectCommand({
+          Bucket: parsedBucket,
+          Key: z.string().min(1).max(1024).parse(key),
+          ResponseContentDisposition: contentDisposition,
+          ResponseContentType: contentType,
+          ResponseCacheControl: cacheControl
+        }),
+        { expiresIn: parsedExpiresIn }
       );
     }
   });

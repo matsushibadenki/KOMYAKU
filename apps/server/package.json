@@ -12,6 +12,7 @@
     "storage:init": "bun scripts/storage-init.js",
     "jobs:dead-letters": "bun scripts/dead-letter-cli.js",
     "maintenance:retention": "bun scripts/retention-maintenance.js",
+    "maintenance:assets": "bun scripts/asset-maintenance.js",
     "test:auth-load": "bun scripts/auth-endpoint-load.js",
     "test:auth-production-load": "bun scripts/auth-production-load.js"
   },

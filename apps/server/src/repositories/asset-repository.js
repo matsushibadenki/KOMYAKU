@@ -4,6 +4,27 @@ export function createAssetRepository(sql) {
   return Object.freeze({
     async claimContentAddressedAsset({ candidate, reference }) {
       return sql.begin(async (tx) => {
+        await tx`
+          SELECT pg_advisory_xact_lock(
+            hashtextextended(${`${candidate.workspaceId}:${candidate.contentHash}`}, 0)
+          )
+        `;
+        const orphanRows = await tx`
+          SELECT lifecycle_state
+          FROM asset_orphan_objects
+          WHERE workspace_id = ${candidate.workspaceId} AND storage_key = ${candidate.storageKey}
+          FOR UPDATE
+        `;
+        if (orphanRows[0]?.lifecycle_state === "purging") {
+          throw new Error("Content-addressed Asset orphan purge is in progress; retry the write");
+        }
+        if (orphanRows[0]) {
+          await tx`
+            UPDATE asset_orphan_objects
+            SET lifecycle_state = 'recovered', recovered_at = now()
+            WHERE workspace_id = ${candidate.workspaceId} AND storage_key = ${candidate.storageKey}
+          `;
+        }
         const assets = await tx`
           INSERT INTO assets
             (id, workspace_id, media_type, byte_size, content_hash, storage_key, storage_mode, created_by)
@@ -11,13 +32,19 @@ export function createAssetRepository(sql) {
             (${candidate.id}, ${candidate.workspaceId}, ${candidate.mediaType}, ${candidate.byteSize},
              ${candidate.contentHash}, ${candidate.storageKey}, 'content-addressed', ${candidate.createdBy})
           ON CONFLICT (storage_key)
-          DO UPDATE SET content_hash = EXCLUDED.content_hash
+          DO UPDATE SET
+            content_hash = EXCLUDED.content_hash,
+            lifecycle_state = 'active',
+            quarantined_at = NULL,
+            purge_after = NULL,
+            deleted_at = NULL
+          WHERE assets.lifecycle_state <> 'purging'
           RETURNING id, workspace_id, media_type, byte_size, content_hash, storage_key,
                     (id = ${candidate.id}) AS created
         `;
         const asset = assets[0];
-        if (!asset
-          || asset.workspace_id !== candidate.workspaceId
+        if (!asset) throw new Error("Content-addressed Asset purge is in progress; retry the write");
+        if (asset.workspace_id !== candidate.workspaceId
           || asset.content_hash !== candidate.contentHash
           || asset.storage_key !== candidate.storageKey
           || Number(asset.byte_size) !== candidate.byteSize

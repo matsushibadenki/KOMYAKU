@@ -2171,6 +2171,12 @@ Attachment metadataには最低限、`media_type`、`byte_size`、`content_hash`
 
 重複排除の境界は当初Workspace内とし、Hash一致をAccess権限として扱わない。異なるTenantに同一Contentが存在する事実を推測できるResponse、Timing、APIを提供しない。Asset削除は参照数、Trash、Retention Policy、公開Version、法的保持を確認してから行う。参照解除ではObjectを即時削除せず`released_at`を記録し、物理削除は隔離・Retention Jobへ委ねる。Original、Preview、Generated Artifactには派生関係と生成元Versionを記録する。実装と運用境界は`docs/architecture/content-addressed-assets.md`を参照する。
 
+Asset Lifecycle基盤は`active -> quarantined -> purging -> deleted`を明示し、参照ゼロAssetとObject Storage上の孤立Objectを即時削除しない。Workspace Prefixの走査はPage単位に制限し、未知Objectは永続的な隔離記録へ登録する。削除WorkerはPostgreSQLで候補をClaimした後、Workspace Prefix、SHA-256 Key、Hashを再検証して正確なObjectだけを削除する。同時Asset登録はWorkspaceとHash単位のTransaction Lockで直列化し、削除中の再登録はFail Closedとして再試行させる。全操作はOperator identityと理由を必須とし、本文やProvider Errorを含まないAudit Summaryを残す。
+
+Content-addressed Assetは`pending -> inspecting -> accepted | rejected | error`のLease付きInspection状態を持つ。Baseline Policyは最大64KiBのRange ReadでPNG、JPEG、GIF、WebP、PDFのSignatureを宣言Media Typeと照合し、Text / JSONは全体を検査できる場合だけ受理する。SVG、未知Binary、不完全な大容量Textは、安全なRendererまたは外部Malware Scannerが接続されるまでFail Closedとする。この判定をAntivirus証明とは呼ばない。
+
+Private / restricted Workspace向けDownloadは、Verified Userの有効Membership、`active` Lifecycle、`accepted` Inspectionを同一Database Queryで検証してから、既定60秒のSigned URLを発行する。Object Storage Responseは`attachment`、`application/octet-stream`、`private, no-store`へ固定し、API ResponseへStorage KeyやContent Hashを含めない。未認可、未検査、拒否、隔離、削除、存在しないAssetは同じNot Available Responseとする。Public / unlisted公開とInline Previewは別のPublication / Isolated Renderer Policyで実装する。
+
 ---
 
 # 60. Diff Storage
@@ -3943,6 +3949,8 @@ ADR-029 Encrypted Transactional Notification Delivery
 ADR-030 Canonical Document Schema v1 and Editor Boundary
 ADR-031 Workspace-scoped Content-addressed Assets
 ADR-032 Stage 2 Identity Engineering Completion and Launch Gate
+ADR-033 Asset Quarantine, Reconciliation, and Retention GC
+ADR-034 Inspected-only Asset Delivery
 ```
 
 を作成する。

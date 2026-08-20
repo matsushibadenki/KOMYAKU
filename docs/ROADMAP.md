@@ -53,7 +53,9 @@ Stage status: [Done] Identity engineering complete; production launch gates rema
 - [Done] First-class Text, Heading, List, Table, Image, Math/LaTeX, Code, Basic SVG/Mermaid, and Generic File nodes
 - [Done] Separate canonical source, render representation, Asset references, and provenance; never make previews the source of truth
 - [Done] Workspace-scoped content-addressed Asset storage foundation, immutable originals, safe deduplication, and reference accounting
-- [Next] Asset orphan reconciliation, reference-zero quarantine/retention GC, media inspection, signed reads, and quota metering
+- [Done] Bounded Asset orphan reconciliation and audited reference-zero quarantine/retention GC foundation
+- [Done] Leased media inspection state machine, conservative signature policy, and authenticated short-lived attachment reads
+- [Next] Production malware scanner, inline preview isolation, published/archive/legal holds, and quota metering
 - [Next] Secure isolated renderers for Math/LaTeX, Mermaid/SVG, images, and PDF previews
 - [Next] Structured editor, local autosave, Asset insertion, accessible captions/alt text, and Japanese/English/Simplified Chinese UI
 - [Done] Canonical Schema migration boundary, ProseMirror adapters, and round-trip fixtures that preserve compatible metadata

@@ -20,6 +20,8 @@ describe("Asset repository SQL boundary", () => {
       byteSize: 3, contentHash: "a".repeat(64), storageKey: "workspace-key", createdBy: crypto.randomUUID()
     };
     const sql = fakeSql([
+      [],
+      [],
       [{
         id: candidate.id, workspace_id: candidate.workspaceId, media_type: candidate.mediaType,
         byte_size: "3", content_hash: candidate.contentHash, storage_key: candidate.storageKey,
@@ -37,8 +39,10 @@ describe("Asset repository SQL boundary", () => {
     });
 
     expect(result).toMatchObject({ assetId: candidate.id, assetCreated: true, referenceCreated: true, activeReferenceCount: 1 });
-    expect(sql.statements[0]).toContain("ON CONFLICT (storage_key)");
-    expect(sql.statements[1]).toContain("WHERE released_at IS NULL");
+    expect(sql.statements[0]).toContain("pg_advisory_xact_lock");
+    expect(sql.statements[1]).toContain("FROM asset_orphan_objects");
+    expect(sql.statements[2]).toContain("ON CONFLICT (storage_key)");
+    expect(sql.statements[3]).toContain("WHERE released_at IS NULL");
   });
 
   test("rejects database metadata that conflicts at the same workspace hash", async () => {
@@ -46,7 +50,7 @@ describe("Asset repository SQL boundary", () => {
       id: crypto.randomUUID(), workspaceId: crypto.randomUUID(), mediaType: "image/png",
       byteSize: 3, contentHash: "b".repeat(64), storageKey: "expected-key", createdBy: crypto.randomUUID()
     };
-    const sql = fakeSql([[{
+    const sql = fakeSql([[], [], [{
       id: crypto.randomUUID(), workspace_id: candidate.workspaceId, media_type: candidate.mediaType,
       byte_size: "3", content_hash: candidate.contentHash, storage_key: "conflicting-key", created: false
     }]]);
@@ -57,7 +61,23 @@ describe("Asset repository SQL boundary", () => {
         referrerId: crypto.randomUUID(), relation: "source"
       }
     })).rejects.toThrow("metadata conflict");
-    expect(sql.statements).toHaveLength(1);
+    expect(sql.statements).toHaveLength(3);
+  });
+
+  test("fails closed while the same orphan object is being purged", async () => {
+    const candidate = {
+      id: crypto.randomUUID(), workspaceId: crypto.randomUUID(), mediaType: "image/png",
+      byteSize: 3, contentHash: "c".repeat(64), storageKey: "purging-key", createdBy: crypto.randomUUID()
+    };
+    const sql = fakeSql([[], [{ lifecycle_state: "purging" }]]);
+    await expect(createAssetRepository(sql).claimContentAddressedAsset({
+      candidate,
+      reference: {
+        id: crypto.randomUUID(), referrerType: "document_node",
+        referrerId: crypto.randomUUID(), relation: "source"
+      }
+    })).rejects.toThrow("orphan purge is in progress");
+    expect(sql.statements).toHaveLength(2);
   });
 
   test("soft-releases a reference and reports the remaining count", async () => {

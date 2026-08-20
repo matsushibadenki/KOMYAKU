@@ -9,6 +9,7 @@ import { createRuntimeState } from "./runtime-state.js";
 export function createApp({
   aiTrainingDefault = parseAiTrainingPolicy(Bun.env.AI_TRAINING_DEFAULT),
   authRoutes = null,
+  assetRoutes = null,
   conversationImportRoutes = null,
   corsOrigins = ["http://localhost:1420", "http://127.0.0.1:1420"],
   log = console.info,
@@ -65,6 +66,7 @@ export function createApp({
   );
 
   if (authRoutes) app.route("/api/v1/auth", authRoutes);
+  if (assetRoutes) app.route("/api/v1", assetRoutes);
   if (conversationImportRoutes) app.route("/api/v1", conversationImportRoutes);
 
   app.notFound((context) => context.json({ error: "not_found" }, 404));

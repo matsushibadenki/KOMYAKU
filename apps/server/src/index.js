@@ -9,6 +9,7 @@ import { createJobRepository } from "./repositories/job-repository.js";
 import { createConversationArchiveRepository } from "./repositories/conversation-archive-repository.js";
 import { createConversationImportRepository } from "./repositories/conversation-import-repository.js";
 import { createIdempotencyRepository } from "./repositories/idempotency-repository.js";
+import { createAssetDeliveryRepository } from "./repositories/asset-delivery-repository.js";
 import { createAuthRateLimitService } from "./services/auth-rate-limit-service.js";
 import { createIdentityService } from "./services/identity-service.js";
 import { createOutboxDispatcher } from "./services/outbox-dispatcher.js";
@@ -17,9 +18,11 @@ import { createConversationArchiveVerificationHandler } from "./services/convers
 import { createNotificationDeliveryHandler } from "./services/notification-delivery-handler.js";
 import { createConversationImportService } from "./services/conversation-import-service.js";
 import { createIdempotencyService } from "./services/idempotency-service.js";
+import { createAssetDeliveryService } from "./services/asset-delivery-service.js";
 import { createObjectStore, createS3Client } from "@komyaku/storage-core";
 import { createAuthRoutes } from "./routes/auth-routes.js";
 import { createConversationImportRoutes } from "./routes/conversation-import-routes.js";
+import { createAssetRoutes } from "./routes/asset-routes.js";
 import { workspaceConversationImportAuthorizer } from "./middleware/session-auth.js";
 import { createNetworkIdentifierResolver } from "./security/network-identifier.js";
 import {
@@ -40,6 +43,7 @@ const log = logger.log;
 const database = createDatabase(config);
 let notificationService = null;
 let authRoutes = null;
+let assetRoutes = null;
 let conversationImportRoutes = null;
 let outboxDispatcher = null;
 let jobRunner = null;
@@ -114,6 +118,12 @@ if (config.authRoutesEnabled) {
     getRemoteAddress: (context) => getConnInfo(context).remote.address
   });
   authRoutes = createAuthRoutes({ identityService, rateLimitService, resolveNetworkIdentifier });
+  assetRoutes = createAssetRoutes({
+    identityService,
+    deliveryService: createAssetDeliveryService({
+      repository: createAssetDeliveryRepository(database.sql), objectStore
+    })
+  });
   const importRepository = createConversationImportRepository(database.sql);
   const authorizeImport = workspaceConversationImportAuthorizer(identityRepository);
   const importService = createConversationImportService({
@@ -139,6 +149,7 @@ if (config.publicAppOrigin && !corsOrigins.includes(config.publicAppOrigin)) {
 }
 const { app, runtimeState } = createApp({
   authRoutes,
+  assetRoutes,
   conversationImportRoutes,
   corsOrigins,
   aiTrainingDefault: config.aiTrainingDefault,
