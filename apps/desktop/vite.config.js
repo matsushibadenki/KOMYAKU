@@ -6,6 +6,20 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig({
   plugins: [react()],
   clearScreen: false,
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules/yjs") || id.includes("node_modules/y-prosemirror") || id.includes("node_modules/lib0")) {
+            return "collaboration";
+          }
+          if (id.includes("node_modules/prosemirror")) return "editor";
+          if (id.includes("node_modules/react") || id.includes("node_modules/scheduler")) return "react";
+          return undefined;
+        }
+      }
+    }
+  },
   server: {
     port: 1420,
     strictPort: true,
@@ -15,4 +29,3 @@ export default defineConfig({
   },
   envPrefix: ["VITE_", "TAURI_"]
 });
-

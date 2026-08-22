@@ -9,6 +9,31 @@
     "status": "基盤構築中",
     "title": "文書の変化を、失わずに記憶する。",
     "description": "KOMYAKUのローカルファーストな文書・版管理基盤を準備しています。"
+  },
+  "collaboration": {
+    "title": "共同編集の作業状態",
+    "description": "2つの編集欄を同じYjs文書へ接続しています。切断中の変更も、再接続すると反映されます。",
+    "localEditor": "ローカル編集",
+    "secondEditor": "2つ目の編集画面",
+    "localEditorLabel": "ローカル文書の編集欄",
+    "secondEditorLabel": "同期された2つ目の編集欄",
+    "connected": "接続中",
+    "disconnected": "切断中",
+    "disconnect": "2つ目を切断",
+    "reconnect": "再接続",
+    "offlineMessage": "この編集画面は切断されています。",
+    "offlineDetail": "ローカル側で書き続けてから再接続できます。",
+    "privacy": "この検証画面はネットワークへ文章を送信しません。共同編集状態は現在のアプリ内だけに保持されます。"
+  },
+  "checkpoint": {
+    "label": "Canonical checkpoint",
+    "pending": "変更を待機中",
+    "saving": "検証中",
+    "ready": "検証済み",
+    "composing": "IME入力中—保存を保留",
+    "error": "文書を検証できません",
+    "time": "時刻",
+    "size": "サイズ",
+    "hash": "SHA-256"
   }
 }
-

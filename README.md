@@ -21,6 +21,7 @@ The repository already contains working infrastructure, schemas, security bounda
 | React + Tauri desktop shell | Implemented foundation | Builds and runs with a local SQLite database |
 | Japanese, English, Simplified Chinese UI | Implemented foundation | Initial i18n resources and locale switching |
 | Structured document model | Implemented foundation | Versioned Canonical Schema, stable Node IDs, first-class content nodes, migrations, and ProseMirror adapters |
+| Collaborative working state | Browser feasibility implemented | Independent Yjs replicas, State Vector reconnection, local undo boundary, Relative Position selection path, and composition-safe Canonical checkpoints |
 | PostgreSQL cloud schema | Implemented foundation | Identity, workspace, conversation, job, and outbox tables |
 | Durable outbox dispatch | Implemented foundation | PostgreSQL leases and atomic, idempotent Outbox-to-Job publication |
 | Durable job execution | Implemented foundation | Registered handlers, attempt history, retries, dead letters, and raw archive verification |
@@ -35,7 +36,7 @@ The repository already contains working infrastructure, schemas, security bounda
 | Authenticated conversation import API | Implemented, gated | Idempotent raw JSON POST and membership-checked status GET |
 | AI handoff | Implemented review boundary | Context-bound preview and explicit confirmation; provider sending is not enabled |
 | Public authentication endpoints | Implemented, disabled by default | SMTP delivery and rate-limited routes exist behind an explicit production feature gate |
-| Document editing UI and Version Graph | Planned next stages | Domain and storage foundations exist; product workflow is not complete |
+| Document editing UI and Version Graph | Editor feasibility implemented; graph planned | Two-replica browser workbench exists; persistence, final product workflow, and Version Graph remain incomplete |
 | Public/restricted/unlisted sharing | Designed | Database and policy model are planned; public APIs are not yet exposed |
 | Billing | Architecture only | No payment provider is connected |
 
@@ -637,6 +638,8 @@ Start with these documents:
 - [Roadmap](docs/ROADMAP.md)
 - [Foundation architecture](docs/architecture/foundation.md)
 - [Distributed runtime architecture](docs/architecture/distributed-runtime.md)
+- [Yjs collaborative working-state architecture](docs/architecture/yjs-collaborative-working-state.md)
+- [Collaborative editor feasibility guide](docs/guides/collaborative-editor-feasibility.md)
 - [Conversation archive and AI handoff](docs/architecture/conversation-archive-and-ai-handoff.md)
 - [Entitlements and billing](docs/architecture/entitlements-and-billing.md)
 - [Production readiness](docs/guides/production-readiness.md)

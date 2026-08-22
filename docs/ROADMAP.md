@@ -58,6 +58,9 @@ Stage status: [Done] Identity engineering complete; production launch gates rema
 - [Next] Production malware scanner, inline preview isolation, published/archive/legal holds, and quota metering
 - [Next] Secure isolated renderers for Math/LaTeX, Mermaid/SVG, images, and PDF previews
 - [Next] Structured editor, local autosave, Asset insertion, accessible captions/alt text, and Japanese/English/Simplified Chinese UI
+- [Done] Headless Yjs and `y-prosemirror` working-state foundation covering concurrent convergence, state-vector offline rejoin, stable Node IDs, deterministic Canonical checkpoints, bounded updates, and selective local undo
+- [Done] Browser two-replica feasibility view with live Yjs synchronization, disconnect/reconnect lifecycle, Relative Position selection capture/restore path, composition-safe checkpoints, accessible labels, and responsive layouts
+- [Next] Native Tauri Japanese/Chinese IME composition pass, crash/restart recovery, and automated browser regression coverage
 - [Done] Canonical Schema migration boundary, ProseMirror adapters, and round-trip fixtures that preserve compatible metadata
 - [Later] Native table editing, full LaTeX documents, richer SVG authoring, and PDF inspection
 
@@ -72,6 +75,18 @@ Stage status: [Done] Identity engineering complete; production launch gates rema
 - [Later] Recovery snapshots, offline sync queue, and conflict branches
 - [Later] Publish the open `.komyaku` Archive specification, schemas, conformance fixtures, and compatibility policy alongside its first implementation
 - [Later] Backup, open Archive export/import, and automated restore verification
+
+## Collaborative Editing and Local-first Sync
+
+- [Done] Define and test the explicit Yjs working-state to validated Canonical Document checkpoint boundary; keep immutable Version commits as a separate application-service operation
+- [Later] Durable local working-state persistence and offline update queue with bounded recovery and compaction
+- [Later] Authenticated Provider adapters with Workspace/Document authorization, state-vector differential sync, idempotent update persistence, quotas, and update-size/rate limits
+- [Done] Origin-aware local UndoManager foundation that excludes remote, AI, import, migration, and system-normalization transactions by default
+- [Later] Connect selective undo/redo to the editor UI with translated labels and accessibility announcements
+- [Later] Relative Position cursors and selections plus durable comment anchors using stable Node IDs and quoted/context fallback
+- [Later] Ephemeral privacy-minimized Awareness with TTL; exclude Presence from Versions, archives, backups, search, and analytics
+- [Later] Multi-replica room routing, shared persistence, compaction workers, and collaboration load/failure tests without relying on sticky sessions for correctness
+- [Later] Publish optional versioned session-recovery data only as a non-authoritative `.komyaku` extension; archives must remain readable without Yjs
 
 ## Stage 5 — Semantic and Visual Content History
 

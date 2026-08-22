@@ -954,6 +954,22 @@ schema_version
 
 Canonical Document Schema v1とProseMirror変換境界は実装済みである。正確なField、Node Registry、互換性規則、制限値は`docs/formats/canonical-document-v1.md`を正本とする。ProseMirror JSONは編集用Projectionであり、永続形式の正本ではない。
 
+共同編集ではYjsを編集途中のWorking Stateとして採用する。ただしYjs UpdateやSnapshotを永続形式の正本またはVersion履歴そのものにしない。
+
+```text
+ProseMirror
+ ↓
+Yjs Working State
+ ↓ explicit checkpoint
+Canonical Document validation
+ ↓
+Immutable Version DAG
+```
+
+Canonical Document、Version DAG、公開`.komyaku`仕様はYjs内部Encodingから独立させる。詳細は`docs/adr/ADR-035-yjs-collaborative-working-state.md`および`docs/architecture/yjs-collaborative-working-state.md`を正本とする。
+
+Headless Working State、State Vector差分同期、決定的Canonical Checkpoint、Update上限、Origin別Undoの基盤は`packages/editor-core/src/collaborative-working-state.js`へ実装済みである。Browser上では独立した2つの`Y.Doc`とin-memory bridgeによる編集、切断中の変更、差分再同期、composition-safe checkpointのfeasibility viewまで実装済みである。Network Provider、永続Update Store、Awareness、Tauriネイティブ上の日本語・中国語IME検証は未実装であり、ROADMAPの段階に従って導入する。
+
 ---
 
 # 24. Document Schema Versioning
@@ -1209,6 +1225,8 @@ sync_state
 ```
 
 を持つ。
+
+共同編集同期はState Vectorによる差分Update、冪等な再送、期限付きPresence、Update Logの上限制御とCompactionを前提とする。Awareness/Presenceは一時情報として扱い、Version、公開Archive、Backup、全文検索へ保存しない。Asset本体はYjsへ格納せず、検証済み`assetId`参照だけを保持する。
 
 ---
 
@@ -3951,6 +3969,7 @@ ADR-031 Workspace-scoped Content-addressed Assets
 ADR-032 Stage 2 Identity Engineering Completion and Launch Gate
 ADR-033 Asset Quarantine, Reconciliation, and Retention GC
 ADR-034 Inspected-only Asset Delivery
+ADR-035 Yjs Collaborative Working State
 ```
 
 を作成する。

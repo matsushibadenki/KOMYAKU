@@ -9,6 +9,31 @@
     "status": "正在构建基础",
     "title": "不丢失文档，记住每一次变化。",
     "description": "我们正在准备 KOMYAKU 的本地优先文档与版本基础架构。"
+  },
+  "collaboration": {
+    "title": "协同编辑工作状态",
+    "description": "两个编辑区连接到同一个Yjs文档。第二个视图断开期间的修改会在重新连接后显示。",
+    "localEditor": "本地编辑",
+    "secondEditor": "第二编辑视图",
+    "localEditorLabel": "本地文档编辑区",
+    "secondEditorLabel": "已同步的第二文档编辑区",
+    "connected": "已连接",
+    "disconnected": "已断开",
+    "disconnect": "断开第二视图",
+    "reconnect": "重新连接",
+    "offlineMessage": "此编辑视图已断开。",
+    "offlineDetail": "可以继续在本地书写，然后重新连接到最新状态。",
+    "privacy": "此验证界面不会通过网络发送文章内容。协同状态目前仅保留在当前应用实例中。"
+  },
+  "checkpoint": {
+    "label": "Canonical checkpoint",
+    "pending": "等待变更",
+    "saving": "正在验证",
+    "ready": "已验证",
+    "composing": "正在使用输入法—暂停保存",
+    "error": "文档验证失败",
+    "time": "时间",
+    "size": "大小",
+    "hash": "SHA-256"
   }
 }
-
