@@ -21,7 +21,8 @@ The repository already contains working infrastructure, schemas, security bounda
 | React + Tauri desktop shell | Implemented foundation | Builds and runs with a local SQLite database |
 | Japanese, English, Simplified Chinese UI | Implemented foundation | Initial i18n resources and locale switching |
 | Structured document model | Implemented foundation | Versioned Canonical Schema, stable Node IDs, first-class content nodes, migrations, and ProseMirror adapters |
-| Collaborative working state | Browser feasibility implemented | Independent Yjs replicas, State Vector reconnection, local undo boundary, Relative Position selection path, and composition-safe Canonical checkpoints |
+| Collaborative working state | Browser feasibility implemented | Independent Yjs replicas, State Vector reconnection, local undo boundary, Relative Position selection path, composition-safe checkpoints, and automated browser regression |
+| Local draft recovery | Implemented foundation | Validated Canonical autosave with monotonic revisions; SQLite in Tauri and localStorage in the browser feasibility environment |
 | PostgreSQL cloud schema | Implemented foundation | Identity, workspace, conversation, job, and outbox tables |
 | Durable outbox dispatch | Implemented foundation | PostgreSQL leases and atomic, idempotent Outbox-to-Job publication |
 | Durable job execution | Implemented foundation | Registered handlers, attempt history, retries, dead letters, and raw archive verification |

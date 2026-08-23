@@ -57,10 +57,12 @@ Stage status: [Done] Identity engineering complete; production launch gates rema
 - [Done] Leased media inspection state machine, conservative signature policy, and authenticated short-lived attachment reads
 - [Next] Production malware scanner, inline preview isolation, published/archive/legal holds, and quota metering
 - [Next] Secure isolated renderers for Math/LaTeX, Mermaid/SVG, images, and PDF previews
-- [Next] Structured editor, local autosave, Asset insertion, accessible captions/alt text, and Japanese/English/Simplified Chinese UI
+- [Done] Structured editor feasibility view, validated Canonical local autosave, page/app restart recovery, and Japanese/English/Simplified Chinese UI
+- [Next] Asset insertion, accessible captions/alt text authoring, and production document-management workflow
 - [Done] Headless Yjs and `y-prosemirror` working-state foundation covering concurrent convergence, state-vector offline rejoin, stable Node IDs, deterministic Canonical checkpoints, bounded updates, and selective local undo
 - [Done] Browser two-replica feasibility view with live Yjs synchronization, disconnect/reconnect lifecycle, Relative Position selection capture/restore path, composition-safe checkpoints, accessible labels, and responsive layouts
-- [Next] Native Tauri Japanese/Chinese IME composition pass, crash/restart recovery, and automated browser regression coverage
+- [Done] Automated browser regression coverage for collaboration, composition lifecycle, restart recovery, and responsive layout
+- [Next] Packaged Tauri Japanese/Chinese IME composition pass and exact caret restoration verification
 - [Done] Canonical Schema migration boundary, ProseMirror adapters, and round-trip fixtures that preserve compatible metadata
 - [Later] Native table editing, full LaTeX documents, richer SVG authoring, and PDF inspection
 
@@ -79,6 +81,7 @@ Stage status: [Done] Identity engineering complete; production launch gates rema
 ## Collaborative Editing and Local-first Sync
 
 - [Done] Define and test the explicit Yjs working-state to validated Canonical Document checkpoint boundary; keep immutable Version commits as a separate application-service operation
+- [Done] Persist validated Canonical drafts locally with monotonic revisions, composition-safe autosave, fail-closed restoration, and browser restart tests
 - [Later] Durable local working-state persistence and offline update queue with bounded recovery and compaction
 - [Later] Authenticated Provider adapters with Workspace/Document authorization, state-vector differential sync, idempotent update persistence, quotas, and update-size/rate limits
 - [Done] Origin-aware local UndoManager foundation that excludes remote, AI, import, migration, and system-normalization transactions by default

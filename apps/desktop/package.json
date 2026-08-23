@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "check": "vite build",
+    "test:e2e": "playwright test",
     "tauri": "tauri"
   },
   "dependencies": {
@@ -24,6 +25,7 @@
     "react-i18next": "^15.7.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@tauri-apps/cli": "^2.8.4",
     "@vitejs/plugin-react": "^5.0.2",
     "vite": "^7.1.5"

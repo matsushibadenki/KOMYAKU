@@ -12,7 +12,7 @@
   },
   "collaboration": {
     "title": "Collaborative working state",
-    "description": "Both editors share one Yjs document. Changes made while the second view is disconnected appear when it reconnects.",
+    "description": "Both editors use independent Yjs replicas of one collaborative document. Changes made while the second view is disconnected appear when it reconnects.",
     "localEditor": "Local editor",
     "secondEditor": "Second editor",
     "localEditorLabel": "Local document editor",
@@ -23,7 +23,7 @@
     "reconnect": "Reconnect",
     "offlineMessage": "This editor view is disconnected.",
     "offlineDetail": "Keep writing locally, then reconnect it to the latest state.",
-    "privacy": "This feasibility view sends no authored text over the network. Collaborative state currently remains inside this app instance."
+    "privacy": "This feasibility view sends no authored text over the network. Validated drafts are saved locally on this device."
   },
   "checkpoint": {
     "label": "Canonical checkpoint",
@@ -35,5 +35,12 @@
     "time": "Time",
     "size": "Size",
     "hash": "SHA-256"
+  },
+  "recovery": {
+    "loading": "Loading the local draft",
+    "empty": "Started a new local draft",
+    "restored": "Restored the previous local draft",
+    "saved": "Autosaved on this device",
+    "error": "Local saving stopped. Inspect the stored draft before continuing"
   }
 }

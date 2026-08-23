@@ -8,6 +8,7 @@ import {
   createEmptyCollaborativeWorkingState
 } from "@komyaku/editor-core";
 import { CollaborativeEditor } from "./components/CollaborativeEditor.jsx";
+import { loadLocalDraft, saveLocalDraft } from "./services/local-database.js";
 
 function id(number) {
   return `00000000-0000-4000-8000-${number.toString(16).padStart(12, "0")}`;
@@ -41,33 +42,80 @@ function createWelcomeDocument() {
   });
 }
 
+function createReplicas(document) {
+  const local = createCollaborativeWorkingState(document);
+  const second = createEmptyCollaborativeWorkingState();
+  connectCollaborativeWorkingStates(local, second)();
+  return { local, second };
+}
+
 export function App() {
   const { t, i18n } = useTranslation();
-  const replicas = useMemo(() => {
-    const local = createCollaborativeWorkingState(createWelcomeDocument());
-    const second = createEmptyCollaborativeWorkingState();
-    connectCollaborativeWorkingStates(local, second)();
-    return { local, second };
-  }, []);
+  const welcomeDocument = useMemo(() => createWelcomeDocument(), []);
+  const [replicas, setReplicas] = useState(null);
   const primarySelection = useRef(null);
   const secondarySelection = useRef(null);
   const composingEditors = useRef(new Set());
   const checkpointTimer = useRef(null);
   const checkpointSequence = useRef(0);
+  const localRevision = useRef(0);
+  const persistenceQueue = useRef(Promise.resolve());
+  const persistenceBlocked = useRef(false);
   const [secondaryConnected, setSecondaryConnected] = useState(true);
   const [checkpoint, setCheckpoint] = useState(null);
   const [checkpointStatus, setCheckpointStatus] = useState("pending");
+  const [persistenceStatus, setPersistenceStatus] = useState("loading");
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadLocalDraft(welcomeDocument.id)
+      .then((draft) => {
+        if (cancelled) return;
+        localRevision.current = draft?.localRevision ?? 0;
+        setReplicas(createReplicas(draft?.content ?? welcomeDocument));
+        setPersistenceStatus(draft ? "restored" : "empty");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        persistenceBlocked.current = true;
+        setReplicas(createReplicas(welcomeDocument));
+        setPersistenceStatus("error");
+      });
+    return () => { cancelled = true; };
+  }, [welcomeDocument]);
 
   const createCheckpoint = useCallback(async () => {
+    if (!replicas) return;
     const sequence = ++checkpointSequence.current;
     setCheckpointStatus("saving");
     try {
       const nextCheckpoint = await createCanonicalCheckpoint(replicas.local);
       if (sequence !== checkpointSequence.current) return;
+      if (!persistenceBlocked.current) {
+        const persistence = persistenceQueue.current.then(async () => {
+          const nextRevision = localRevision.current + 1;
+          await saveLocalDraft({
+            documentId: nextCheckpoint.document.id,
+            schemaVersion: nextCheckpoint.document.schemaVersion,
+            content: nextCheckpoint.document,
+            contentJson: nextCheckpoint.json,
+            localRevision: nextRevision
+          });
+          localRevision.current = nextRevision;
+        });
+        persistenceQueue.current = persistence.catch(() => {});
+        await persistence;
+        if (sequence !== checkpointSequence.current) return;
+        setPersistenceStatus("saved");
+      }
       setCheckpoint({ ...nextCheckpoint, createdAt: new Date() });
       setCheckpointStatus("ready");
     } catch {
-      if (sequence === checkpointSequence.current) setCheckpointStatus("error");
+      if (sequence === checkpointSequence.current) {
+        persistenceBlocked.current = true;
+        setPersistenceStatus("error");
+        setCheckpointStatus("error");
+      }
     }
   }, [replicas]);
 
@@ -96,6 +144,7 @@ export function App() {
   const handleDocumentChange = useCallback(() => scheduleCheckpoint(), [scheduleCheckpoint]);
 
   useEffect(() => {
+    if (!replicas) return undefined;
     void createCheckpoint();
     return () => {
       if (checkpointTimer.current) window.clearTimeout(checkpointTimer.current);
@@ -103,7 +152,7 @@ export function App() {
   }, [createCheckpoint]);
 
   useEffect(() => {
-    if (!secondaryConnected) return undefined;
+    if (!replicas || !secondaryConnected) return undefined;
     return connectCollaborativeWorkingStates(replicas.local, replicas.second);
   }, [replicas, secondaryConnected]);
 
@@ -118,6 +167,15 @@ export function App() {
       hour: "2-digit", minute: "2-digit", second: "2-digit"
     }).format(checkpoint.createdAt)
     : "—";
+
+  if (!replicas) {
+    return (
+      <main className="app-shell loading-shell" aria-busy="true">
+        <p className="wordmark">KOMYAKU <span aria-hidden="true">/</span> 稿脈</p>
+        <h1>{t("recovery.loading")}</h1>
+      </main>
+    );
+  }
 
   return (
     <main className="app-shell">
@@ -208,6 +266,9 @@ export function App() {
 
       <footer className="app-footer">
         <p>{t("collaboration.privacy")}</p>
+        <p className="persistence-status" role="status" data-state={persistenceStatus}>
+          {t(`recovery.${persistenceStatus}`)}
+        </p>
       </footer>
     </main>
   );

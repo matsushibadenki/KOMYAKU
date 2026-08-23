@@ -1,8 +1,8 @@
 # Collaborative Editor Feasibility Guide
 
-- Updated: 2026-08-22
+- Updated: 2026-08-24
 - Scope: Browser implementation inside the Tauri frontend
-- Status: Browser pass complete; native Tauri IME and restart recovery remain next
+- Status: Browser pass and local restart recovery complete; native Tauri IME remains next
 
 ## What is implemented
 
@@ -13,6 +13,8 @@ The desktop frontend mounts two real ProseMirror `EditorView` instances over ind
 - Its selection is captured as encoded Yjs Relative Positions and follows the restore path after remounting. Exact caret placement still requires manual native-app verification.
 - `compositionstart` pauses Canonical checkpoint scheduling. `compositionend` resumes it after the composed text is committed.
 - A 450 ms quiet period produces a validated, deterministically serialized Canonical checkpoint and displays its byte size and SHA-256 prefix.
+- Validated checkpoints are autosaved with monotonic local revisions. Tauri uses SQLite; the Vite feasibility environment uses origin-local `localStorage`.
+- Startup restores the last valid Canonical draft. Corrupt data blocks persistence rather than being silently overwritten.
 - The view exposes Japanese, English, and Simplified Chinese UI labels.
 - Asset content is not loaded or transmitted by this view.
 
@@ -23,6 +25,12 @@ bun run --filter @komyaku/desktop dev
 ```
 
 Open `http://127.0.0.1:1420/`.
+
+Run the automated browser suite with:
+
+```text
+bun run test:e2e
+```
 
 ## Manual verification
 
@@ -36,7 +44,7 @@ Open `http://127.0.0.1:1420/`.
 
 ## Verified browser results
 
-On 2026-08-22, the in-app Chromium browser verified:
+On 2026-08-24, the Playwright suite and interactive browser pass verified:
 
 - live convergence between both EditorViews;
 - edit-while-disconnected followed by successful convergence on reconnect;
@@ -44,19 +52,21 @@ On 2026-08-22, the in-app Chromium browser verified:
 - no horizontal overflow at 320, 375, 414, 768, and 1024 CSS pixels;
 - one-column editor layout below 60 rem and asymmetric two-column layout at 1024 px;
 - no new runtime errors after the EditorView initialization fix.
+- Canonical draft autosave and restoration after a page restart;
+- synthetic `compositionstart` / `compositionend` checkpoint suspension and resumption.
 
 The browser automation cannot certify native operating-system IME behavior. Japanese and Chinese composition must still be repeated in the packaged Tauri application on macOS and other supported platforms.
 
 ## Current boundaries
 
 - Each view uses an independent in-memory `Y.Doc`; the bridge is a Provider-boundary simulation, not a WebSocket or authenticated Provider.
-- Checkpoints are validated in memory and are not yet committed to SQLite or the immutable Version DAG.
+- Checkpoints are persisted as local drafts, but are not yet committed to the immutable Version DAG.
 - Awareness/Presence and remote collaborator cursors are not enabled.
-- Crash/restart recovery and update-log compaction are not implemented.
+- Canonical restart recovery is implemented; keystroke-level Yjs update logging and compaction are not.
 - The current screen is a feasibility workbench, not the final document-management information architecture.
 
 ## Multilingual summary
 
-- 日本語: ブラウザ上の2画面同期、切断再接続、相対選択位置、IME中のcheckpoint停止を実装した。TauriネイティブIMEと再起動復旧は次工程で検証する。
-- English: The browser now validates two-editor sync, reconnect, relative selections, and composition-safe checkpoints. Native Tauri IME and restart recovery remain next.
-- 简体中文：浏览器版本已验证双编辑器同步、重新连接、相对选区和输入法组合期间暂停checkpoint。Tauri原生输入法与重启恢复仍待验证。
+- 日本語: ブラウザ上の2画面同期、切断再接続、相対選択位置、IME中のcheckpoint停止、ローカル自動保存と再起動復旧を実装した。TauriネイティブIMEは次工程で検証する。
+- English: The browser validates two-editor sync, reconnect, relative selections, composition-safe checkpoints, local autosave, and restart recovery. Native Tauri IME remains next.
+- 简体中文：浏览器版本已验证双编辑器同步、重新连接、相对选区、输入法组合期间暂停checkpoint、本地自动保存和重启恢复。Tauri原生输入法仍待验证。

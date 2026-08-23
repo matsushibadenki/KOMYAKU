@@ -14,6 +14,7 @@
     "storage:init": "bun run --filter @komyaku/server storage:init",
     "build": "bun run --filter '*' build",
     "test": "bun test",
+    "test:e2e": "bun run --filter @komyaku/desktop test:e2e",
     "check": "bun run --filter '*' check",
     "tauri": "bun run --filter @komyaku/desktop tauri"
   }
