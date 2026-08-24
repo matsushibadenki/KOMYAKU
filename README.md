@@ -341,12 +341,12 @@ The implemented Canonical Document JSON contract is specified in [docs/formats/c
 
 ## Requirements
 
-- Bun 1.3 or later
+- Bun 1.4.0
 - Rust 1.93 or later
 - Docker Desktop or Docker Engine with Compose
 - Platform prerequisites required by Tauri 2
 
-The repository currently pins the workspace package manager as Bun 1.3.11.
+The repository pins the workspace package manager as Bun 1.4.0. Reproducible Linux server builds use the exact official image `oven/bun:1.4.0`; do not replace it with a floating `latest` or major-only tag without an explicit upgrade review.
 
 ## Quick start
 

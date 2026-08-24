@@ -5,6 +5,7 @@
 Stage status: [Done] Foundation complete
 
 - [Done] Bun workspace and repository structure
+- [Done] Bun 1.4.0 workspace pin and reproducible `oven/bun:1.4.0` Linux server build/runtime image
 - [Done] React, Vite, and Tauri 2 shell
 - [Done] Bun and Hono API shell
 - [Done] Japanese, English, and Simplified Chinese i18n baseline

@@ -4,7 +4,7 @@
 
 ### 必要な環境
 
-- Bun 1.3以上
+- Bun 1.4.0
 - Rust 1.93以上
 - Docker DesktopまたはDocker Engine
 
@@ -21,6 +21,13 @@ bun run dev
 ```
 
 Web/Tauri Frontendは`http://localhost:1420`、APIは`http://127.0.0.1:3000/api/v1`を使用する。
+
+Workspaceは`packageManager`と`engines.bun`を`1.4.0`へ固定する。Linux Server Imageも`Dockerfile`のbuild/runtime両Stageで公式の`oven/bun:1.4.0`を使用する。`latest`や`oven/bun:1`のような可変Tagへ置き換えず、Version更新時はlockfile、全Test、Buildを同じImageで再検証する。
+
+```sh
+docker build --pull -t komyaku-server:bun-1.4.0 .
+docker run --rm komyaku-server:bun-1.4.0 bun --version
+```
 
 `bun run db:migrate`はPostgreSQL Advisory Lockを取得し、未適用Migrationだけを順番に実行する。`bun run storage:init`はS3-compatible StorageのBucketを冪等に作成する。
 
@@ -54,8 +61,8 @@ bun run --filter @komyaku/server test:auth-load
 
 ## English
 
-Install Bun 1.3+, Rust 1.93+, and Docker. Copy `.env.example` to `.env`, install dependencies, start PostgreSQL and MinIO, apply migrations, initialize storage, and start the server and frontend. Single mode can run the API, Outbox, Jobs, and encrypted notification delivery together. Split deployments use `AUTH_ROUTES_ENABLED` on API replicas and `NOTIFICATION_WORKER_ENABLED` on Workers. Both require the same notification encryption key; only Workers require SMTP credentials. Run `test:auth-load` for the loopback Argon2 endpoint regression. Never commit production credentials.
+Install Bun 1.4.0, Rust 1.93+, and Docker. The workspace package manager and engine are pinned to 1.4.0, while reproducible Linux server builds use the exact official `oven/bun:1.4.0` image in both build and runtime stages. Copy `.env.example` to `.env`, install dependencies, start PostgreSQL and MinIO, apply migrations, initialize storage, and start the server and frontend. Single mode can run the API, Outbox, Jobs, and encrypted notification delivery together. Split deployments use `AUTH_ROUTES_ENABLED` on API replicas and `NOTIFICATION_WORKER_ENABLED` on Workers. Both require the same notification encryption key; only Workers require SMTP credentials. Run `test:auth-load` for the loopback Argon2 endpoint regression. Never commit production credentials.
 
 ## 简体中文
 
-请安装Bun 1.3以上版本、Rust 1.93以上版本和Docker。复制`.env.example`后安装依赖，启动PostgreSQL与MinIO并执行Migration。在single模式下，API、Outbox、Job和加密通知配送可在同一进程运行。拆分部署时，API使用`AUTH_ROUTES_ENABLED`，Worker使用`NOTIFICATION_WORKER_ENABLED`；两者共享通知加密密钥，SMTP凭据只配置给Worker。可运行`test:auth-load`执行本地Loopback Argon2回归测试。请勿提交生产凭据。
+请安装Bun 1.4.0、Rust 1.93以上版本和Docker。Workspace的Package Manager与Engine固定为1.4.0，可复现的Linux Server构建则在build和runtime阶段都使用官方精确镜像`oven/bun:1.4.0`。复制`.env.example`后安装依赖，启动PostgreSQL与MinIO并执行Migration。在single模式下，API、Outbox、Job和加密通知配送可在同一进程运行。拆分部署时，API使用`AUTH_ROUTES_ENABLED`，Worker使用`NOTIFICATION_WORKER_ENABLED`；两者共享通知加密密钥，SMTP凭据只配置给Worker。可运行`test:auth-load`执行本地Loopback Argon2回归测试。请勿提交生产凭据。

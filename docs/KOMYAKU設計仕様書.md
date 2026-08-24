@@ -163,6 +163,8 @@ HonoはBunを正式に実行環境としてサポートしている。
 
 BunにはPostgreSQLを含むSQLデータベース用APIが存在する。
 
+WorkspaceのPackage ManagerはBun 1.4.0へ固定する。Linux Cloud ServerのBuild StageとRuntime Stageも公式Image `oven/bun:1.4.0`を使用し、`latest`またはMajorのみの可変Tagを使用しない。Tauri DesktopはPlatform固有のRust ToolchainでBuildし、Bun ContainerをNative Packageの代替にはしない。Version更新手順の正本は`docs/adr/ADR-037-bun-1-4-runtime-pin.md`とする。
+
 構成：
 
 ```text
