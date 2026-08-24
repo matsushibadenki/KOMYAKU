@@ -62,7 +62,8 @@ Stage status: [Done] Identity engineering complete; production launch gates rema
 - [Done] Headless Yjs and `y-prosemirror` working-state foundation covering concurrent convergence, state-vector offline rejoin, stable Node IDs, deterministic Canonical checkpoints, bounded updates, and selective local undo
 - [Done] Browser two-replica feasibility view with live Yjs synchronization, disconnect/reconnect lifecycle, Relative Position selection capture/restore path, composition-safe checkpoints, accessible labels, and responsive layouts
 - [Done] Automated browser regression coverage for collaboration, composition lifecycle, restart recovery, and responsive layout
-- [Next] Packaged Tauri Japanese/Chinese IME composition pass and exact caret restoration verification
+- [Done] Packaged Tauri Japanese IME composition, conversion, SQLite restart recovery, and exact Relative Position caret restoration pass on macOS
+- [Next] Packaged Tauri Simplified Chinese Pinyin IME pass on a test host with an already provisioned Chinese input source
 - [Done] Canonical Schema migration boundary, ProseMirror adapters, and round-trip fixtures that preserve compatible metadata
 - [Later] Native table editing, full LaTeX documents, richer SVG authoring, and PDF inspection
 

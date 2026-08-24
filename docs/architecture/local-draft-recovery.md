@@ -57,7 +57,7 @@ Playwright defaults to the locally installed Google Chrome channel. Set `KOMYAKU
 
 ## Remaining work
 
-- packaged Tauri Japanese and Simplified Chinese IME manual pass;
+- packaged Tauri Simplified Chinese Pinyin IME pass on a provisioned test host; Japanese Kotoeri has passed;
 - atomic Rust-side document-and-draft transaction;
 - bounded Yjs update log and compaction for finer crash recovery;
 - recovery snapshot rotation and a user-facing corrupt-draft recovery flow;

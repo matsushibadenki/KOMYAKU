@@ -15,7 +15,7 @@ import { keymap } from "prosemirror-keymap";
 import { EditorState, TextSelection } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { canonicalToEditorDocument, editorToCanonicalDocument } from "./canonical-adapter.js";
-import { komyakuSchema } from "./prosemirror-schema.js";
+import { createStableNodeIdentityPlugin, komyakuSchema } from "./prosemirror-schema.js";
 
 export const COLLABORATIVE_FRAGMENT_NAME = "komyaku:document-content";
 export const COLLABORATIVE_METADATA_NAME = "komyaku:document-metadata";
@@ -100,6 +100,7 @@ function readDocumentAttributes(document) {
 }
 
 function assertStableNodeIds(editorDocument) {
+  const nodeIds = new Set();
   editorDocument.descendants((node) => {
     if (node.isText || node.type.name === "hard_break") return;
     if (typeof node.attrs?.nodeId !== "string" || node.attrs.nodeId.length === 0) {
@@ -108,6 +109,13 @@ function assertStableNodeIds(editorDocument) {
         `Collaborative checkpoint contains ${node.type.name} without a stable Node ID`
       );
     }
+    if (nodeIds.has(node.attrs.nodeId)) {
+      throw new CollaborativeStateError(
+        "duplicate_stable_node_id",
+        `Collaborative checkpoint contains duplicate Node ID: ${node.attrs.nodeId}`
+      );
+    }
+    nodeIds.add(node.attrs.nodeId);
   });
 }
 
@@ -262,6 +270,7 @@ export function createCollaborativeEditorState(document, { plugins = [] } = {}) 
   return EditorState.create({
     doc: projection.editorDocument,
     plugins: [
+      createStableNodeIdentityPlugin(),
       ySyncPlugin(fragment, { mapping: projection.mapping }),
       yUndoPlugin(),
       keymap({ "Mod-z": undoCommand, "Mod-y": redoCommand, "Mod-Shift-z": redoCommand }),
@@ -279,8 +288,9 @@ export function createCollaborativeEditorView(mount, document, {
   return new EditorView(mount, {
     state: createCollaborativeEditorState(document, { plugins }),
     dispatchTransaction(transaction) {
-      this.updateState(this.state.apply(transaction));
-      onTransaction({ transaction, view: this });
+      const result = this.state.applyTransaction(transaction);
+      this.updateState(result.state);
+      onTransaction({ transaction, transactions: result.transactions, view: this });
     }
   });
 }

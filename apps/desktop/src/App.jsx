@@ -49,6 +49,21 @@ function createReplicas(document) {
   return { local, second };
 }
 
+function localPersistenceErrorCode(error) {
+  const codes = [];
+  let current = error;
+  while (current && codes.length < 3) {
+    if (typeof current.code === "string") codes.push(current.code);
+    if (Array.isArray(current.issues) && current.issues[0]) {
+      const issue = current.issues[0];
+      const path = Array.isArray(issue.path) ? issue.path.join(".") : "unknown";
+      codes.push(`schema_${issue.code}_${path}`);
+    }
+    current = current.cause;
+  }
+  return codes.length > 0 ? codes.join("/") : "unexpected_local_persistence_error";
+}
+
 export function App() {
   const { t, i18n } = useTranslation();
   const welcomeDocument = useMemo(() => createWelcomeDocument(), []);
@@ -65,6 +80,7 @@ export function App() {
   const [checkpoint, setCheckpoint] = useState(null);
   const [checkpointStatus, setCheckpointStatus] = useState("pending");
   const [persistenceStatus, setPersistenceStatus] = useState("loading");
+  const [persistenceErrorCode, setPersistenceErrorCode] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,9 +91,10 @@ export function App() {
         setReplicas(createReplicas(draft?.content ?? welcomeDocument));
         setPersistenceStatus(draft ? "restored" : "empty");
       })
-      .catch(() => {
+      .catch((error) => {
         if (cancelled) return;
         persistenceBlocked.current = true;
+        setPersistenceErrorCode(localPersistenceErrorCode(error));
         setReplicas(createReplicas(welcomeDocument));
         setPersistenceStatus("error");
       });
@@ -110,9 +127,10 @@ export function App() {
       }
       setCheckpoint({ ...nextCheckpoint, createdAt: new Date() });
       setCheckpointStatus("ready");
-    } catch {
+    } catch (error) {
       if (sequence === checkpointSequence.current) {
         persistenceBlocked.current = true;
+        setPersistenceErrorCode(localPersistenceErrorCode(error));
         setPersistenceStatus("error");
         setCheckpointStatus("error");
       }
@@ -268,6 +286,7 @@ export function App() {
         <p>{t("collaboration.privacy")}</p>
         <p className="persistence-status" role="status" data-state={persistenceStatus}>
           {t(`recovery.${persistenceStatus}`)}
+          {persistenceErrorCode ? ` ${t("recovery.errorCode")}: ${persistenceErrorCode}` : ""}
         </p>
       </footer>
     </main>

@@ -2,7 +2,7 @@
 
 - Updated: 2026-08-24
 - Scope: Browser implementation inside the Tauri frontend
-- Status: Browser pass and local restart recovery complete; native Tauri IME remains next
+- Status: Browser pass, local restart recovery, macOS Japanese IME, and exact caret restoration complete; native Simplified Chinese IME remains next
 
 ## What is implemented
 
@@ -55,7 +55,7 @@ On 2026-08-24, the Playwright suite and interactive browser pass verified:
 - Canonical draft autosave and restoration after a page restart;
 - synthetic `compositionstart` / `compositionend` checkpoint suspension and resumption.
 
-The browser automation cannot certify native operating-system IME behavior. Japanese and Chinese composition must still be repeated in the packaged Tauri application on macOS and other supported platforms.
+The packaged macOS Tauri application passed Japanese Kotoeri composition, conversion, SQLite restart recovery, and exact Relative Position caret restoration on 2026-08-24. Simplified Chinese remains untested natively because the test Mac has no Chinese input source installed. See `docs/testing/native-ime-validation.md`.
 
 ## Current boundaries
 
@@ -67,6 +67,6 @@ The browser automation cannot certify native operating-system IME behavior. Japa
 
 ## Multilingual summary
 
-- 日本語: ブラウザ上の2画面同期、切断再接続、相対選択位置、IME中のcheckpoint停止、ローカル自動保存と再起動復旧を実装した。TauriネイティブIMEは次工程で検証する。
-- English: The browser validates two-editor sync, reconnect, relative selections, composition-safe checkpoints, local autosave, and restart recovery. Native Tauri IME remains next.
-- 简体中文：浏览器版本已验证双编辑器同步、重新连接、相对选区、输入法组合期间暂停checkpoint、本地自动保存和重启恢复。Tauri原生输入法仍待验证。
+- 日本語: ブラウザ検証に加え、macOS Tauriで日本語変換、再起動復旧、正確なキャレット復元まで確認した。简体中文ネイティブIMEは次工程で検証する。
+- English: Browser validation is complete, and macOS Tauri has passed Japanese conversion, restart recovery, and exact caret restoration. Native Simplified Chinese IME remains next.
+- 简体中文：浏览器验证已完成，macOS Tauri也已通过日文转换、重启恢复和精确光标恢复。简体中文原生输入法仍待验证。

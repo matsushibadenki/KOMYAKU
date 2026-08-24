@@ -3,7 +3,7 @@ import { baseKeymap } from "prosemirror-commands";
 import { history } from "prosemirror-history";
 import { keymap } from "prosemirror-keymap";
 import { Schema } from "prosemirror-model";
-import { EditorState } from "prosemirror-state";
+import { EditorState, Plugin } from "prosemirror-state";
 
 const identityAttrs = {
   nodeId: { default: null },
@@ -180,6 +180,33 @@ export const komyakuSchema = new Schema({
   }
 });
 
+export function createStableNodeIdentityPlugin({ idFactory = createNodeId } = {}) {
+  return new Plugin({
+    appendTransaction(transactions, _oldState, newState) {
+      if (!transactions.some((transaction) => transaction.docChanged)) return null;
+      const seen = new Set();
+      const transaction = newState.tr;
+
+      newState.doc.descendants((node, position) => {
+        if (node.isText || node.type.name === "hard_break" || !("nodeId" in node.attrs)) return;
+        const currentId = node.attrs.nodeId;
+        if (typeof currentId === "string" && currentId.length > 0 && !seen.has(currentId)) {
+          seen.add(currentId);
+          return;
+        }
+        const nodeId = idFactory();
+        seen.add(nodeId);
+        transaction.setNodeMarkup(position, undefined, { ...node.attrs, nodeId }, node.marks);
+      });
+
+      if (!transaction.docChanged) return null;
+      transaction.setMeta("addToHistory", false);
+      transaction.setMeta("komyaku:stable-node-identity", true);
+      return transaction;
+    }
+  });
+}
+
 export function createEmptyEditorDocument({
   documentId = createNodeId(), language = "und", direction = "auto",
   writingMode = "horizontal-tb", nodeIdFactory = createNodeId,
@@ -192,5 +219,8 @@ export function createEmptyEditorDocument({
 }
 
 export function createEditorState({ document = createEmptyEditorDocument() } = {}) {
-  return EditorState.create({ doc: document, plugins: [history(), keymap(baseKeymap)] });
+  return EditorState.create({
+    doc: document,
+    plugins: [createStableNodeIdentityPlugin(), history(), keymap(baseKeymap)]
+  });
 }

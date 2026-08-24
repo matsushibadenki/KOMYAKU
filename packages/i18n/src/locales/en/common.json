@@ -41,6 +41,7 @@
     "empty": "Started a new local draft",
     "restored": "Restored the previous local draft",
     "saved": "Autosaved on this device",
-    "error": "Local saving stopped. Inspect the stored draft before continuing"
+    "error": "Local saving stopped. Inspect the stored draft before continuing",
+    "errorCode": "Error code"
   }
 }

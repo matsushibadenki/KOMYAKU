@@ -96,10 +96,11 @@ Malformed or oversized input fails closed without committing a Canonical Version
 1. [Done] Stage 3 foundation: headless two-client `y-prosemirror` convergence, differential offline rejoin, deterministic Canonical round trips, bounded update application, and origin-aware local undo.
 2. [Done] Stage 3 browser validation: two live editors, composition-safe checkpoint suspension, Relative Position selection capture/restore path, disconnect/reconnect lifecycle, accessibility labels, and responsive layouts.
 3. [Done] Stage 3 local recovery: validated Canonical autosave, monotonic revisions, fail-closed restoration, page restart recovery, and automated Playwright regression coverage.
-4. [Next] Stage 3 native validation: Japanese/Chinese IME composition and exact caret restoration in packaged Tauri.
-5. [Later] Stage 4: durable Yjs update persistence, checkpoint-to-Version commits, and finer-grained offline recovery.
-6. [Later] Collaboration stage: authenticated Provider, Relative Position comments, ephemeral Awareness, quotas, and operational metrics.
-7. [Later] Scale stage: multi-replica room routing, shared persistence, compaction workers, load/failure tests, and measured partitioning.
+4. [Done] Stage 3 macOS native validation: Japanese Kotoeri composition/conversion, SQLite restart recovery, and exact Relative Position caret restoration in packaged Tauri.
+5. [Next] Stage 3 remaining native validation: Simplified Chinese Pinyin IME on a provisioned test host.
+6. [Later] Stage 4: durable Yjs update persistence, checkpoint-to-Version commits, and finer-grained offline recovery.
+7. [Later] Collaboration stage: authenticated Provider, Relative Position comments, ephemeral Awareness, quotas, and operational metrics.
+8. [Later] Scale stage: multi-replica room routing, shared persistence, compaction workers, load/failure tests, and measured partitioning.
 
 The implemented boundary is exported from `packages/editor-core/src/collaborative-working-state.js`, and the browser feasibility view lives in `apps/desktop/src/components/CollaborativeEditor.jsx`. It does not provide a network Provider, durable update store, or Presence transport yet.
 

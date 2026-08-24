@@ -186,12 +186,16 @@ export class DocumentSchemaError extends Error {
 }
 
 function preflightJson(input, limits) {
-  const stack = [{ value: input, depth: 0 }];
-  const seen = new WeakSet();
+  const stack = [{ value: input, depth: 0, exit: false }];
+  const ancestors = new WeakSet();
   let values = 0;
   let stringCodeUnits = 0;
   while (stack.length > 0) {
-    const { value, depth } = stack.pop();
+    const { value, depth, exit } = stack.pop();
+    if (exit) {
+      ancestors.delete(value);
+      continue;
+    }
     if (++values > limits.maxJsonValues) throw new DocumentSchemaError("document_too_complex");
     if (typeof value === "string") {
       stringCodeUnits += value.length;
@@ -200,10 +204,11 @@ function preflightJson(input, limits) {
     }
     if (!value || typeof value !== "object") continue;
     if (depth > Math.max(limits.maxDepth + 8, 32)) throw new DocumentSchemaError("document_too_deep");
-    if (seen.has(value)) throw new DocumentSchemaError("document_contains_cycle");
-    seen.add(value);
+    if (ancestors.has(value)) throw new DocumentSchemaError("document_contains_cycle");
+    ancestors.add(value);
+    stack.push({ value, depth, exit: true });
     for (const child of Array.isArray(value) ? value : Object.values(value)) {
-      stack.push({ value: child, depth: depth + 1 });
+      stack.push({ value: child, depth: depth + 1, exit: false });
     }
   }
 }

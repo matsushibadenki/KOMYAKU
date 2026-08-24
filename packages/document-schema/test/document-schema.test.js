@@ -146,4 +146,19 @@ describe("Canonical Document Schema v1", () => {
     })).toThrow("unsupported_document_schema_version");
     expect(() => createCanonicalNode("unknown_future_node", {})).toThrow();
   });
+
+  test("allows shared JSON-compatible metadata references but still rejects actual cycles", () => {
+    const sharedMetadata = { reviewed: false };
+    const input = createEmptyDocument({ id: id(1), nodeIdFactory: () => id(2) });
+    input.content.push(paragraph(3, "shared"));
+    input.content[0].metadata = sharedMetadata;
+    input.content[1].metadata = sharedMetadata;
+    expect(parseCanonicalDocument(input).content[0].metadata).toEqual(sharedMetadata);
+
+    const cyclic = createEmptyDocument({ id: id(4), nodeIdFactory: () => id(5) });
+    cyclic.metadata.loop = cyclic.metadata;
+    expect(() => parseCanonicalDocument(cyclic)).toThrow(expect.objectContaining({
+      code: "document_contains_cycle"
+    }));
+  });
 });

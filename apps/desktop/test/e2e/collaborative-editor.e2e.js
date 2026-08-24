@@ -53,6 +53,21 @@ test("restores the last validated Canonical draft after a page restart", async (
   await expect(page.getByText("この端末に自動保存済み")).toBeVisible();
 });
 
+test("assigns stable Node IDs to newly created blocks before autosave", async ({ page }) => {
+  await openCleanWorkbench(page);
+  const local = page.locator(".ProseMirror").first();
+  const marker = "new-block-stable-id";
+
+  await local.click();
+  await local.press("End");
+  await local.press("Enter");
+  await local.pressSequentially(marker);
+
+  await expect.poll(() => page.evaluate((key) => localStorage.getItem(key)?.includes("new-block-stable-id"), DRAFT_KEY))
+    .toBe(true);
+  await expect(page.getByText("この端末に自動保存済み")).toBeVisible();
+});
+
 test("keeps controls readable without horizontal overflow", async ({ page }) => {
   await openCleanWorkbench(page);
   for (const width of [320, 375, 414, 768, 1024]) {

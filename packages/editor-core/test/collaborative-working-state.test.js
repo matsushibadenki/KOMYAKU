@@ -6,6 +6,7 @@ import {
   CollaborativeStateError,
   applyCollaborativeUpdate,
   createCanonicalCheckpoint,
+  createCollaborativeEditorState,
   createCollaborativeWorkingState,
   createEmptyCollaborativeWorkingState,
   createLocalUndoManager,
@@ -165,5 +166,28 @@ describe("Yjs collaborative working-state boundary", () => {
     await expect(createCanonicalCheckpoint(document)).rejects.toMatchObject({
       code: "missing_stable_node_id"
     });
+  });
+
+  test("rejects a checkpoint when collaborative blocks contain duplicate stable IDs", async () => {
+    const document = createCollaborativeWorkingState(fixture());
+    const fragment = getCollaborativeFragment(document);
+    fragment.get(1).setAttribute("nodeId", fragment.get(0).getAttribute("nodeId"));
+
+    await expect(createCanonicalCheckpoint(document)).rejects.toMatchObject({
+      code: "duplicate_stable_node_id"
+    });
+  });
+
+  test("assigns a fresh stable Node ID when editing creates a new block", async () => {
+    const document = createCollaborativeWorkingState(fixture());
+    const state = createCollaborativeEditorState(document);
+    const result = state.applyTransaction(state.tr.split(2));
+    const ids = [];
+    result.state.doc.descendants((node) => {
+      if (!node.isText && node.type.name !== "hard_break") ids.push(node.attrs.nodeId);
+    });
+
+    expect(ids.every((nodeId) => typeof nodeId === "string" && nodeId.length > 0)).toBe(true);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 });

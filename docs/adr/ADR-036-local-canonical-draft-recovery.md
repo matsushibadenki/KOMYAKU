@@ -40,10 +40,10 @@ The recovery point objective for ordinary editing is the 450 ms quiet period plu
 - A crash can lose the final sub-second editing interval.
 - Creating the `local_documents` shell and upserting `local_drafts` are two plugin calls. A crash between them can leave an empty document shell, but never a partial draft row. A future Rust command may wrap both statements in one explicit SQLite transaction.
 - Durable keystroke-level Yjs updates, compaction, named recovery snapshots, and Version DAG commits remain separate later work.
-- Native Japanese and Chinese IME behavior still requires packaged Tauri testing; synthetic browser composition events verify the lifecycle contract only.
+- Packaged macOS Tauri has passed Japanese Kotoeri composition, conversion, restart recovery, and exact caret restoration. Simplified Chinese Pinyin remains an environment-specific gate.
 
 ## Verification
 
 - Unit tests cover multilingual round-trip recovery, corrupt JSON, document identity mismatch, and stale-revision rejection.
 - Playwright covers live replica convergence, disconnect/reconnect, composition pause/resume, page-restart recovery, and widths from 320 to 1024 CSS pixels.
-- `cargo test` and `tauri build --debug --no-bundle` verify the native build boundary.
+- `cargo test` and `tauri build --debug --bundles app` verify the native build boundary; the packaged `.app` passed the Japanese IME workflow.
