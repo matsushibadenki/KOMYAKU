@@ -61,6 +61,18 @@ The tested Mac currently enables ABC and Japanese Kotoeri input sources. No Simp
 
 The browser suite already covers synthetic composition lifecycle and Simplified Chinese authored text. A native Pinyin pass remains required on a macOS/Windows/Linux test environment where a Simplified Chinese IME is already provisioned.
 
+## Atomic local-save regression
+
+After moving Tauri draft persistence into one Rust-side SQLite transaction, the packaged application was rebuilt and tested again on 2026-08-24:
+
+1. A unique test paragraph was added through the native editor.
+2. The checkpoint returned to the validated and locally saved state without an error code.
+3. A read-only SQLite query found the marker in the same joined `local_documents` / `local_drafts` record at local revision 15.
+4. The application was quit and relaunched.
+5. The marker was restored, the UI reported local autosave, and no persistence error was present.
+
+The Rust suite separately proves that stale-revision rejection rolls back document metadata and that a mismatched Canonical identity creates no document shell.
+
 ## Regression commands
 
 ```text

@@ -1,4 +1,5 @@
 import { parseCanonicalDocument } from "@komyaku/document-schema";
+import { invoke } from "@tauri-apps/api/core";
 
 const LOCAL_DATABASE_URL = "sqlite:komyaku.db";
 const BROWSER_DRAFT_PREFIX = "komyaku:local-draft:";
@@ -106,37 +107,14 @@ function createTauriLocalDraftBackend() {
       return rows[0] ?? null;
     },
     async save(record) {
-      const current = await this.load(record.documentId);
-      if (current && Number(current.local_revision) >= record.localRevision) {
-        throw new LocalDraftPersistenceError("stale_local_revision");
+      try {
+        await invoke("save_local_draft_atomic", { input: record });
+      } catch (error) {
+        const code = typeof error === "string" && /^[a-z0-9_]+$/.test(error)
+          ? error
+          : "local_draft_storage_failure";
+        throw new LocalDraftPersistenceError(code, undefined, { cause: error });
       }
-      const database = await loadLocalDatabase();
-      await database.execute(
-        `INSERT INTO local_documents (
-          id, title, default_language, default_direction, default_writing_mode, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $6)
-        ON CONFLICT(id) DO UPDATE SET
-          title = excluded.title,
-          default_language = excluded.default_language,
-          default_direction = excluded.default_direction,
-          default_writing_mode = excluded.default_writing_mode,
-          updated_at = excluded.updated_at`,
-        [record.documentId, record.title, record.language, record.direction, record.writingMode, record.updatedAt]
-      );
-      const result = await database.execute(
-        `INSERT INTO local_drafts (
-          document_id, schema_version, content_json, local_revision, is_composing, updated_at
-        ) VALUES ($1, $2, $3, $4, 0, $5)
-        ON CONFLICT(document_id) DO UPDATE SET
-          schema_version = excluded.schema_version,
-          content_json = excluded.content_json,
-          local_revision = excluded.local_revision,
-          is_composing = 0,
-          updated_at = excluded.updated_at
-        WHERE excluded.local_revision > local_drafts.local_revision`,
-        [record.documentId, record.schemaVersion, record.contentJson, record.localRevision, record.updatedAt]
-      );
-      if (result.rowsAffected !== 1) throw new LocalDraftPersistenceError("stale_local_revision");
     }
   };
 }

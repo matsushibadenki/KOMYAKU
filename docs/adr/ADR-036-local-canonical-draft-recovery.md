@@ -21,7 +21,9 @@ Canonical validation
         ↓
 monotonic local revision
         ↓
-Tauri SQLite local_drafts
+Rust validation + SQLite transaction
+        ↓
+local_documents + local_drafts
 ```
 
 - Tauri uses `sqlite:komyaku.db` and the existing `local_documents` / `local_drafts` tables.
@@ -29,6 +31,8 @@ Tauri SQLite local_drafts
 - Stored Canonical JSON is limited to 12 MiB at this boundary and is validated before both writing and restoration.
 - The document ID and schema version must match the storage key and record metadata.
 - Local revisions only move forward. A stale writer cannot replace a newer draft.
+- Tauri performs document-shell upsert and draft upsert in one Rust-side SQLite transaction. Stale-revision rejection rolls back document metadata as well as the draft write.
+- The native command independently checks the 12 MiB boundary and requires its document ID, schema version, language, direction, writing mode, and title to match the Canonical JSON. It returns stable error codes without database details.
 - IME composition suspends checkpointing. Only the transaction observed after `compositionend` becomes eligible for autosave.
 - Corrupt or incompatible local data fails closed. The application starts a non-persisting fallback view and displays a generic local-storage error rather than silently overwriting the stored record.
 
@@ -38,12 +42,13 @@ The recovery point objective for ordinary editing is the 450 ms quiet period plu
 
 - A normal restart restores the last validated draft while preserving Canonical Schema independence from Yjs.
 - A crash can lose the final sub-second editing interval.
-- Creating the `local_documents` shell and upserting `local_drafts` are two plugin calls. A crash between them can leave an empty document shell, but never a partial draft row. A future Rust command may wrap both statements in one explicit SQLite transaction.
+- A process stop cannot commit only the `local_documents` shell from a draft save; SQLite commits both local records or neither.
 - Durable keystroke-level Yjs updates, compaction, named recovery snapshots, and Version DAG commits remain separate later work.
 - Packaged macOS Tauri has passed Japanese Kotoeri composition, conversion, restart recovery, and exact caret restoration. Simplified Chinese Pinyin remains an environment-specific gate.
 
 ## Verification
 
-- Unit tests cover multilingual round-trip recovery, corrupt JSON, document identity mismatch, and stale-revision rejection.
+- JavaScript unit tests cover multilingual round-trip recovery, corrupt JSON, document identity mismatch, and stale-revision rejection.
+- Rust tests cover atomic document-and-draft persistence, rollback of document metadata on stale revision, and rejection of mismatched Canonical identity without creating a document shell.
 - Playwright covers live replica convergence, disconnect/reconnect, composition pause/resume, page-restart recovery, and widths from 320 to 1024 CSS pixels.
 - `cargo test` and `tauri build --debug --bundles app` verify the native build boundary; the packaged `.app` passed the Japanese IME workflow.

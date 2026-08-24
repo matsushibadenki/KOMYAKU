@@ -83,6 +83,7 @@ Stage status: [Done] Identity engineering complete; production launch gates rema
 
 - [Done] Define and test the explicit Yjs working-state to validated Canonical Document checkpoint boundary; keep immutable Version commits as a separate application-service operation
 - [Done] Persist validated Canonical drafts locally with monotonic revisions, composition-safe autosave, fail-closed restoration, and browser restart tests
+- [Done] Save the Tauri local document shell and validated Canonical draft through one Rust-side SQLite transaction with atomic stale-revision rejection
 - [Later] Durable local working-state persistence and offline update queue with bounded recovery and compaction
 - [Later] Authenticated Provider adapters with Workspace/Document authorization, state-vector differential sync, idempotent update persistence, quotas, and update-size/rate limits
 - [Done] Origin-aware local UndoManager foundation that excludes remote, AI, import, migration, and system-normalization transactions by default

@@ -31,7 +31,9 @@ flowchart TD
     J --> K[Validate Canonical checkpoint]
     K --> L[Serialized persistence queue]
     L --> M[Increment local revision]
-    M --> N[Upsert local draft]
+    M --> N[Rust command validates record]
+    N --> O[SQLite transaction]
+    O --> P[Upsert document and draft atomically]
 ```
 
 The persistence queue prevents overlapping checkpoint requests from racing revisions. An older local revision is rejected rather than overwriting newer content.
@@ -41,7 +43,8 @@ The persistence queue prevents overlapping checkpoint requests from racing revis
 - Invalid JSON, unsupported schema, mismatched document identity, oversized content, or an invalid revision produces a stable internal error code.
 - Authored content and provider error strings are not copied into the user-facing status.
 - A failed restoration blocks automatic writes for the session so evidence is not destroyed before a recovery workflow exists.
-- SQLite may contain a document shell without a draft if the process stops between the two current plugin calls. Startup treats that as no draft.
+- Tauri draft saves use one Rust-side transaction. A stale revision or storage error rolls back both document metadata and draft changes.
+- The Rust command repeats bounded structural checks at the native trust boundary and maps internal database errors to stable codes.
 
 ## Commands
 
@@ -58,7 +61,12 @@ Playwright defaults to the locally installed Google Chrome channel. Set `KOMYAKU
 ## Remaining work
 
 - packaged Tauri Simplified Chinese Pinyin IME pass on a provisioned test host; Japanese Kotoeri has passed;
-- atomic Rust-side document-and-draft transaction;
 - bounded Yjs update log and compaction for finer crash recovery;
 - recovery snapshot rotation and a user-facing corrupt-draft recovery flow;
 - immutable checkpoint-to-Version commit operation.
+
+## Multilingual summary
+
+- 日本語: Tauriでは文書情報と検証済みドラフトを単一のSQLite transactionで保存し、古いrevisionや失敗時は両方をrollbackする。
+- English: Tauri saves document metadata and the validated draft in one SQLite transaction; stale revisions and failures roll back both records.
+- 简体中文：Tauri通过同一个SQLite事务保存文档信息和已验证草稿；版本过旧或保存失败时会同时回滚两项记录。
