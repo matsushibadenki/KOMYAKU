@@ -1,0 +1,24 @@
+[
+  {
+    "uuid": "claude-conversation-fixture",
+    "name": "Design discussion",
+    "created_at": "2026-01-01T00:00:00.000Z",
+    "updated_at": "2026-01-01T00:00:02.000Z",
+    "chat_messages": [
+      {
+        "uuid": "claude-user-1",
+        "sender": "human",
+        "text": "設計を続けてください",
+        "created_at": "2026-01-01T00:00:01.000Z",
+        "attachments": []
+      },
+      {
+        "uuid": "claude-assistant-1",
+        "sender": "assistant",
+        "content": [{ "type": "text", "text": "I will continue the design." }],
+        "created_at": "2026-01-01T00:00:02.000Z",
+        "files": []
+      }
+    ]
+  }
+]

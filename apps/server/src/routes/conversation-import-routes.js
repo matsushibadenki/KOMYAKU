@@ -8,6 +8,7 @@ import { ConversationImportError } from "../services/conversation-import-service
 import { IdempotencyError } from "../services/idempotency-service.js";
 
 const workspaceSchema = z.string().uuid();
+const sourceProviderSchema = z.enum(["auto", "generic", "chatgpt", "claude", "gemini"]);
 
 function noStore(context) {
   context.header("Cache-Control", "no-store");
@@ -21,7 +22,7 @@ export function createConversationImportRoutes({
   idempotencyService,
   authorizeImport
 }) {
-  if (!importService?.importGenericJson) throw new Error("Conversation import service is required");
+  if (!importService?.importProviderJson) throw new Error("Conversation import service is required");
   if (!importRepository?.findImportResult) throw new Error("Conversation import result repository is required");
   if (typeof authorizeImport !== "function") throw new Error("Conversation import authorizer is required");
 
@@ -57,16 +58,18 @@ export function createConversationImportRoutes({
       if (!contentType.toLowerCase().startsWith("application/json")) {
         return context.json({ error: "unsupported_media_type" }, 415);
       }
+      const sourceProvider = sourceProviderSchema.parse(
+        (context.req.header("X-KOMYAKU-Source-Provider") ?? "auto").toLowerCase()
+      );
       const raw = new Uint8Array(await context.req.raw.arrayBuffer());
       const execute = context.get("executeIdempotent");
       const outcome = await execute(async () => {
         try {
-          const value = await importService.importGenericJson({
+          const value = await importService.importProviderJson({
             workspaceId,
             actorId: identity.userId,
             raw,
-            sourceProvider: "generic",
-            sourceFormat: "generic-json",
+            sourceProvider,
             contentType,
             visibility: "private",
             aiTrainingPolicy: "deny"
@@ -93,7 +96,7 @@ export function createConversationImportRoutes({
       }
       return context.json(outcome.value, outcome.status);
     } catch (error) {
-      if (error instanceof ZodError) return context.json({ error: "invalid_workspace_id" }, 400);
+      if (error instanceof ZodError) return context.json({ error: "invalid_workspace_or_source_provider" }, 400);
       if (error instanceof IdempotencyError) {
         const status = error.code === "idempotency_in_progress" ? 409
           : error.code === "idempotency_key_reused" ? 422

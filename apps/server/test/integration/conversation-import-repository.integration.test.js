@@ -74,17 +74,71 @@ integration("conversation import PostgreSQL repository", () => {
     const events = await sql`
       SELECT count(*)::int AS count FROM outbox_events WHERE aggregate_id = ${result.importId}
     `;
+    const items = await sql`
+      SELECT conversation_id, ordinal FROM conversation_import_items WHERE import_id = ${result.importId}
+    `;
 
     expect(imports[0]).toMatchObject({ import_status: "complete", conversation_id: result.conversationId });
     expect(messages[0].count).toBe(2);
     expect(edges[0].count).toBe(1);
     expect(events[0].count).toBe(1);
+    expect(items).toEqual([{ conversation_id: result.conversationId, ordinal: 0 }]);
     expect(await repository.findImportResult({
       importId: result.importId, workspaceId, userId
     })).toMatchObject({
       importId: result.importId,
       conversationId: result.conversationId,
+      conversationIds: [result.conversationId],
       status: "complete"
     });
+  });
+
+  test("commits every conversation in a provider bundle under one import", async () => {
+    const repository = createConversationImportRepository(sql);
+    const service = createConversationImportService({
+      repository,
+      authorizeImport: async () => true,
+      objectStore: {
+        async putImmutable({ key, body }) {
+          const digest = await crypto.subtle.digest("SHA-256", body);
+          return {
+            key,
+            contentHash: Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")
+          };
+        }
+      }
+    });
+    const raw = JSON.stringify(["A", "B"].map((title, index) => ({
+      id: `provider-${index}`,
+      title,
+      mapping: {
+        root: { id: "root", parent: null, children: ["message"], message: null },
+        message: {
+          id: "message", parent: "root", children: [],
+          message: { id: `message-${index}`, author: { role: "user" }, content: { parts: [title] } }
+        }
+      }
+    })));
+
+    const result = await service.importProviderJson({ workspaceId, actorId: userId, raw });
+    const items = await sql`
+      SELECT conversation_id, ordinal
+      FROM conversation_import_items
+      WHERE import_id = ${result.importId}
+      ORDER BY ordinal
+    `;
+    const events = await sql`
+      SELECT schema_version, payload
+      FROM outbox_events
+      WHERE aggregate_id = ${result.importId}
+    `;
+
+    expect(result.sourceProvider).toBe("chatgpt");
+    expect(items.map((item) => item.conversation_id)).toEqual(result.conversationIds);
+    expect(items.map((item) => item.ordinal)).toEqual([0, 1]);
+    expect(events).toHaveLength(1);
+    expect(events[0].payload.conversationIds).toEqual(result.conversationIds);
+    expect(await repository.findImportResult({ importId: result.importId, workspaceId, userId }))
+      .toMatchObject({ conversationId: result.conversationIds[0], conversationIds: result.conversationIds });
   });
 });

@@ -1,0 +1,23 @@
+{
+  "conversations": [
+    {
+      "id": "gemini-conversation-fixture",
+      "title": "Multilingual planning",
+      "create_time": "2026-01-01T00:00:00.000Z",
+      "entries": [
+        {
+          "id": "gemini-user-1",
+          "role": "user",
+          "text": "规划下一阶段",
+          "create_time": "2026-01-01T00:00:01.000Z"
+        },
+        {
+          "id": "gemini-model-1",
+          "role": "model",
+          "parts": [{ "type": "text", "text": "次の段階を整理します。" }],
+          "create_time": "2026-01-01T00:00:02.000Z"
+        }
+      ]
+    }
+  ]
+}

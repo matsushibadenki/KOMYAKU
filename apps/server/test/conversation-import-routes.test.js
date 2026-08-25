@@ -26,7 +26,7 @@ function harness({ allowed = true, replay = false, importError = null } = {}) {
     identityService,
     authorizeImport: async (input) => { calls.push(["authorize", input]); return allowed; },
     importService: {
-      async importGenericJson(input) {
+      async importProviderJson(input) {
         calls.push(["import", input]);
         if (importError) throw importError;
         return result;
@@ -70,8 +70,23 @@ describe("authenticated conversation import API", () => {
     const imported = calls.find(([name]) => name === "import")[1];
     expect(new TextDecoder().decode(imported.raw)).toBe(raw);
     expect(imported).toMatchObject({
-      workspaceId, actorId: userId, visibility: "private", aiTrainingPolicy: "deny"
+      workspaceId, actorId: userId, sourceProvider: "auto", visibility: "private", aiTrainingPolicy: "deny"
     });
+  });
+
+  test("accepts an explicit supported provider hint", async () => {
+    const { app, calls } = harness();
+    const response = await app.request(request("[]", { "X-KOMYAKU-Source-Provider": "Claude" }));
+    expect(response.status).toBe(201);
+    expect(calls.find(([name]) => name === "import")[1].sourceProvider).toBe("claude");
+  });
+
+  test("rejects an unsupported provider hint before import", async () => {
+    const { app, calls } = harness();
+    const response = await app.request(request("[]", { "X-KOMYAKU-Source-Provider": "unknown" }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid_workspace_or_source_provider" });
+    expect(calls.some(([name]) => name === "import")).toBe(false);
   });
 
   test("replays only a result that is visible to the same user and workspace", async () => {

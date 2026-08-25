@@ -1,0 +1,46 @@
+[
+  {
+    "title": "Branching research chat",
+    "create_time": 1767225600,
+    "current_node": "assistant-b",
+    "mapping": {
+      "root": { "id": "root", "message": null, "parent": null, "children": ["user-1"] },
+      "user-1": {
+        "id": "user-1",
+        "parent": "root",
+        "children": ["assistant-a", "assistant-b"],
+        "message": {
+          "id": "provider-user-1",
+          "author": { "role": "user" },
+          "create_time": 1767225601,
+          "content": { "content_type": "text", "parts": ["日本語 / English / 简体中文"] },
+          "metadata": {}
+        }
+      },
+      "assistant-a": {
+        "id": "assistant-a",
+        "parent": "user-1",
+        "children": [],
+        "message": {
+          "id": "provider-assistant-a",
+          "author": { "role": "assistant" },
+          "create_time": 1767225602,
+          "content": { "content_type": "text", "parts": ["First branch"] },
+          "metadata": { "model_slug": "fixture-model-a" }
+        }
+      },
+      "assistant-b": {
+        "id": "assistant-b",
+        "parent": "user-1",
+        "children": [],
+        "message": {
+          "id": "provider-assistant-b",
+          "author": { "role": "assistant" },
+          "create_time": 1767225603,
+          "content": { "content_type": "text", "parts": ["Second branch"] },
+          "metadata": { "model_slug": "fixture-model-b" }
+        }
+      }
+    }
+  }
+]

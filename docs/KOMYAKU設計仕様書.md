@@ -2892,6 +2892,8 @@ ConversationImporter
 
 ProviderのExport形式は将来変化し得るため、Parser Version、Import日時、Source Hash、Warningを記録する。解析できないFieldやMessageがあってもImport全体を黙って欠落させず、原本を保持してPartial ImportとしてUserへ示す。
 
+Versioned Adapter基盤として、ChatGPT mapping Graph、Claude `chat_messages`、structured Gemini Entry、Google Takeout My Activity Flat Entryを実装済みである。複数会話を含むBundleは会話ごとのCanonical Graphへ分割するが、すべて同じRaw Export HashとImport IDをprovenanceへ保持する。My Activityから会話所属を推測せず、Safe HTMLを実行せず未知Partとして保存して`partial`とする。互換性Fixtureは合成データだけをRepositoryへ保存し、実User ExportをCommitしない。現行Cloud Schemaの1 Import＝1 Conversation制約を解消する原子的Bundle永続化と認証APIは次工程とする。詳細は`docs/adr/ADR-038-provider-conversation-export-adapters.md`と`docs/formats/provider-conversation-exports.md`を正本とする。
+
 ## 75.2 AI Handoff and Continuation
 
 保存したConversationの任意地点を選択し、対応するAI ProviderまたはLocal ModelへContextとして送信して会話を続けられるようにする。

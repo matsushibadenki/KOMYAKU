@@ -17,7 +17,7 @@ function fixture({ authorized = true } = {}) {
     }
   };
   const repository = {
-    async persistSuccessfulImport(input) { events.push(["success", input]); },
+    async persistSuccessfulBundleImport(input) { events.push(["success", input]); },
     async persistFailedImport(input) { events.push(["failure", input]); }
   };
   const service = createConversationImportService({
@@ -49,6 +49,30 @@ describe("conversation import application service", () => {
     expect(events[1][1].body).toBeInstanceOf(Uint8Array);
     expect(events[2][1].archive.contentHash).toBe(result.sourceHash);
     expect(events[2][1].aiTrainingPolicy).toBe("deny");
+    expect(result.conversationIds).toEqual([result.conversationId]);
+  });
+
+  test("auto-detects and persists a multi-conversation ChatGPT export as one bundle", async () => {
+    const { events, service } = fixture();
+    const exported = ["first", "second"].map((title, index) => ({
+      id: `source-${index}`,
+      title,
+      mapping: {
+        root: { id: "root", parent: null, children: ["message"], message: null },
+        message: {
+          id: "message", parent: "root", children: [],
+          message: { id: `m-${index}`, author: { role: "user" }, content: { parts: [title] } }
+        }
+      }
+    }));
+
+    const result = await service.importProviderJson({ ...identity, raw: JSON.stringify(exported) });
+
+    expect(result).toMatchObject({ sourceProvider: "chatgpt", status: "complete" });
+    expect(result.conversationIds).toHaveLength(2);
+    expect(events.map(([name]) => name)).toEqual(["authorize", "archive", "success"]);
+    expect(events[2][1].conversations).toHaveLength(2);
+    expect(events[2][1].importRecord.parserName).toBe("komyaku-chatgpt-export");
   });
 
   test("archives invalid JSON and records a failed import", async () => {
@@ -71,7 +95,7 @@ describe("conversation import application service", () => {
     const configured = createConversationImportService({
       objectStore: { putImmutable: async () => events.push(["archive"]) },
       repository: {
-        persistSuccessfulImport: async () => {},
+        persistSuccessfulBundleImport: async () => {},
         persistFailedImport: async () => {}
       },
       authorizeImport: async () => {
