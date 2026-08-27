@@ -124,6 +124,7 @@ Stage status: [Done] Identity engineering complete; production launch gates rema
 - [Next] Orphan-object reconciliation scan
 - [Done] Versioned ChatGPT mapping, Claude chat_messages, structured Gemini, and Gemini My Activity adapter foundation with maintained synthetic export fixtures
 - [Done] Atomic Cloud persistence and authenticated API for multi-conversation provider export bundles
-- [Next] Provider export upload UI with localized preview, provider override, and partial-import warning review
+- [Done] On-device Provider export selection UI with localized preview, provider override, provenance summary, and explicit partial-import warning review
+- [Next] Authenticated Workspace connection and explicit confirmation that submits the reviewed exact bytes to the Cloud import API
 - [Later] Local/BYOK AI provider gateway, handoff review, and continuation branches
 - [Later] Managed AI credits and Workspace AI connections

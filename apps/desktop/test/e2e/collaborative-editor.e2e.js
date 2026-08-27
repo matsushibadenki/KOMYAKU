@@ -82,3 +82,29 @@ test("keeps controls readable without horizontal overflow", async ({ page }) => 
     expect(layout.buttonWraps).toBe(false);
   }
 });
+
+test("previews a provider export locally before cloud import", async ({ page }) => {
+  await openCleanWorkbench(page);
+  const content = JSON.stringify([{
+    id: "conversation-1",
+    title: "Import preview",
+    mapping: {
+      root: { id: "root", parent: null, children: ["message"], message: null },
+      message: {
+        id: "message", parent: "root", children: [],
+        message: { author: { role: "user" }, content: { parts: ["private source text"] } }
+      }
+    }
+  }]);
+
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "conversations.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(content)
+  });
+
+  await expect(page.getByText("Import preview")).toBeVisible();
+  await expect(page.locator(".import-summary strong").filter({ hasText: "ChatGPT" })).toBeVisible();
+  await expect(page.getByText("レビュー完了")).toBeVisible();
+  await expect(page.getByText("private source text")).toHaveCount(0);
+});

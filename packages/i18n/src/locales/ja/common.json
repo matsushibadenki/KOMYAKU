@@ -1,6 +1,8 @@
 {
   "app": {
-    "title": "書き直した道のりも残す。"
+    "title": "書き直した道のりも残す。",
+    "titleLead": "書き直した道のりも",
+    "titleClose": "残す。"
   },
   "settings": {
     "language": "表示言語"
@@ -43,5 +45,35 @@
     "saved": "この端末に自動保存済み",
     "error": "ローカル保存を停止しました。保存データを確認してください",
     "errorCode": "エラーコード"
+  },
+  "conversationImport": {
+    "kicker": "Conversation archive",
+    "title": "AIとの対話を、続きを書ける記録へ。",
+    "titleLead": "AIとの対話を、",
+    "titleClose": "続きを書ける記録へ。",
+    "description": "ChatGPT、Claude、Gemini、またはKOMYAKU Generic JSONを端末内で解析します。送信前に会話数、原文Hash、復元上の注意を確認できます。",
+    "localOnly": "端末内レビュー",
+    "providerLabel": "形式",
+    "providers": { "auto": "自動検出", "generic": "Generic JSON", "chatgpt": "ChatGPT", "claude": "Claude", "gemini": "Gemini" },
+    "chooseFile": "JSONを選択",
+    "noFile": "ファイル未選択",
+    "empty": "Providerから書き出したJSONを選ぶと、内容を送信せずに構造を確認します。",
+    "reading": "原文を端末内で検証しています…",
+    "errorTitle": "この書き出しを確認できませんでした",
+    "errors": { "unsupported_provider": "対応していない形式です。", "empty_file": "ファイルが空です。", "file_too_large": "ファイルが10 MiBの確認上限を超えています。", "invalid_export": "有効な対応JSONではありません。形式の指定も確認してください。" },
+    "detectedProvider": "検出形式",
+    "conversations": "会話",
+    "messages": "メッセージ",
+    "size": "原文サイズ",
+    "untitled": "無題の会話",
+    "messageCount": "{{count}}件のメッセージ",
+    "remaining": "ほか{{count}}件の会話",
+    "warningTitle": "復元上の注意",
+    "warningItem": "注意{{number}}：Provider原文の一部を完全には復元できません。原文HashとRaw Archiveは保持されます。",
+    "warningConfirm": "注意事項を確認し、この状態で取り込むことを了承します。",
+    "reviewReady": "レビュー完了",
+    "reviewRequired": "注意事項の確認が必要です",
+    "cloudPending": "Cloudへの保存は、認証済みWorkspace接続後に有効になります。",
+    "privacy": "選択した原文はこのレビューではネットワークへ送信されません。未知のHTMLやProvider固有データは実行しません。"
   }
 }

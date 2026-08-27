@@ -1,6 +1,8 @@
 {
   "app": {
-    "title": "不仅保存文章，也保存每次改写的历程。"
+    "title": "不仅保存文章，也保存每次改写的历程。",
+    "titleLead": "不仅保存文章，",
+    "titleClose": "也保存每次改写的历程。"
   },
   "settings": {
     "language": "界面语言"
@@ -43,5 +45,35 @@
     "saved": "已自动保存到此设备",
     "error": "本地保存已停止，请先检查已存储的文稿",
     "errorCode": "错误代码"
+  },
+  "conversationImport": {
+    "kicker": "Conversation archive",
+    "title": "将AI对话变成可以继续的记录。",
+    "titleLead": "将AI对话变成",
+    "titleClose": "可以继续的记录。",
+    "description": "在本设备上检查ChatGPT、Claude、Gemini或KOMYAKU Generic JSON。发送前可确认会话数量、原始Hash及恢复限制。",
+    "localOnly": "本设备审阅",
+    "providerLabel": "格式",
+    "providers": { "auto": "自动检测", "generic": "Generic JSON", "chatgpt": "ChatGPT", "claude": "Claude", "gemini": "Gemini" },
+    "chooseFile": "选择JSON",
+    "noFile": "尚未选择文件",
+    "empty": "选择Provider导出的JSON，即可在不上传的情况下检查其结构。",
+    "reading": "正在本设备上验证原始内容…",
+    "errorTitle": "无法审阅此导出文件",
+    "errors": { "unsupported_provider": "不支持此格式。", "empty_file": "文件为空。", "file_too_large": "文件超过10 MiB的审阅上限。", "invalid_export": "这不是有效的受支持JSON，请同时检查所选格式。" },
+    "detectedProvider": "检测到的格式",
+    "conversations": "会话",
+    "messages": "消息",
+    "size": "原始大小",
+    "untitled": "无标题会话",
+    "messageCount": "{{count}}条消息",
+    "remaining": "另有{{count}}个会话",
+    "warningTitle": "恢复注意事项",
+    "warningItem": "注意{{number}}：部分Provider原始内容无法完整恢复，但其原始Hash和Raw Archive仍会保留。",
+    "warningConfirm": "我已阅读这些注意事项，并同意导入当前恢复结构。",
+    "reviewReady": "审阅完成",
+    "reviewRequired": "需要确认恢复注意事项",
+    "cloudPending": "连接已认证的Workspace后才可保存到Cloud。",
+    "privacy": "审阅期间不会通过网络发送所选原始内容。未知HTML和Provider专有数据绝不会被执行。"
   }
 }

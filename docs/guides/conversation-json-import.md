@@ -45,6 +45,8 @@ Provider Adapter基盤はChatGPT mapping、Claude `chat_messages`、structured G
 
 Fixtureは`packages/conversation-importer/test/fixtures`の合成データを正本とし、実User ExportをRepositoryへCommitしない。Cloudでは1つのRaw Archive、Import Record、複数Conversation、Message、Edge、Outbox Eventを単一Transactionで保存する。Package APIと互換性規則は`docs/formats/provider-conversation-exports.md`を参照する。
 
+DesktopのConversation Archive画面ではJSONを選択すると、端末内だけでProvider、会話数、Message数、Raw Byte Size、SHA-256、先頭5会話を確認できる。PreviewにMessage本文は含めない。`partial`の場合はLocalizeされた注意事項への明示同意が必要である。現段階では認証済みWorkspace接続が未実装のため、Review画面からCloud送信は行わない。
+
 ## English
 
 The generic importer accepts either a top-level message array or an object containing `messages`. Omit `parentId` for an implicit linear link, use `null` for a root, or point multiple messages to the same parent to preserve branches. Exact UTF-8 source bytes are archived before parsing. The default limits are 10 MiB and 10,000 messages. Unknown roles and content parts are preserved; cycles are rejected; recoverable issues produce a `partial` import. AI training remains denied by default.
@@ -53,6 +55,8 @@ The provider adapters support ChatGPT mappings, Claude `chat_messages`, structur
 
 When authentication routes are enabled, send the source JSON itself to `POST /api/v1/workspaces/:workspaceId/conversation-imports` with a bearer session, `Content-Type: application/json`, and an `Idempotency-Key` of 8–200 characters. Detection is automatic; optionally send `X-KOMYAKU-Source-Provider: generic|chatgpt|claude|gemini`. Repeat both the same key and exact body after a timeout. The response keeps `conversationId` as the first ID for compatibility and exposes every ID in `conversationIds`. Read status from `GET /api/v1/workspaces/:workspaceId/conversation-imports/:importId`. Only verified owners, admins, and editors may create imports. New imports are always private with AI training denied. No unauthenticated import endpoint exists.
 
+The Desktop Conversation Archive view reviews a selected JSON file entirely on-device. It shows provider, counts, byte size, SHA-256, and at most five conversation titles without putting message bodies in the preview model. A partial result requires explicit acknowledgment of localized recovery notes. Cloud submission remains disabled until an authenticated workspace connection is implemented.
+
 ## 简体中文
 
 通用导入器接受顶层消息数组，或包含 `messages` 的对象。省略 `parentId` 时会连接到上一条消息，设为 `null` 表示根消息，多条消息指向同一父消息可保留分支。系统会在解析前以不可变方式保存原始 UTF-8 字节。默认限制为 10 MiB 和 10,000 条消息。未知角色和内容片段会被保留，循环关系会被拒绝，可恢复的问题会生成 `partial` 导入结果。AI 训练策略默认仍为拒绝。
@@ -60,3 +64,5 @@ When authentication routes are enabled, send the source JSON itself to `POST /ap
 Provider Adapter现已支持ChatGPT mapping、Claude `chat_messages`、结构化Gemini entries以及扁平的Gemini My Activity记录。系统只识别明确格式，每个Canonical Conversation都记录原始Bundle的Hash。My Activity无法证明会话归属，因此Safe HTML会作为不可执行的未知Part保存，并返回`partial`。Fixture全部使用合成数据，禁止提交真实用户导出。Cloud会在单个数据库事务中保存完整的多会话Bundle及其Outbox Event。
 
 启用认证路由后，可将原始 JSON 本身发送至`POST /api/v1/workspaces/:workspaceId/conversation-imports`，并提供 Bearer Session、`Content-Type: application/json`及 8–200 个字符的`Idempotency-Key`。默认自动检测Provider，也可发送`X-KOMYAKU-Source-Provider: generic|chatgpt|claude|gemini`。超时重试时必须保持 Key 和 Body 完全一致。响应中的`conversationId`是兼容用首个ID，`conversationIds`包含全部ID。可通过GET接口读取状态。只有已验证邮箱的 Owner、Admin 和 Editor 可以创建导入；新导入始终为 Private 且拒绝 AI 训练。不会提供未认证的导入接口。
+
+Desktop的Conversation Archive界面会完全在本设备上审阅所选JSON。Preview只显示Provider、数量、字节大小、SHA-256以及最多五个会话标题，不包含消息正文。`partial`结果必须明确确认本地化恢复说明。连接已认证Workspace前不会启用Cloud提交。

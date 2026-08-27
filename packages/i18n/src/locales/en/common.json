@@ -1,6 +1,8 @@
 {
   "app": {
-    "title": "Keep the path of every rewrite."
+    "title": "Keep the path of every rewrite.",
+    "titleLead": "Keep the path",
+    "titleClose": "of every rewrite."
   },
   "settings": {
     "language": "Interface language"
@@ -43,5 +45,35 @@
     "saved": "Autosaved on this device",
     "error": "Local saving stopped. Inspect the stored draft before continuing",
     "errorCode": "Error code"
+  },
+  "conversationImport": {
+    "kicker": "Conversation archive",
+    "title": "Turn AI conversations into records you can continue.",
+    "titleLead": "Turn AI conversations into records",
+    "titleClose": "you can continue.",
+    "description": "Inspect ChatGPT, Claude, Gemini, or KOMYAKU Generic JSON on this device. Review conversation counts, the source hash, and recovery limitations before anything is sent.",
+    "localOnly": "On-device review",
+    "providerLabel": "Format",
+    "providers": { "auto": "Detect automatically", "generic": "Generic JSON", "chatgpt": "ChatGPT", "claude": "Claude", "gemini": "Gemini" },
+    "chooseFile": "Choose JSON",
+    "noFile": "No file selected",
+    "empty": "Choose JSON exported by a provider to inspect its structure without uploading it.",
+    "reading": "Validating the source on this device…",
+    "errorTitle": "This export could not be reviewed",
+    "errors": { "unsupported_provider": "This format is not supported.", "empty_file": "The file is empty.", "file_too_large": "The file exceeds the 10 MiB review limit.", "invalid_export": "This is not valid supported JSON. Check the selected format as well." },
+    "detectedProvider": "Detected format",
+    "conversations": "Conversations",
+    "messages": "Messages",
+    "size": "Source size",
+    "untitled": "Untitled conversation",
+    "messageCount": "{{count}} messages",
+    "remaining": "{{count}} more conversations",
+    "warningTitle": "Recovery notes",
+    "warningItem": "Note {{number}}: part of the provider source could not be fully reconstructed. Its source hash and raw archive remain preserved.",
+    "warningConfirm": "I reviewed these notes and accept importing this recovered structure.",
+    "reviewReady": "Review complete",
+    "reviewRequired": "Review the recovery notes to continue",
+    "cloudPending": "Cloud storage becomes available after connecting an authenticated workspace.",
+    "privacy": "The selected source is not sent over the network during this review. Unknown HTML and provider-specific data are never executed."
   }
 }

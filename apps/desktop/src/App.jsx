@@ -8,6 +8,7 @@ import {
   createEmptyCollaborativeWorkingState
 } from "@komyaku/editor-core";
 import { CollaborativeEditor } from "./components/CollaborativeEditor.jsx";
+import { ConversationImportPanel } from "./components/ConversationImportPanel.jsx";
 import { loadLocalDraft, saveLocalDraft } from "./services/local-database.js";
 
 function id(number) {
@@ -200,7 +201,10 @@ export function App() {
       <header className="app-header">
         <div className="brand-block">
           <p className="wordmark">KOMYAKU <span aria-hidden="true">/</span> 稿脈</p>
-          <h1>{t("app.title")}</h1>
+          <h1>
+            <span className="meaning-line">{t("app.titleLead")}</span>{" "}
+            <span className="meaning-line">{t("app.titleClose")}</span>
+          </h1>
         </div>
         <label className="locale-control">
           <span>{t("settings.language")}</span>
@@ -269,6 +273,8 @@ export function App() {
           </article>
         </div>
       </section>
+
+      <ConversationImportPanel />
 
       <aside className="checkpoint-strip" aria-live="polite">
         <div>
