@@ -35,7 +35,7 @@ The repository already contains working infrastructure, schemas, security bounda
 | Distributed authentication rate limits | Implemented domain layer | PostgreSQL-shared counters with HMAC-protected identifiers |
 | Conversation archive | Implemented foundation | Canonical DAG, generic JSON importer, immutable raw archive service |
 | Authenticated conversation import API | Implemented, gated | Idempotent raw JSON POST and membership-checked status GET |
-| AI handoff | Implemented review boundary | Context-bound preview and explicit confirmation; provider sending is not enabled |
+| AI handoff | Local/BYOK gateway foundation | Single-branch review, context and outbound hashes, bounded compatible-API transport, and continuation branches; Desktop sending UI is not enabled |
 | Public authentication endpoints | Implemented, disabled by default | SMTP delivery and rate-limited routes exist behind an explicit production feature gate |
 | Document editing UI and Version Graph | Editor feasibility implemented; graph planned | Two-replica browser workbench exists; persistence, final product workflow, and Version Graph remain incomplete |
 | Public/restricted/unlisted sharing | Designed | Database and policy model are planned; public APIs are not yet exposed |

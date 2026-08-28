@@ -87,6 +87,13 @@ integration("identity PostgreSQL repository", () => {
       kind: "email_verification", userId, tokenHash: verificationTokenHash
     })).toBe(false);
     expect(await repository.canImportConversations({ workspaceId, userId })).toBe(true);
+    expect(await service.listWorkspaces(userId)).toEqual([{
+      id: workspaceId,
+      name: "Identity Test",
+      kind: "personal",
+      role: "owner",
+      canImportConversations: true
+    }]);
 
     const authenticated = await service.authenticateToken(registered.session.token);
     expect(authenticated).toMatchObject({ userId, email });

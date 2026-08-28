@@ -26,7 +26,10 @@ export function createApp({
     cors({
       origin: corsOrigins,
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-      allowHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "X-Request-ID"],
+      allowHeaders: [
+        "Content-Type", "Authorization", "Idempotency-Key", "X-Request-ID",
+        "X-KOMYAKU-Source-Provider"
+      ],
       exposeHeaders: ["Idempotency-Replayed", "Retry-After", "X-RateLimit-Remaining", "X-Request-ID"]
     })
   );

@@ -36,6 +36,16 @@ function harness({ limits = {}, loginError = null, registerError = null } = {}) 
       calls.push(["authenticate", token]);
       return token === sessionToken ? identity : null;
     },
+    async listWorkspaces(userId) {
+      calls.push(["listWorkspaces", userId]);
+      return [{
+        id: "0198c9f1-0000-7000-8000-000000000003",
+        name: "Writer workspace",
+        kind: "personal",
+        role: "owner",
+        canImportConversations: true
+      }];
+    },
     async logout(input) { calls.push(["logout", input.sessionId]); },
     async logoutAll(userId) { calls.push(["logoutAll", userId]); },
     async requestEmailVerification(input) {
@@ -125,6 +135,23 @@ describe("feature-gated authentication routes", () => {
     });
     expect(accepted.status).toBe(200);
     expect((await accepted.json()).identity.email).toBe("writer@example.com");
+  });
+
+  test("lists only workspaces resolved for the authenticated identity", async () => {
+    const { app, calls } = harness();
+    const response = await app.request("/api/v1/auth/workspaces", {
+      headers: { Authorization: `Bearer ${sessionToken}` }
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ workspaces: [{
+      id: "0198c9f1-0000-7000-8000-000000000003",
+      name: "Writer workspace",
+      kind: "personal",
+      role: "owner",
+      canImportConversations: true
+    }] });
+    expect(calls).toContainEqual(["listWorkspaces", "0198c9f1-0000-7000-8000-000000000001"]);
   });
 
   test("does not reveal whether a password-reset address exists", async () => {

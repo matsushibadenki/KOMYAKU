@@ -255,6 +255,10 @@ export function createIdentityService({
       return repository.findActiveSession(tokenHash);
     },
 
+    async listWorkspaces(userId) {
+      return repository.listAccessibleWorkspaces(userId);
+    },
+
     async requestEmailVerification({ userId }) {
       const identity = await repository.findIdentityById(userId);
       if (!identity) throw new IdentityError("identity_not_found", "Identity is unavailable");

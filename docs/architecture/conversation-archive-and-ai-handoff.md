@@ -1,7 +1,7 @@
 # Conversation ArchiveとAI Handoff Architecture
 
-- Status: Foundation partially implemented
-- Updated: 2026-08-14
+- Status: Import and Local/BYOK gateway foundations implemented
+- Updated: 2026-08-28
 
 ## 1. Goal
 
@@ -215,6 +215,12 @@ AiProviderAdapter
 ```
 
 AdapterはProvider固有PayloadをCanonical Schemaへ漏らさない。未知FieldはMetadataとして保存できるが、Domain判断に直接使わない。
+
+### 5.1 Implemented Local/BYOK gateway foundation
+
+`@komyaku/ai-gateway`はLocal loopback endpointとHTTPS BYOK endpointを区別する。ConnectionはCredential Referenceだけを持ち、秘密値は送信直前に解決する。選択範囲は一つの連続Branchに限定し、Canonical Context Hashと変換後Outbound Payload Hashを別々に確認する。
+
+初期OpenAI-compatible AdapterはText MessageをJSONへ変換し、未対応PartとAssetをWarningとしてReview対象へ含める。応答本文とContent-Lengthに上限を設け、Provider Error本文を保持しない。成功応答はContinuation元をParentとする`ai_continuation` Branchへ追加する。
 
 ## 6. Handoff Review
 

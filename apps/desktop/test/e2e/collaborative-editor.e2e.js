@@ -108,3 +108,91 @@ test("previews a provider export locally before cloud import", async ({ page }) 
   await expect(page.getByText("レビュー完了")).toBeVisible();
   await expect(page.getByText("private source text")).toHaveCount(0);
 });
+
+test("connects an authenticated workspace and submits the exact reviewed bytes after confirmation", async ({ page }) => {
+  const workspaceId = "0198d0aa-0000-7000-8000-000000000010";
+  const importId = "0198d0aa-0000-7000-8000-000000000011";
+  const conversationId = "0198d0aa-0000-7000-8000-000000000012";
+  const content = JSON.stringify([{
+    id: "conversation-cloud",
+    title: "Exact cloud import",
+    mapping: {
+      root: { id: "root", parent: null, children: ["message"], message: null },
+      message: {
+        id: "message", parent: "root", children: [],
+        message: { author: { role: "user" }, content: { parts: ["exact-private-source"] } }
+      }
+    }
+  }]);
+  let importedRequest = null;
+
+  await page.route("http://127.0.0.1:3000/api/v1/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path.endsWith("/auth/login")) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          user: { id: "user", email: "writer@example.com" },
+          session: { token: "memory-only-session", expiresAt: "2099-01-01T00:00:00.000Z" }
+        })
+      });
+    }
+    if (path.endsWith("/auth/workspaces")) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ workspaces: [{
+          id: workspaceId, name: "Private research", kind: "personal", role: "owner",
+          canImportConversations: true
+        }] })
+      });
+    }
+    if (path.endsWith("/conversation-imports")) {
+      importedRequest = {
+        body: request.postDataBuffer(),
+        authorization: request.headers().authorization,
+        provider: request.headers()["x-komyaku-source-provider"],
+        idempotencyKey: request.headers()["idempotency-key"]
+      };
+      return route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          importId, conversationId, conversationIds: [conversationId],
+          sourceProvider: "chatgpt", status: "complete", warnings: []
+        })
+      });
+    }
+    return route.fulfill({ status: 204 });
+  });
+
+  await page.goto("/");
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "cloud-conversations.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(content)
+  });
+  await expect(page.getByText("レビュー完了")).toBeVisible();
+
+  await page.getByLabel("メールアドレス").fill("writer@example.com");
+  await page.getByLabel("パスワード").fill("temporary-password");
+  await page.getByRole("button", { name: "Workspaceに接続" }).click();
+  await expect(page.getByLabel("保存先Workspace")).toHaveValue(workspaceId);
+  await expect(page.getByText("writer@example.com")).toBeVisible();
+
+  await page.getByLabel(/レビュー済みの同一原文/).check();
+  await page.getByRole("button", { name: "確認してCloudへ保存" }).click();
+  await expect(page.getByText("Cloudへの保存が完了しました")).toBeVisible();
+  await expect(page.getByText(importId)).toBeVisible();
+
+  expect(importedRequest.body.equals(Buffer.from(content))).toBe(true);
+  expect(importedRequest.authorization).toBe("Bearer memory-only-session");
+  expect(importedRequest.provider).toBe("auto");
+  expect(importedRequest.idempotencyKey.length).toBeGreaterThanOrEqual(8);
+  expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain("memory-only-session");
+  expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain("temporary-password");
+});

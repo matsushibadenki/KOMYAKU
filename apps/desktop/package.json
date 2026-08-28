@@ -15,6 +15,7 @@
     "@fontsource/ibm-plex-sans": "^5.3.0",
     "@komyaku/conversation-schema": "workspace:*",
     "@komyaku/conversation-importer": "workspace:*",
+    "@komyaku/api-client": "workspace:*",
     "@komyaku/document-schema": "workspace:*",
     "@komyaku/editor-core": "workspace:*",
     "@komyaku/i18n": "workspace:*",

@@ -247,6 +247,28 @@ export function createIdentityRepository(sql) {
       };
     },
 
+    async listAccessibleWorkspaces(userId) {
+      const rows = await sql`
+        SELECT w.id, w.name, w.workspace_kind, wm.member_role,
+               (u.email_verified_at IS NOT NULL
+                AND wm.member_role IN ('owner', 'admin', 'editor')) AS can_import_conversations
+        FROM workspace_members wm
+        JOIN workspaces w ON w.id = wm.workspace_id
+        JOIN users u ON u.id = wm.user_id
+        WHERE wm.user_id = ${userId}
+          AND wm.revoked_at IS NULL
+          AND u.deleted_at IS NULL
+        ORDER BY w.updated_at DESC, w.id
+      `;
+      return rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        kind: row.workspace_kind,
+        role: row.member_role,
+        canImportConversations: row.can_import_conversations === true
+      }));
+    },
+
     async revokeSession({ sessionId, userId }) {
       const result = await sql`
         UPDATE user_sessions

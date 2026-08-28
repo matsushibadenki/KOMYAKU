@@ -155,9 +155,15 @@ ai.handoff.managed
 ai.connection.personal
 ai.connection.workspace
 ai.monthly_credits
+external.connection.personal.byo
+external.connection.workspace.byo
+external.connection.managed
+external.backup.scheduled
 ```
 
 BYOKのProvider利用料はUserとProvider間で発生し得るため、KOMYAKUのSubscription表示と混同しない。Managed AIは送信前にKOMYAKU側の推定Credit消費を表示する。
+
+User-owned External ProviderへDesktopから直接保存したByteは`storage.cloud_bytes`へ計上しない。Google Drive等のProvider料金、Quota、PolicyはUserとProviderの間にあり、KOMYAKU-managed OAuth、Server-side scheduled backup、Team共有接続、Managed monitoringとはEntitlementを分ける。
 
 ## 5. Write Flow with Quota
 

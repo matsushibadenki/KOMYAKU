@@ -100,6 +100,12 @@ export function createAuthRoutes({ identityService, rateLimitService, resolveNet
     return context.json({ identity: context.get("identity") });
   });
 
+  routes.get("/workspaces", requireSession, async (context) => {
+    noStore(context);
+    const workspaces = await identityService.listWorkspaces(context.get("identity").userId);
+    return context.json({ workspaces });
+  });
+
   routes.post("/logout", requireSession, async (context) => {
     const identity = context.get("identity");
     await identityService.logout({ sessionId: identity.sessionId, userId: identity.userId });

@@ -5,6 +5,88 @@ use tauri_plugin_sql::{DbInstances, DbPool, Migration, MigrationKind};
 
 const LOCAL_DATABASE_URL: &str = "sqlite:komyaku.db";
 const MAX_LOCAL_DRAFT_BYTES: usize = 12 * 1024 * 1024;
+const SECURE_SESSION_SERVICE: &str = "app.komyaku.desktop";
+const SECURE_SESSION_ACCOUNT: &str = "cloud-session-v1";
+
+#[derive(Debug, PartialEq)]
+enum SecureSessionError {
+    InvalidToken,
+    Unavailable,
+}
+
+impl SecureSessionError {
+    fn code(&self) -> &'static str {
+        match self {
+            Self::InvalidToken => "invalid_session_token",
+            Self::Unavailable => "secure_session_unavailable",
+        }
+    }
+}
+
+fn validate_session_token(token: &str) -> Result<(), SecureSessionError> {
+    if token.len() != 43
+        || !token
+            .bytes()
+            .all(|value| value.is_ascii_alphanumeric() || matches!(value, b'-' | b'_'))
+    {
+        return Err(SecureSessionError::InvalidToken);
+    }
+    Ok(())
+}
+
+fn secure_session_entry() -> Result<keyring::v1::Entry, SecureSessionError> {
+    keyring::v1::Entry::new(SECURE_SESSION_SERVICE, SECURE_SESSION_ACCOUNT)
+        .map_err(|_| SecureSessionError::Unavailable)
+}
+
+fn store_cloud_session_sync(token: &str) -> Result<(), SecureSessionError> {
+    validate_session_token(token)?;
+    secure_session_entry()?
+        .set_password(token)
+        .map_err(|_| SecureSessionError::Unavailable)
+}
+
+fn load_cloud_session_sync() -> Result<Option<String>, SecureSessionError> {
+    match secure_session_entry()?.get_password() {
+        Ok(token) => {
+            validate_session_token(&token)?;
+            Ok(Some(token))
+        }
+        Err(keyring::v1::Error::NoEntry) => Ok(None),
+        Err(_) => Err(SecureSessionError::Unavailable),
+    }
+}
+
+fn delete_cloud_session_sync() -> Result<(), SecureSessionError> {
+    match secure_session_entry()?.delete_credential() {
+        Ok(()) | Err(keyring::v1::Error::NoEntry) => Ok(()),
+        Err(_) => Err(SecureSessionError::Unavailable),
+    }
+}
+
+#[tauri::command]
+async fn store_cloud_session(token: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || store_cloud_session_sync(&token))
+        .await
+        .map_err(|_| SecureSessionError::Unavailable.code().to_string())?
+        .map_err(|error| error.code().to_string())
+}
+
+#[tauri::command]
+async fn load_cloud_session() -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(load_cloud_session_sync)
+        .await
+        .map_err(|_| SecureSessionError::Unavailable.code().to_string())?
+        .map_err(|error| error.code().to_string())
+}
+
+#[tauri::command]
+async fn delete_cloud_session() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(delete_cloud_session_sync)
+        .await
+        .map_err(|_| SecureSessionError::Unavailable.code().to_string())?
+        .map_err(|error| error.code().to_string())
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -180,7 +262,12 @@ pub fn run() {
     }];
 
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![save_local_draft_atomic])
+        .invoke_handler(tauri::generate_handler![
+            save_local_draft_atomic,
+            store_cloud_session,
+            load_cloud_session,
+            delete_cloud_session
+        ])
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations("sqlite:komyaku.db", migrations)
@@ -284,5 +371,22 @@ mod tests {
             .await
             .expect("count local documents");
         assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn accepts_only_server_session_token_shape() {
+        assert_eq!(validate_session_token(&"a".repeat(43)), Ok(()));
+        assert_eq!(
+            validate_session_token(&format!("{}-_", "a".repeat(41))),
+            Ok(())
+        );
+        assert_eq!(
+            validate_session_token(&"a".repeat(42)),
+            Err(SecureSessionError::InvalidToken)
+        );
+        assert_eq!(
+            validate_session_token(&format!("{}+", "a".repeat(42))),
+            Err(SecureSessionError::InvalidToken)
+        );
     }
 }

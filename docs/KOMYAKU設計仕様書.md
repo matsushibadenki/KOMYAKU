@@ -1530,6 +1530,31 @@ Object名に文書タイトルを使用しない。
 
 ユーザー入力をStorage Pathへ直接使用しない。
 
+## 38.1 User-owned External Provider
+
+KOMYAKU内部のS3-compatible Object Storageとは別に、Userが所有する外部接続先をProvider-neutralなAdapterとして追加可能にする。
+
+```text
+Storage / Export Target
+├ Local
+├ KOMYAKU Cloud
+└ User-owned External Provider
+   ├ Google Drive (BYO Google Cloud Project)
+   ├ WebDAV (future)
+   ├ User-owned S3 (future)
+   └ Other reviewed providers (future)
+```
+
+Google Drive初期案では、User自身がGoogle Cloud Projectで作成した`Desktop app` OAuth Client IDを登録する。System Browser、Authorization Code、PKCE S256、推測不能な`state`、`127.0.0.1`のEphemeral Loopback Callbackを使用し、埋め込みWebView、OOB copy/paste、Client Secret依存を採用しない。既定Scopeは`https://www.googleapis.com/auth/drive.file`とし、Drive全体のRestricted Scopeを初期要求しない。
+
+Access TokenとRefresh TokenはOS Secure Storageへ保存し、Local Storage、Frontend Stateの永続化、SQLite本文列、Log、Telemetry、Support Bundle、`.komyaku` Archive、KOMYAKU Cloudへ保存しない。初期BYO接続はDesktop内で完結し、User単位とする。
+
+BYO方式はGoogle Verification、Warning、User cap、Testing token lifetime、Organization Policy、Quota、Billingを自動的に回避しない。Google側Projectの運用責任と費用をUserへ明示し、KOMYAKU Subscriptionと混同しない。Connection失効やDrive障害でもLocal Documentを利用可能に保つ。
+
+Google Driveは`.komyaku` Archive、明示Export、Backup等の外部Targetであり、KOMYAKU Cloud内部のAsset/Object Storageを直接置換しない。その他のGCP機能、Service Account、API Key、Workspace共有Connectionは異なるThreat Modelとして個別に設計する。詳細は`docs/adr/ADR-039-user-owned-external-provider-connections.md`と`docs/architecture/external-provider-connections.md`を正本とする。
+
+KOMYAKU VisibilityをGoogle Drive ACLへ自動変換せず、初期Connectorは公開Linkや共有権限を作成しない。外部送信前にAccount、File、Byte数、機密性を明示して確認を得る。BYO Providerへ直接保存したByteはKOMYAKU Cloud Storage Usageへ計上せず、Google側のQuota、料金、Policyが別に適用されることを表示する。
+
 ---
 
 # 39. Backup
@@ -2892,7 +2917,11 @@ ConversationImporter
 
 ProviderのExport形式は将来変化し得るため、Parser Version、Import日時、Source Hash、Warningを記録する。解析できないFieldやMessageがあってもImport全体を黙って欠落させず、原本を保持してPartial ImportとしてUserへ示す。
 
-Versioned Adapter基盤として、ChatGPT mapping Graph、Claude `chat_messages`、structured Gemini Entry、Google Takeout My Activity Flat Entryを実装済みである。複数会話を含むBundleは会話ごとのCanonical Graphへ分割するが、すべて同じRaw Export HashとImport IDをprovenanceへ保持する。My Activityから会話所属を推測せず、Safe HTMLを実行せず未知Partとして保存して`partial`とする。互換性Fixtureは合成データだけをRepositoryへ保存し、実User ExportをCommitしない。現行Cloud Schemaの1 Import＝1 Conversation制約を解消する原子的Bundle永続化と認証APIは次工程とする。詳細は`docs/adr/ADR-038-provider-conversation-export-adapters.md`と`docs/formats/provider-conversation-exports.md`を正本とする。
+Versioned Adapter基盤として、ChatGPT mapping Graph、Claude `chat_messages`、structured Gemini Entry、Google Takeout My Activity Flat Entryを実装済みである。複数会話を含むBundleは会話ごとのCanonical Graphへ分割するが、すべて同じRaw Export HashとImport IDをprovenanceへ保持する。My Activityから会話所属を推測せず、Safe HTMLを実行せず未知Partとして保存して`partial`とする。互換性Fixtureは合成データだけをRepositoryへ保存し、実User ExportをCommitしない。Cloudでは複数Conversation、Message、Edge、Import association、Outbox Eventを単一PostgreSQL Transactionで原子的に保存し、既存互換用`conversationId`とBundle全体の`conversationIds`を返す。詳細は`docs/adr/ADR-038-provider-conversation-export-adapters.md`と`docs/formats/provider-conversation-exports.md`を正本とする。
+
+DesktopはRaw Bytesを端末内でPreviewし、認証済みServerが返すWorkspaceから保存先を選択する。`partial`復元確認とは別に、送信Byte数と会話数を示すCloud確認を要求し、Preview生成に用いた同一Memory BytesをIdempotency Key付きで送信する。PasswordとSession TokenはMemoryだけに保持し、Local Storage、SQLite、Draft、Logへ保存しない。App再起動後のSession復元はOS Secure Storage AdapterとThreat Modelの完成後に行う。詳細は`docs/adr/ADR-040-reviewed-conversation-cloud-import.md`を正本とする。
+
+Sessionの永続化はUserが明示的に選んだ場合だけ有効にする。Native Adapterは固定Credential namespaceでmacOS Keychain Services、Windows Credential Manager、Linux Secret ServiceへTokenだけを保存する。起動時にServerでIdentityとWorkspaceを再検証し、401なら削除、一時Network障害では保持する。Password、Email、Workspace、原文をCredential Storeへ保存しない。詳細は`docs/adr/ADR-041-os-secure-cloud-session.md`と`docs/security/os-secure-session-threat-model.md`を正本とする。
 
 ## 75.2 AI Handoff and Continuation
 
@@ -2924,6 +2953,8 @@ Approved connector
 ```
 
 任意のConsumer向けWeb UIへCredentialを流用して自動Login・自動投稿する方式をCore機能にしない。
+
+初期Gateway基盤ではLocal ConnectionをLoopback Endpointだけに限定し、BYOK ConnectionはHTTPSとOS Credential Referenceを必須とする。選択MessageはConversation Edgeで連続する一つのBranchで、Continuation元を最後に置く。Canonical Context HashとProvider変換後Payload Hashを別々に確定し、確認後にどちらかが変化すれば送信せず再Reviewを要求する。Provider応答は元Conversationを変更せず、Continuation元をParentとする`ai_continuation` Branchへ追加する。詳細は`docs/adr/ADR-042-local-byok-ai-provider-gateway.md`と`docs/security/ai-handoff-threat-model.md`を正本とする。
 
 Provider Adapter：
 
@@ -3977,6 +4008,14 @@ ADR-033 Asset Quarantine, Reconciliation, and Retention GC
 ADR-034 Inspected-only Asset Delivery
 ADR-035 Yjs Collaborative Working State
 ADR-036 Local Canonical Draft Autosave and Recovery
+ADR-037 Bun 1.4 Runtime Pin
+ADR-038 Provider Conversation Export Adapters
+ADR-039 User-owned External Provider Connections
+ADR-040 Reviewed Conversation Cloud Import
+
+ADR-041 OS Secure Cloud Session
+
+ADR-042 Local and BYOK AI Provider Gateway
 ```
 
 を作成する。

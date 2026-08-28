@@ -117,6 +117,15 @@ Stage status: [Done] Identity engineering complete; production launch gates rema
 - [Later] Horizontal API / Worker replicas behind a load balancer
 - [Later] PostgreSQL HA, read replicas, and partitioning based on measured load
 
+## User-owned External Providers
+
+- [Later] Provider-neutral ExternalProviderConnection model separating Local, KOMYAKU Cloud, and user-owned targets
+- [Later] Google Drive “My Google Cloud Project” wizard using a user-owned Desktop OAuth Client, system browser, PKCE, loopback callback, and `drive.file`
+- [Later] Platform secure token storage, revocation, reconnect, scope-loss handling, redacted diagnostics, and security review
+- [Later] Optional KOMYAKU-managed Google OAuth connection after product, policy, verification, and operational review
+- [Later] Additional connectors such as WebDAV, user-owned S3, Dropbox, and OneDrive based on demand; do not generalize unlike credential types into one input
+- [Later] Individually reviewed GCP capabilities beyond Drive; Service Accounts, API keys, and organization-wide access require separate threat models
+
 ## Conversation Archive and AI Handoff
 
 - [Done] Raw conversation archive metadata verification job
@@ -125,6 +134,8 @@ Stage status: [Done] Identity engineering complete; production launch gates rema
 - [Done] Versioned ChatGPT mapping, Claude chat_messages, structured Gemini, and Gemini My Activity adapter foundation with maintained synthetic export fixtures
 - [Done] Atomic Cloud persistence and authenticated API for multi-conversation provider export bundles
 - [Done] On-device Provider export selection UI with localized preview, provider override, provenance summary, and explicit partial-import warning review
-- [Next] Authenticated Workspace connection and explicit confirmation that submits the reviewed exact bytes to the Cloud import API
-- [Later] Local/BYOK AI provider gateway, handoff review, and continuation branches
+- [Done] Authenticated Workspace connection and explicit confirmation that submits the reviewed exact bytes to the Cloud import API
+- [Done] Opt-in durable Tauri session storage through OS credential stores, startup revalidation, revocation handling, and a persisted threat model
+- [Done] Local/BYOK AI provider gateway foundation with single-branch selection, dual review hashes, bounded OpenAI-compatible transport, and immutable continuation branches
+- [Next] Desktop AI Handoff review UI, OS-secured Provider credential registration, model discovery, streaming cancellation, and transactional branch persistence
 - [Later] Managed AI credits and Workspace AI connections

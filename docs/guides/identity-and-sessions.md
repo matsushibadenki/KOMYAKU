@@ -1,5 +1,15 @@
 # Identity and Sessions
 
+## Desktop secure session persistence
+
+DesktopのCloud Sessionは既定でMemory-onlyである。Login画面で明示的に選択した場合だけ、Session TokenをOS資格情報ストアへ保存する。macOSはKeychain Services、WindowsはCredential Manager、LinuxはSecret Serviceを使用する。Password、Email、Workspace、原文は保存しない。
+
+起動時は保存TokenをServerへ再検証し、Identityと許可済みWorkspaceを取得できた場合だけ接続済みにする。401なら失効Tokenを削除する。一時的なNetwork障害では削除せず、次回の検証を可能にする。LogoutはServerへ失効を依頼した後、結果にかかわらず端末側Tokenを削除する。
+
+English: Desktop sessions remain memory-only by default. An explicitly remembered session is stored in the OS credential store, revalidated on startup, removed on 401, and retained across ambiguous network failures. Passwords and authored content are never stored there.
+
+简体中文：Desktop Session默认仅保存在Memory中。只有用户明确选择记住时才保存到OS凭据存储；启动时重新验证，收到401时删除，临时网络故障时保留。密码与创作内容绝不会写入该存储。
+
 ## 日本語
 
 ### 現在実装されている基盤
