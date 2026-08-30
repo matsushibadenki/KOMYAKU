@@ -1,22 +1,26 @@
 import { canonicalConversationSchema } from "@komyaku/conversation-schema";
-import { v7 as uuidv7 } from "uuid";
+import { v5 as uuidv5, v7 as uuidv7 } from "uuid";
 import { z } from "zod";
 
 export const GENERIC_JSON_PARSER_NAME = "komyaku-generic-json";
-export const GENERIC_JSON_PARSER_VERSION = "1.0.0";
+export const GENERIC_JSON_PARSER_VERSION = "1.1.0";
 export const CHATGPT_EXPORT_PARSER_NAME = "komyaku-chatgpt-export";
-export const CHATGPT_EXPORT_PARSER_VERSION = "1.0.0";
+export const CHATGPT_EXPORT_PARSER_VERSION = "1.1.0";
 export const CLAUDE_EXPORT_PARSER_NAME = "komyaku-claude-export";
-export const CLAUDE_EXPORT_PARSER_VERSION = "1.0.0";
+export const CLAUDE_EXPORT_PARSER_VERSION = "1.1.0";
 export const GEMINI_EXPORT_PARSER_NAME = "komyaku-gemini-export";
-export const GEMINI_EXPORT_PARSER_VERSION = "1.0.0";
+export const GEMINI_EXPORT_PARSER_VERSION = "1.1.0";
 export const DEFAULT_MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 export const DEFAULT_MAX_IMPORT_MESSAGES = 10_000;
+export const IMPORT_IDENTITY_VERSION = 1;
+const IMPORT_IDENTITY_NAMESPACE = "8de88d02-537d-5d6f-9e6b-77ee3f509745";
 
 const optionsSchema = z.object({
   sourceProvider: z.string().min(1).max(100).default("generic"),
   importId: z.string().uuid().optional(),
   conversationId: z.string().uuid().optional(),
+  identityKey: z.string().min(1).max(1000).default("ordinal:0"),
+  identityScope: z.string().min(1).max(200).default("local"),
   maxBytes: z.number().int().positive().default(DEFAULT_MAX_IMPORT_BYTES),
   maxMessages: z.number().int().positive().default(DEFAULT_MAX_IMPORT_MESSAGES),
   parserName: z.string().min(1).max(100).default(GENERIC_JSON_PARSER_NAME),
@@ -41,6 +45,14 @@ function toBytes(input) {
 async function sha256Hex(bytes) {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function deterministicImportUuid(kind, ...parts) {
+  return uuidv5([
+    `komyaku-import-identity-v${IMPORT_IDENTITY_VERSION}`,
+    kind,
+    ...parts
+  ].join("\u0000"), IMPORT_IDENTITY_NAMESPACE);
 }
 
 function own(object, key) {
@@ -102,9 +114,11 @@ export async function importGenericJsonConversation(input, optionsInput = {}) {
     throw new Error(`Conversation import exceeds the ${options.maxMessages} message limit`);
   }
 
-  const importId = options.importId ?? uuidv7();
-  const conversationId = options.conversationId ?? uuidv7();
   const sourceHash = await sha256Hex(provenanceRawBytes);
+  const importId = options.importId ?? uuidv7();
+  const conversationId = options.conversationId ?? deterministicImportUuid(
+    "conversation", options.identityScope, options.parserName, options.parserVersion, sourceHash, options.identityKey
+  );
   const warnings = [...options.initialWarnings];
   const sourceToInternal = new Map();
   const duplicateCounts = new Map();
@@ -124,7 +138,7 @@ export async function importGenericJsonConversation(input, optionsInput = {}) {
       warnings.push(`messages[${index}].id duplicated ${originalSourceId}; retained as ${effectiveSourceId}`);
     }
 
-    const internalId = uuidv7();
+    const internalId = deterministicImportUuid("message", conversationId, effectiveSourceId);
     if (!sourceToInternal.has(originalSourceId)) sourceToInternal.set(originalSourceId, internalId);
 
     const createdAtSource = optionalTimestamp(
@@ -205,6 +219,12 @@ export async function importGenericJsonConversation(input, optionsInput = {}) {
     edges,
     providerMetadata: {
       importedBy: options.parserName,
+      importIdentityVersion: IMPORT_IDENTITY_VERSION,
+      importIdentityScope: options.identityScope,
+      importIdentityKey: options.identityKey,
+      ...(envelope.sourceConversationId != null
+        ? { sourceConversationId: String(envelope.sourceConversationId) }
+        : {}),
       ...(envelope.schemaVersion !== undefined ? { sourceSchemaVersion: String(envelope.schemaVersion) } : {})
     }
   });
@@ -262,7 +282,14 @@ async function importProviderEnvelopes(envelopes, rawBytes, options, parser) {
   }
   const importId = options.importId ?? uuidv7();
   const results = [];
-  for (const envelope of envelopes) {
+  const identityCounts = new Map();
+  for (const [index, envelope] of envelopes.entries()) {
+    const baseIdentityKey = envelope.sourceConversationId == null
+      ? `ordinal:${index}`
+      : `source:${String(envelope.sourceConversationId)}`;
+    const duplicate = identityCounts.get(baseIdentityKey) ?? 0;
+    identityCounts.set(baseIdentityKey, duplicate + 1);
+    const identityKey = duplicate === 0 ? baseIdentityKey : `${baseIdentityKey}#duplicate-${duplicate + 1}`;
     results.push(await importGenericJsonConversation(JSON.stringify(envelope), {
       sourceProvider: parser.provider,
       importId,
@@ -271,14 +298,19 @@ async function importProviderEnvelopes(envelopes, rawBytes, options, parser) {
       parserName: parser.name,
       parserVersion: parser.version,
       provenanceRawBytes: rawBytes,
-      initialWarnings: envelope.adapterWarnings ?? []
+      initialWarnings: [
+        ...(envelope.adapterWarnings ?? []),
+        ...(duplicate > 0 ? [`source conversation identity duplicated; retained as ${identityKey}`] : [])
+      ],
+      identityKey,
+      identityScope: options.identityScope
     }));
   }
   return bundleResult(results, rawBytes, parser.provider);
 }
 
 function providerOptions(optionsInput = {}) {
-  return optionsSchema.pick({ importId: true, maxBytes: true, maxMessages: true }).parse(optionsInput);
+  return optionsSchema.pick({ importId: true, identityScope: true, maxBytes: true, maxMessages: true }).parse(optionsInput);
 }
 
 function chatGptParent(mapping, node) {
@@ -331,6 +363,7 @@ function normalizeChatGptConversation(conversation, index) {
     });
   }
   return {
+    sourceConversationId: conversation.id ?? conversation.conversation_id ?? null,
     title: typeof conversation.title === "string" ? conversation.title : "",
     schemaVersion: "chatgpt-mapping",
     messages,
@@ -356,6 +389,7 @@ function normalizeClaudeConversation(conversation, index) {
     throw new Error(`conversations[${index}].chat_messages must be an array`);
   }
   return {
+    sourceConversationId: conversation.uuid ?? conversation.id ?? null,
     title: typeof conversation.name === "string" ? conversation.name : "",
     schemaVersion: "claude-chat-messages",
     messages: conversation.chat_messages.map((message, messageIndex) => ({
@@ -389,6 +423,7 @@ function normalizeGeminiStructuredConversation(conversation, index) {
     throw new Error(`conversations[${index}].entries must be an array`);
   }
   return {
+    sourceConversationId: conversation.id ?? conversation.conversation_id ?? null,
     title: typeof conversation.title === "string" ? conversation.title : "",
     schemaVersion: "gemini-structured-entries",
     messages: conversation.entries.map((entry, entryIndex) => ({
@@ -431,6 +466,7 @@ function normalizeGeminiActivity(entry, index) {
     });
   }
   return {
+    sourceConversationId: null,
     title,
     schemaVersion: "google-takeout-my-activity",
     messages,

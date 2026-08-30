@@ -2956,6 +2956,24 @@ Approved connector
 
 初期Gateway基盤ではLocal ConnectionをLoopback Endpointだけに限定し、BYOK ConnectionはHTTPSとOS Credential Referenceを必須とする。選択MessageはConversation Edgeで連続する一つのBranchで、Continuation元を最後に置く。Canonical Context HashとProvider変換後Payload Hashを別々に確定し、確認後にどちらかが変化すれば送信せず再Reviewを要求する。Provider応答は元Conversationを変更せず、Continuation元をParentとする`ai_continuation` Branchへ追加する。詳細は`docs/adr/ADR-042-local-byok-ai-provider-gateway.md`と`docs/security/ai-handoff-threat-model.md`を正本とする。
 
+Desktop Review基盤ではImport確認済みのCanonical Conversationから、選択地点までの単一Branch本文をすべて表示する。接続、Model、推定入力単位、変換Warning、Canonical Context Hash、Outbound Payload Hashを示した後、その表示範囲とProviderに限定したCheckbox Consentと独立Send操作を要求する。BYOK API KeyはDomain Validation成功後に固定Tauri CommandからOS Credential Storeの`ai-provider-<uuid>` namespaceへ保存し、Web Storage fallbackを設けない。詳細は`docs/adr/ADR-043-desktop-ai-handoff-review-and-credentials.md`を正本とする。
+
+Model discoveryはValidated Connectionを再利用し、OpenAI-compatible Providerの`GET /models`をUserの明示操作時だけ呼び出す。Credentialは送信直前にOS Credential Storeから解決し、Responseは1 MiB、1,000件、Model ID 300文字へ制限する。重複を除いて安定順に表示し、取得失敗時も手入力Model IDを利用可能にする。選択Modelが変われば以前のPayload Reviewを無効化する。詳細は`docs/adr/ADR-044-bounded-provider-model-discovery.md`を正本とする。
+
+Sensitive Handoff Scanは選択された単一Branchだけを端末内で処理する。FindingにはKindとCountだけを含め、Matched ValueをUI Summary、Log、Telemetryへ複製しない。UserがMaskを選んだ場合は、原本を変更せず一時Outbound Copyへ`[REDACTED:<KIND>]`を挿入し、そのCopyを二つのHashと送信の対象にする。Mask状態変更後は再Reviewを必須とし、誤検出と未検出の可能性を明示する。詳細は`docs/adr/ADR-045-sensitive-handoff-masking.md`を正本とする。
+
+OpenAI-compatible StreamingはModelとMessageのReview済みPayloadへTransport-onlyの`stream: true`をAdapter境界で加え、`text/event-stream`の`data:` Deltaだけを処理する。Raw Byteと累積TextをResponse上限で制限し、Abort、Malformed SSE、Size超過ではTransient Textを破棄してMessage／Edgeを追加しない。正常完了時だけ元Conversationへ`ai_continuation` Branchを追加する。詳細は`docs/adr/ADR-046-bounded-ai-streaming-and-cancellation.md`を正本とする。
+
+Packaged Tauriでは、正常完了したHandoff、Assistant Message、`ai_continuation` Edge、更新後Canonical Conversationを一つのSQLite Transactionで保存する。同一Handoffと同一結果の再保存はidempotentとし、同一IDで内容が異なるReplayはConflictとして全体をRollbackする。保存失敗時は完成済みResponseをMemoryに保持し、Providerへ再送信しない保存専用Retryを提供する。Browser PreviewにはWeb Storage fallbackを設けない。Local Conversation Libraryは起動時に最大100件のID、題名、Message数、更新日時だけを列挙し、Userが選択した一件だけのCanonical Graphを取得・再検証する。詳細は`docs/adr/ADR-047-local-transactional-ai-handoff-persistence.md`を正本とする。
+
+特殊コンテンツのPreviewはCanonical Sourceから分離した派生物とする。LaTeXは入力長、Macro展開数、表示Size、最終Document容量を制限し、KaTeXの`trust: false`かつ厳格ModeでScriptを含まないMathMLへ変換する。Basic SVGはDTD、Entity、XML Stylesheetを拒否し、Node、Depth、属性、容量を制限した上で、安全なSVG Namespace要素と属性だけから新しいDocumentを再構築する。Script、`foreignObject`、Style、Animation、Image、Use、Event、外部参照はコピーせず、内部Paint参照だけを許可する。Desktopは空の`sandbox` Token、空のPermissions Policy、`no-referrer`を持つiframeだけで静的Previewを表示し、`allow-scripts`と`allow-same-origin`を付与しない。Mermaidは11.17.2を固定し、安全設定、Text・Edge上限をApplication側で固定する。Author Frontmatter、Directive、Click、Style設定を拒否し、権限を持たないRenderer Adapterが生成したSVGも再度Basic SVG Sanitizerへ通す。Tauri IPCやApplication Storageから分離された実行Hostが完成するまで実描画はFail Closedとする。Image、PDFもFormat別の検査、容量制限、Sanitization、分離配信が完成するまでFail Closedとする。詳細は`docs/adr/ADR-051-isolated-static-preview-boundary.md`および`docs/architecture/isolated-content-previews.md`を正本とする。
+
+Cloud Handoff永続化はConversation全体の置換ではなく、Confirmed HandoffとAssistant Messageを入力とする。PostgreSQL Transaction内でWorkspace Membership、Verified User、Provider Connection所有権、選択Messageの所属と連続Edge、Source終端を再検証し、Message、`ai_continuation` Edge、二つのHashを持つcompleted Handoff、Conversation更新、ID-only Outbox Eventを原子的に保存する。同一Handoffと同一結果はReplay、異なる結果はConflictとする。詳細は`docs/adr/ADR-048-cloud-transactional-ai-handoff-persistence.md`を正本とする。
+
+DesktopとCloudが同じProvider Exportを独立Parseする場合、Canonical IDを新規UUIDとして個別生成してはCloud HandoffのMessage参照が一致しない。Desktop Cloud同期前に、Source Hash、Provider、Source Conversation IdentityまたはBundle Ordinal、Source Message Identity、Parser VersionへBindingしたVersion付き決定的Identity、または同等のAuthenticated Identity Manifestを導入する。Titleや本文の類似度で対応を推測せず、対応不能・重複はPartial MappingとしてUser確認を要求する。詳細は`docs/architecture/conversation-import-identity-alignment.md`を正本とする。
+
+Import Identity v1は固定KOMYAKU NamespaceのUUIDv5を使い、Identity Scope、Source Hash、Parser名／Version、Provider Conversation IdentityまたはBundle Ordinal、Source Message Identity、重複OrdinalへBindingする。Local ScopeとWorkspace UUID Scopeを分離してTenant間のPrimary Key衝突を防ぐ。Parser 1.1.0以降で採用し、Import Record IDはAudit IdentityとしてCanonical ID導出へ使用しない。詳細は`docs/adr/ADR-049-workspace-scoped-deterministic-import-identity.md`を正本とする。
+
 Provider Adapter：
 
 ```text
@@ -4016,6 +4034,20 @@ ADR-040 Reviewed Conversation Cloud Import
 ADR-041 OS Secure Cloud Session
 
 ADR-042 Local and BYOK AI Provider Gateway
+
+ADR-043 Desktop AI Handoff Review and Provider Credentials
+
+ADR-044 Bounded Provider Model Discovery
+
+ADR-045 Sensitive AI Handoff Detection and Masking
+
+ADR-046 Bounded AI Streaming and Cancellation
+
+ADR-047 Local Transactional AI Handoff Persistence
+
+ADR-048 Cloud Transactional AI Handoff Persistence
+
+ADR-049 Workspace-scoped Deterministic Import Identity
 ```
 
 を作成する。

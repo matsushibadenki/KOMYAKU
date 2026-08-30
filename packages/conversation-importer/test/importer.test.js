@@ -30,6 +30,37 @@ describe("generic JSON conversation importer", () => {
     expect(new Set(result.conversation.edges.map((edge) => edge.parentMessageId)).size).toBe(1);
   });
 
+  test("derives identical Canonical IDs across independent parses and import records", async () => {
+    const raw = JSON.stringify([
+      { id: "root", parentId: null, role: "user", content: "Question" },
+      { id: "reply", parentId: "root", role: "assistant", content: "Answer" }
+    ]);
+    const first = await importGenericJsonConversation(raw, { importId: crypto.randomUUID() });
+    const second = await importGenericJsonConversation(raw, { importId: crypto.randomUUID() });
+
+    expect(second.conversation.id).toBe(first.conversation.id);
+    expect(second.conversation.messages.map(({ id }) => id))
+      .toEqual(first.conversation.messages.map(({ id }) => id));
+    expect(second.conversation.messages[0].importProvenance.importId)
+      .not.toBe(first.conversation.messages[0].importProvenance.importId);
+    expect(first.conversation.providerMetadata.importIdentityVersion).toBe(1);
+    expect(first.conversation.providerMetadata.importIdentityScope).toBe("local");
+  });
+
+  test("isolates deterministic identities between workspaces", async () => {
+    const raw = '[{"id":"same","content":"A"}]';
+    const first = await importGenericJsonConversation(raw, { identityScope: crypto.randomUUID() });
+    const second = await importGenericJsonConversation(raw, { identityScope: crypto.randomUUID() });
+    expect(second.conversation.id).not.toBe(first.conversation.id);
+  });
+
+  test("changes deterministic identity when the reviewed source bytes change", async () => {
+    const first = await importGenericJsonConversation('[{"id":"same","content":"A"}]');
+    const second = await importGenericJsonConversation('[{"id":"same","content":"B"}]');
+    expect(second.conversation.id).not.toBe(first.conversation.id);
+    expect(second.conversation.messages[0].id).not.toBe(first.conversation.messages[0].id);
+  });
+
   test("reports dangling parents and duplicate source IDs as a partial import", async () => {
     const result = await importGenericJsonConversation(JSON.stringify([
       { id: "same", parentId: null, role: "user", content: "one" },

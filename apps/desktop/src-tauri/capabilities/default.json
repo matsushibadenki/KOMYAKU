@@ -3,5 +3,19 @@
   "identifier": "default",
   "description": "Default capability for the KOMYAKU main window",
   "windows": ["main"],
-  "permissions": ["core:default", "sql:default", "sql:allow-execute"]
+  "permissions": [
+    "core:default",
+    "sql:default",
+    "sql:allow-execute",
+    "allow-save-local-draft-atomic",
+    "allow-store-cloud-session",
+    "allow-load-cloud-session",
+    "allow-delete-cloud-session",
+    "allow-store-provider-credential",
+    "allow-load-provider-credential",
+    "allow-delete-provider-credential",
+    "allow-save-local-ai-handoff-atomic",
+    "allow-load-local-conversation",
+    "allow-list-local-conversations"
+  ]
 }

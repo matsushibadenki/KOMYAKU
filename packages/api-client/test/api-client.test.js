@@ -77,4 +77,29 @@ describe("KOMYAKU API client", () => {
       sourceProvider: "auto", idempotencyKey: "operation-key"
     })).rejects.toMatchObject({ code: "conversation_import_failed", reference: importId });
   });
+
+  test("lists Cloud connection metadata and persists a handoff without credentials", async () => {
+    const requests = [];
+    const client = createApiClient({
+      baseUrl: "https://komyaku.example/api/v1",
+      fetchImpl: async (url, init = {}) => {
+        requests.push({ url, init });
+        return url.endsWith("ai-provider-connections")
+          ? json({ connections: [] })
+          : json({ handoffId: "handoff" }, 201);
+      }
+    });
+    await client.aiProviderConnections({ token: "session", workspaceId: "workspace" });
+    await client.persistAiHandoff({
+      token: "session", workspaceId: "workspace", conversationId: "conversation",
+      confirmed: { id: "handoff" }, responseMessage: { id: "message" },
+      providerResponseId: "response", completedAt: "2026-08-30T00:00:00.000Z",
+      idempotencyKey: "handoff-operation"
+    });
+    expect(requests[0].url).toEndWith("/workspaces/workspace/ai-provider-connections");
+    expect(requests[1].init.headers).toMatchObject({
+      Authorization: "Bearer session", "Idempotency-Key": "handoff-operation"
+    });
+    expect(requests[1].init.body).not.toContain("apiKey");
+  });
 });

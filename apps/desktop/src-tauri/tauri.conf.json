@@ -12,12 +12,23 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "KOMYAKU",
         "width": 1200,
         "height": 800,
         "minWidth": 320,
         "minHeight": 568,
         "resizable": true
+      },
+      {
+        "label": "mermaid-renderer",
+        "title": "KOMYAKU Mermaid Renderer",
+        "url": "/?mode=mermaid-renderer",
+        "width": 800,
+        "height": 600,
+        "visible": false,
+        "resizable": false,
+        "skipTaskbar": true
       }
     ],
     "security": {

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-save-local-ai-handoff-atomic"
+description = "Enables the save_local_ai_handoff_atomic command without any pre-configured scope."
+commands.allow = ["save_local_ai_handoff_atomic"]
+
+[[permission]]
+identifier = "deny-save-local-ai-handoff-atomic"
+description = "Denies the save_local_ai_handoff_atomic command without any pre-configured scope."
+commands.deny = ["save_local_ai_handoff_atomic"]

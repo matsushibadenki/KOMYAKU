@@ -47,6 +47,73 @@ export const aiProviderConnectionSchema = z.object({
   }
 });
 
+export const providerModelSchema = z.object({
+  id: z.string().min(1).max(300),
+  displayName: z.string().min(1).max(300)
+});
+
+const SENSITIVE_PATTERNS = Object.freeze([
+  { kind: "private_key", expression: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g },
+  { kind: "api_key", expression: /\b(?:sk-ant-[A-Za-z0-9_-]{12,}|sk-[A-Za-z0-9_-]{16,}|AIza[A-Za-z0-9_-]{20,})\b/g },
+  { kind: "bearer_token", expression: /\bBearer\s+[A-Za-z0-9._~+\/-]{12,}={0,2}\b/gi },
+  { kind: "labeled_secret", expression: /\b(?:api[_ -]?key|access[_ -]?token|password|secret)\s*[:=]\s*[^\s,;]{8,}/gi },
+  { kind: "email", expression: /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi }
+]);
+
+function maskText(text) {
+  const matches = [];
+  for (const pattern of SENSITIVE_PATTERNS) {
+    pattern.expression.lastIndex = 0;
+    for (const match of text.matchAll(pattern.expression)) {
+      matches.push({ start: match.index, end: match.index + match[0].length, kind: pattern.kind });
+    }
+  }
+  matches.sort((left, right) => left.start - right.start || right.end - left.end);
+  const accepted = [];
+  let coveredUntil = -1;
+  for (const match of matches) {
+    if (match.start < coveredUntil) continue;
+    accepted.push(match);
+    coveredUntil = match.end;
+  }
+  if (accepted.length === 0) return { text, kinds: [] };
+  let cursor = 0;
+  let masked = "";
+  for (const match of accepted) {
+    masked += text.slice(cursor, match.start);
+    masked += `[REDACTED:${match.kind.toUpperCase()}]`;
+    cursor = match.end;
+  }
+  return { text: masked + text.slice(cursor), kinds: accepted.map((match) => match.kind) };
+}
+
+export function prepareSensitiveHandoff(conversationInput, selectedMessageIds) {
+  const conversation = canonicalConversationSchema.parse(conversationInput);
+  const selected = new Set(z.array(z.string().uuid()).min(1).parse(selectedMessageIds));
+  const counts = new Map();
+  const messages = conversation.messages.map((message) => {
+    if (!selected.has(message.id)) return message;
+    let changed = false;
+    const contentParts = message.contentParts.map((part) => {
+      if (part.type !== "text") return part;
+      const result = maskText(part.text);
+      for (const kind of result.kinds) counts.set(kind, (counts.get(kind) ?? 0) + 1);
+      if (result.text === part.text) return part;
+      changed = true;
+      return { ...part, text: result.text };
+    });
+    return changed ? { ...message, contentParts } : message;
+  });
+  return Object.freeze({
+    maskedConversation: counts.size > 0
+      ? canonicalConversationSchema.parse({ ...conversation, messages })
+      : conversation,
+    findings: [...counts.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([kind, count]) => Object.freeze({ kind, count }))
+  });
+}
+
 export const convertedHandoffSchema = z.object({
   request: z.record(z.string(), z.unknown()),
   warnings: z.array(z.string().min(1).max(300)).default([]),
@@ -175,6 +242,22 @@ export function createAiProviderGateway({ adapters, resolveCredential = async ()
   }
 
   return Object.freeze({
+    async listModels({ connection: connectionInput, signal } = {}) {
+      const connection = aiProviderConnectionSchema.parse(connectionInput);
+      const adapter = adapterFor(connection.providerType);
+      if (typeof adapter.listModels !== "function") throw new Error("provider_model_discovery_unsupported");
+      const credentialInput = connection.credentialReference
+        ? await resolveCredential(connection.credentialReference)
+        : null;
+      if (connection.credentialReference && !credentialInput) throw new Error("provider_credential_unavailable");
+      const credential = credentialInput === null
+        ? null
+        : z.string().min(1).max(10000).parse(credentialInput);
+      return z.array(providerModelSchema).max(1000).parse(
+        await adapter.listModels({ connection, credential, signal })
+      );
+    },
+
     async preview({ conversation: conversationInput, connection: connectionInput, modelId, sourceMessageId, selectedMessageIds, selectedAssetIds = [] }) {
       const conversation = canonicalConversationSchema.parse(conversationInput);
       const connection = aiProviderConnectionSchema.parse(connectionInput);
@@ -228,6 +311,44 @@ export function createAiProviderGateway({ adapters, resolveCredential = async ()
         ? null
         : z.string().min(1).max(10000).parse(credentialInput);
       return adapter.send({ connection, credential, request: converted.request, signal });
+    },
+
+    async stream({ conversation: conversationInput, connection: connectionInput, confirmed: confirmedInput, signal, onDelta }) {
+      const conversation = canonicalConversationSchema.parse(conversationInput);
+      const connection = aiProviderConnectionSchema.parse(connectionInput);
+      const confirmed = confirmedHandoffSchema.parse(confirmedInput);
+      if (confirmed.providerConnectionId !== connection.id || confirmed.providerType !== connection.providerType) {
+        throw new Error("handoff_connection_changed");
+      }
+      const selectedMessages = selectedBranch(conversation, confirmed);
+      if (await handoffContextHash(conversation.id, confirmed, selectedMessages) !== confirmed.payloadHash) {
+        throw new Error("handoff_context_changed_review_required");
+      }
+      const adapter = adapterFor(connection.providerType);
+      if (typeof adapter.stream !== "function") throw new Error("ai_provider_streaming_unsupported");
+      const capabilities = providerCapabilitiesSchema.parse(await adapter.describeCapabilities({ connection, modelId: confirmed.modelId }));
+      if (!capabilities.streaming) throw new Error("ai_provider_streaming_unsupported");
+      const converted = convertedHandoffSchema.parse(await adapter.convert({
+        connection, modelId: confirmed.modelId, messages: selectedMessages,
+        selectedAssetIds: confirmed.selectedAssetIds, capabilities
+      }));
+      if (await sha256Hex(converted.request) !== confirmed.outboundPayloadHash) {
+        throw new Error("handoff_payload_changed_review_required");
+      }
+      const credentialInput = connection.credentialReference
+        ? await resolveCredential(connection.credentialReference)
+        : null;
+      if (connection.credentialReference && !credentialInput) throw new Error("provider_credential_unavailable");
+      const credential = credentialInput === null
+        ? null
+        : z.string().min(1).max(10000).parse(credentialInput);
+      return adapter.stream({
+        connection,
+        credential,
+        request: converted.request,
+        signal,
+        onDelta: typeof onDelta === "function" ? onDelta : () => {}
+      });
     }
   });
 }
@@ -247,10 +368,45 @@ function endpoint(base, suffix) {
   return url.toString();
 }
 
-export function createOpenAiCompatibleAdapter({ fetchImpl = fetch, maximumResponseBytes = 10 * 1024 * 1024 } = {}) {
+export function createOpenAiCompatibleAdapter({
+  fetchImpl = fetch,
+  maximumResponseBytes = 10 * 1024 * 1024,
+  maximumModelResponseBytes = 1024 * 1024
+} = {}) {
   return Object.freeze({
+    async listModels({ connection, credential, signal }) {
+      const headers = { Accept: "application/json" };
+      if (credential) headers.Authorization = `Bearer ${credential}`;
+      let response;
+      try {
+        response = await fetchImpl(endpoint(connection.endpoint, "/models"), {
+          method: "GET", headers, signal
+        });
+      } catch {
+        throw new Error("ai_provider_unavailable");
+      }
+      const declaredLength = Number(response.headers.get("Content-Length"));
+      if (declaredLength > maximumModelResponseBytes) throw new Error("provider_model_response_too_large");
+      const raw = await response.text();
+      if (new TextEncoder().encode(raw).byteLength > maximumModelResponseBytes) {
+        throw new Error("provider_model_response_too_large");
+      }
+      if (!response.ok) {
+        throw new Error(response.status === 429 ? "ai_provider_rate_limited" : "provider_model_discovery_failed");
+      }
+      let value;
+      try { value = JSON.parse(raw); } catch { throw new Error("invalid_provider_model_response"); }
+      if (!Array.isArray(value?.data)) throw new Error("invalid_provider_model_response");
+      const identifiers = value.data.map((model) => model?.id);
+      if (identifiers.length > 1000 || identifiers.some((id) => typeof id !== "string" || id.length < 1 || id.length > 300)) {
+        throw new Error("invalid_provider_model_response");
+      }
+      return [...new Set(identifiers)]
+        .sort((left, right) => left.localeCompare(right))
+        .map((id) => ({ id, displayName: id }));
+    },
     async describeCapabilities() {
-      return { text: true, maximumContextUnits: 128000 };
+      return { text: true, streaming: true, maximumContextUnits: 128000 };
     },
     async convert({ modelId, messages, selectedAssetIds }) {
       const warnings = new Set();
@@ -261,7 +417,7 @@ export function createOpenAiCompatibleAdapter({ fetchImpl = fetch, maximumRespon
       }));
       const characters = convertedMessages.reduce((sum, message) => sum + message.content.length, 0);
       return {
-        request: { model: modelId, messages: convertedMessages, stream: false },
+        request: { model: modelId, messages: convertedMessages },
         warnings: [...warnings].sort(),
         estimatedInputUnits: Math.ceil(characters / 4),
         estimatedCostMinor: null,
@@ -274,7 +430,7 @@ export function createOpenAiCompatibleAdapter({ fetchImpl = fetch, maximumRespon
       let response;
       try {
         response = await fetchImpl(endpoint(connection.endpoint, "/chat/completions"), {
-          method: "POST", headers, body: JSON.stringify(request), signal
+          method: "POST", headers, body: JSON.stringify({ ...request, stream: false }), signal
         });
       } catch {
         throw new Error("ai_provider_unavailable");
@@ -291,6 +447,80 @@ export function createOpenAiCompatibleAdapter({ fetchImpl = fetch, maximumRespon
       return {
         providerResponseId: typeof value.id === "string" ? value.id : null,
         modelId: typeof value.model === "string" ? value.model : request.model,
+        contentParts: [{ type: "text", text: content }]
+      };
+    },
+    async stream({ connection, credential, request, signal, onDelta }) {
+      const headers = { "Content-Type": "application/json", Accept: "text/event-stream" };
+      if (credential) headers.Authorization = `Bearer ${credential}`;
+      let response;
+      try {
+        response = await fetchImpl(endpoint(connection.endpoint, "/chat/completions"), {
+          method: "POST", headers, body: JSON.stringify({ ...request, stream: true }), signal
+        });
+      } catch {
+        throw new Error(signal?.aborted ? "ai_provider_cancelled" : "ai_provider_unavailable");
+      }
+      if (!response.ok) throw new Error(response.status === 429 ? "ai_provider_rate_limited" : "ai_provider_request_failed");
+      if (!response.body) throw new Error("invalid_ai_provider_stream");
+      const contentType = response.headers.get("Content-Type")?.toLowerCase() ?? "";
+      if (!contentType.startsWith("text/event-stream")) throw new Error("invalid_ai_provider_stream");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      const encoder = new TextEncoder();
+      let buffer = "";
+      let totalBytes = 0;
+      let content = "";
+      let providerResponseId = null;
+      let responseModelId = request.model;
+
+      const consumeEvent = (event) => {
+        const data = event.split("\n")
+          .filter((line) => line.startsWith("data:"))
+          .map((line) => line.slice(5).trimStart())
+          .join("\n");
+        if (!data || data === "[DONE]") return data === "[DONE]";
+        let value;
+        try { value = JSON.parse(data); } catch { throw new Error("invalid_ai_provider_stream"); }
+        const delta = value?.choices?.[0]?.delta?.content;
+        if (delta !== undefined && typeof delta !== "string") throw new Error("invalid_ai_provider_stream");
+        if (typeof value?.id === "string") providerResponseId = value.id;
+        if (typeof value?.model === "string") responseModelId = value.model;
+        if (delta) {
+          content += delta;
+          if (encoder.encode(content).byteLength > maximumResponseBytes) throw new Error("ai_provider_response_too_large");
+          onDelta(delta);
+        }
+        return false;
+      };
+
+      try {
+        let doneEvent = false;
+        while (!doneEvent) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          totalBytes += chunk.value.byteLength;
+          if (totalBytes > maximumResponseBytes) throw new Error("ai_provider_response_too_large");
+          buffer += decoder.decode(chunk.value, { stream: true }).replaceAll("\r\n", "\n");
+          let boundary;
+          while ((boundary = buffer.indexOf("\n\n")) >= 0) {
+            const event = buffer.slice(0, boundary);
+            buffer = buffer.slice(boundary + 2);
+            doneEvent = consumeEvent(event);
+            if (doneEvent) break;
+          }
+        }
+        if (!content) throw new Error("invalid_ai_provider_stream");
+      } catch (error) {
+        if (signal?.aborted) throw new Error("ai_provider_cancelled");
+        throw error;
+      } finally {
+        reader.releaseLock();
+      }
+      return {
+        providerResponseId,
+        modelId: responseModelId,
         contentParts: [{ type: "text", text: content }]
       };
     }

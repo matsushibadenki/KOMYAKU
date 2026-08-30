@@ -57,6 +57,8 @@ When authentication routes are enabled, send the source JSON itself to `POST /ap
 
 The Desktop Conversation Archive view reviews a selected JSON file entirely on-device. It shows provider, counts, byte size, SHA-256, and at most five conversation titles without putting message bodies in the preview model. A partial result requires explicit acknowledgment of localized recovery notes. For Cloud storage, sign in, choose a workspace returned by the authenticated server, and confirm the byte and conversation counts. The exact in-memory bytes used for review are submitted. Passwords and session tokens remain memory-only, so reconnect after closing the app.
 
+Parser 1.1.0 uses deterministic Import Identity v1. Local review derives UUIDv5 identities in the `local` scope. Cloud import derives them in the target Workspace UUID scope, preventing the same export imported by different Workspaces from colliding. A future Cloud Handoff action must reparse the exact reviewed bytes with the selected Workspace scope; it must not reuse local-scope IDs or match messages by title or body text. Import record IDs remain separate audit identities.
+
 ## 简体中文
 
 通用导入器接受顶层消息数组，或包含 `messages` 的对象。省略 `parentId` 时会连接到上一条消息，设为 `null` 表示根消息，多条消息指向同一父消息可保留分支。系统会在解析前以不可变方式保存原始 UTF-8 字节。默认限制为 10 MiB 和 10,000 条消息。未知角色和内容片段会被保留，循环关系会被拒绝，可恢复的问题会生成 `partial` 导入结果。AI 训练策略默认仍为拒绝。

@@ -1,0 +1,16 @@
+{
+  "name": "@komyaku/preview-core",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": "./src/index.js",
+  "scripts": {
+    "build": "bun -e \"import('./src/index.js')\"",
+    "check": "bun test"
+  },
+  "dependencies": {
+    "@xmldom/xmldom": "^0.9.10",
+    "katex": "^0.16.22",
+    "mermaid": "11.17.2"
+  }
+}

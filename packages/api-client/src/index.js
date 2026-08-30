@@ -73,6 +73,31 @@ export function createApiClient({ baseUrl, fetchImpl = fetch }) {
           body: bytes
         }
       ));
+    },
+
+    async aiProviderConnections({ token, workspaceId }) {
+      return checked(await fetchImpl(
+        `${root}/workspaces/${encodeURIComponent(workspaceId)}/ai-provider-connections`,
+        { headers: bearer(token) }
+      ));
+    },
+
+    async persistAiHandoff({
+      token, workspaceId, conversationId, confirmed, responseMessage,
+      providerResponseId = null, completedAt, idempotencyKey
+    }) {
+      return checked(await fetchImpl(
+        `${root}/workspaces/${encodeURIComponent(workspaceId)}/conversations/${encodeURIComponent(conversationId)}/ai-handoffs`,
+        {
+          method: "POST",
+          headers: {
+            ...bearer(token),
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey
+          },
+          body: JSON.stringify({ confirmed, responseMessage, providerResponseId, completedAt })
+        }
+      ));
     }
   });
 }

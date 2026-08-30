@@ -6,7 +6,8 @@ import {
   confirmHandoff,
   createAiProviderGateway,
   createHandoffPreview,
-  createOpenAiCompatibleAdapter
+  createOpenAiCompatibleAdapter,
+  prepareSensitiveHandoff
 } from "../src/index.js";
 
 function fixture() {
@@ -167,6 +168,59 @@ describe("AI handoff review boundary", () => {
     });
   });
 
+  test("discovers a bounded model list with a credential resolved only at request time", async () => {
+    let request;
+    const gateway = createAiProviderGateway({
+      adapters: { "openai-compatible": createOpenAiCompatibleAdapter({
+        fetchImpl: async (url, init) => {
+          request = { url, init };
+          return new Response(JSON.stringify({
+            object: "list",
+            data: [{ id: "model-z" }, { id: "model-a" }, { id: "model-a" }]
+          }), { status: 200, headers: { "Content-Type": "application/json" } });
+        }
+      }) },
+      resolveCredential: async () => "discovery-secret"
+    });
+    const connection = {
+      id: crypto.randomUUID(), mode: "byok", providerType: "openai-compatible",
+      displayName: "My provider", endpoint: "https://api.example.test/v1",
+      credentialReference: "os-keyring:model-discovery"
+    };
+
+    const models = await gateway.listModels({ connection });
+
+    expect(models).toEqual([
+      { id: "model-a", displayName: "model-a" },
+      { id: "model-z", displayName: "model-z" }
+    ]);
+    expect(request.url).toBe("https://api.example.test/v1/models");
+    expect(request.init).toMatchObject({ method: "GET" });
+    expect(request.init.headers.Authorization).toBe("Bearer discovery-secret");
+    expect(JSON.stringify(models)).not.toContain("discovery-secret");
+  });
+
+  test("rejects oversized and malformed model discovery responses without exposing their body", async () => {
+    const connection = {
+      id: crypto.randomUUID(), mode: "local", providerType: "openai-compatible",
+      displayName: "Local", endpoint: "http://127.0.0.1:11434/v1"
+    };
+    const oversized = createAiProviderGateway({ adapters: {
+      "openai-compatible": createOpenAiCompatibleAdapter({
+        maximumModelResponseBytes: 8,
+        fetchImpl: async () => new Response('{"data":[]}', { status: 200 })
+      })
+    } });
+    await expect(oversized.listModels({ connection })).rejects.toThrow("response_too_large");
+
+    const malformed = createAiProviderGateway({ adapters: {
+      "openai-compatible": createOpenAiCompatibleAdapter({
+        fetchImpl: async () => new Response('{"secret":"do-not-echo"}', { status: 200 })
+      })
+    } });
+    await expect(malformed.listModels({ connection })).rejects.toThrow("invalid_provider_model_response");
+  });
+
   test("requires another review if canonical context changes after confirmation", async () => {
     const conversation = branchedFixture();
     const gateway = createAiProviderGateway({ adapters: { "openai-compatible": createOpenAiCompatibleAdapter() } });
@@ -190,5 +244,105 @@ describe("AI handoff review boundary", () => {
     };
     await expect(gateway.send({ conversation: changed, connection, confirmed }))
       .rejects.toThrow("context_changed_review_required");
+  });
+
+  test("masks selected-branch secrets without returning matched values or mutating the archive", () => {
+    const conversation = branchedFixture();
+    const secretText = "Contact writer@example.com with api_key=super-secret-value and sk-abcdefghijklmnop.";
+    const sensitive = {
+      ...conversation,
+      messages: conversation.messages.map((message) => message.id === conversation.second.id
+        ? { ...message, contentParts: [{ type: "text", text: secretText }] }
+        : message)
+    };
+
+    const prepared = prepareSensitiveHandoff(sensitive, [conversation.first.id, conversation.second.id]);
+    const masked = prepared.maskedConversation.messages.find((message) => message.id === conversation.second.id)
+      .contentParts[0].text;
+
+    expect(prepared.findings).toEqual([
+      { kind: "api_key", count: 1 },
+      { kind: "email", count: 1 },
+      { kind: "labeled_secret", count: 1 }
+    ]);
+    expect(JSON.stringify(prepared.findings)).not.toContain("writer@example.com");
+    expect(masked).not.toContain("writer@example.com");
+    expect(masked).not.toContain("super-secret-value");
+    expect(masked).not.toContain("sk-abcdefghijklmnop");
+    expect(sensitive.messages.find((message) => message.id === conversation.second.id).contentParts[0].text)
+      .toBe(secretText);
+  });
+
+  test("streams bounded SSE deltas and returns one complete continuation response", async () => {
+    const conversation = branchedFixture();
+    let outbound;
+    const chunks = [
+      'data: {"id":"stream-1","model":"writer-model","choices":[{"delta":{"content":"First "}}]}\n\n',
+      'data: {"id":"stream-1","model":"writer-model","choices":[{"delta":{"content":"second"}}]}\n\n',
+      "data: [DONE]\n\n"
+    ];
+    const adapter = createOpenAiCompatibleAdapter({
+      fetchImpl: async (_url, init) => {
+        outbound = JSON.parse(init.body);
+        return new Response(new ReadableStream({
+          start(controller) {
+            for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk));
+            controller.close();
+          }
+        }), { status: 200, headers: { "Content-Type": "text/event-stream" } });
+      }
+    });
+    const gateway = createAiProviderGateway({ adapters: { "openai-compatible": adapter } });
+    const connection = {
+      id: crypto.randomUUID(), mode: "local", providerType: "openai-compatible",
+      displayName: "Local", endpoint: "http://127.0.0.1:11434/v1"
+    };
+    const preview = await gateway.preview({
+      conversation, connection, modelId: "writer-model",
+      sourceMessageId: conversation.second.id,
+      selectedMessageIds: [conversation.first.id, conversation.second.id]
+    });
+    const confirmed = confirmHandoff(preview, {
+      expectedPayloadHash: preview.payloadHash, consentedBy: crypto.randomUUID()
+    });
+    const deltas = [];
+
+    const response = await gateway.stream({
+      conversation, connection, confirmed, onDelta: (delta) => deltas.push(delta)
+    });
+
+    expect(outbound.stream).toBe(true);
+    expect(deltas).toEqual(["First ", "second"]);
+    expect(response).toMatchObject({
+      providerResponseId: "stream-1",
+      modelId: "writer-model",
+      contentParts: [{ type: "text", text: "First second" }]
+    });
+  });
+
+  test("cancels an active stream without returning a partial response", async () => {
+    const controller = new AbortController();
+    let returned = false;
+    const adapter = createOpenAiCompatibleAdapter({
+      fetchImpl: async (_url, init) => new Response(new ReadableStream({
+        start(stream) {
+          stream.enqueue(new TextEncoder().encode(
+            'data: {"choices":[{"delta":{"content":"partial"}}]}\n\n'
+          ));
+          init.signal.addEventListener("abort", () => stream.error(new DOMException("Aborted", "AbortError")));
+        }
+      }), { status: 200, headers: { "Content-Type": "text/event-stream" } })
+    });
+
+    const promise = adapter.stream({
+      connection: { endpoint: "http://127.0.0.1:11434/v1" },
+      credential: null,
+      request: { model: "local", messages: [] },
+      signal: controller.signal,
+      onDelta: () => controller.abort()
+    }).then(() => { returned = true; });
+
+    await expect(promise).rejects.toThrow("ai_provider_cancelled");
+    expect(returned).toBe(false);
   });
 });

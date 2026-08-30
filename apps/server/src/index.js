@@ -8,6 +8,7 @@ import { createOutboxRepository } from "./repositories/outbox-repository.js";
 import { createJobRepository } from "./repositories/job-repository.js";
 import { createConversationArchiveRepository } from "./repositories/conversation-archive-repository.js";
 import { createConversationImportRepository } from "./repositories/conversation-import-repository.js";
+import { createCloudAiHandoffRepository } from "./repositories/cloud-ai-handoff-repository.js";
 import { createIdempotencyRepository } from "./repositories/idempotency-repository.js";
 import { createAssetDeliveryRepository } from "./repositories/asset-delivery-repository.js";
 import { createAuthRateLimitService } from "./services/auth-rate-limit-service.js";
@@ -17,11 +18,13 @@ import { createJobRunner } from "./services/job-runner.js";
 import { createConversationArchiveVerificationHandler } from "./services/conversation-archive-verification.js";
 import { createNotificationDeliveryHandler } from "./services/notification-delivery-handler.js";
 import { createConversationImportService } from "./services/conversation-import-service.js";
+import { createCloudAiHandoffService } from "./services/cloud-ai-handoff-service.js";
 import { createIdempotencyService } from "./services/idempotency-service.js";
 import { createAssetDeliveryService } from "./services/asset-delivery-service.js";
 import { createObjectStore, createS3Client } from "@komyaku/storage-core";
 import { createAuthRoutes } from "./routes/auth-routes.js";
 import { createConversationImportRoutes } from "./routes/conversation-import-routes.js";
+import { createCloudAiHandoffRoutes } from "./routes/cloud-ai-handoff-routes.js";
 import { createAssetRoutes } from "./routes/asset-routes.js";
 import { workspaceConversationImportAuthorizer } from "./middleware/session-auth.js";
 import { createNetworkIdentifierResolver } from "./security/network-identifier.js";
@@ -45,6 +48,7 @@ let notificationService = null;
 let authRoutes = null;
 let assetRoutes = null;
 let conversationImportRoutes = null;
+let cloudAiHandoffRoutes = null;
 let outboxDispatcher = null;
 let jobRunner = null;
 let objectStorageClient = null;
@@ -141,6 +145,16 @@ if (config.authRoutesEnabled) {
     }),
     authorizeImport
   });
+  const handoffRepository = createCloudAiHandoffRepository(database.sql);
+  cloudAiHandoffRoutes = createCloudAiHandoffRoutes({
+    identityService,
+    service: createCloudAiHandoffService({ repository: handoffRepository }),
+    repository: handoffRepository,
+    idempotencyService: createIdempotencyService({
+      repository: createIdempotencyRepository(database.sql),
+      secret: config.idempotencySecret
+    })
+  });
 }
 
 const corsOrigins = [...config.corsOrigins];
@@ -151,6 +165,7 @@ const { app, runtimeState } = createApp({
   authRoutes,
   assetRoutes,
   conversationImportRoutes,
+  cloudAiHandoffRoutes,
   corsOrigins,
   aiTrainingDefault: config.aiTrainingDefault,
   log,

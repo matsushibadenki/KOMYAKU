@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { inspectConversationExport } from "../../src/services/conversation-import-preview.js";
 
 const DRAFT_KEY = "komyaku:local-draft:00000000-0000-4000-8000-000000000001";
 
@@ -83,8 +84,26 @@ test("keeps controls readable without horizontal overflow", async ({ page }) => 
   }
 });
 
-test("previews a provider export locally before cloud import", async ({ page }) => {
+test("reviews, masks, and completes an exact streamed AI handoff", async ({ page }) => {
   await openCleanWorkbench(page);
+  await page.route("http://127.0.0.1:11434/v1/models", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ data: [{ id: "writer-z" }, { id: "writer-a" }] })
+  }));
+  await page.route("http://127.0.0.1:11434/v1/chat/completions", (route) => route.fulfill({
+    status: 200,
+    contentType: "text/event-stream",
+    body: [
+      'data: {"id":"desktop-stream","model":"writer-z","choices":[{"delta":{"content":"Safe "}}]}',
+      '',
+      'data: {"id":"desktop-stream","model":"writer-z","choices":[{"delta":{"content":"continuation"}}]}',
+      '',
+      'data: [DONE]',
+      '',
+      ''
+    ].join("\n")
+  }));
   const content = JSON.stringify([{
     id: "conversation-1",
     title: "Import preview",
@@ -92,7 +111,7 @@ test("previews a provider export locally before cloud import", async ({ page }) 
       root: { id: "root", parent: null, children: ["message"], message: null },
       message: {
         id: "message", parent: "root", children: [],
-        message: { author: { role: "user" }, content: { parts: ["private source text"] } }
+        message: { author: { role: "user" }, content: { parts: ["private source text for writer@example.com with sk-abcdefghijklmnop"] } }
       }
     }
   }]);
@@ -103,16 +122,48 @@ test("previews a provider export locally before cloud import", async ({ page }) 
     buffer: Buffer.from(content)
   });
 
-  await expect(page.getByText("Import preview")).toBeVisible();
   await expect(page.locator(".import-summary strong").filter({ hasText: "ChatGPT" })).toBeVisible();
   await expect(page.getByText("レビュー完了")).toBeVisible();
-  await expect(page.getByText("private source text")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: /確認した会話から.*新しい分岐/ })).toBeVisible();
+  await expect(page.locator(".handoff-context").getByText(/writer@example.com/)).toBeVisible();
+  const sensitiveNotice = page.locator(".handoff-sensitive");
+  await expect(sensitiveNotice.getByText("送信対象に秘密情報の候補があります")).toBeVisible();
+  await expect(sensitiveNotice).not.toContainText("writer@example.com");
+  await page.getByLabel(/検出候補を送信用Copyでマスク/).check();
+  await expect(page.locator(".handoff-context")).toContainText("[REDACTED:EMAIL]");
+  await expect(page.locator(".handoff-context")).toContainText("[REDACTED:API_KEY]");
+  await expect(page.locator(".handoff-context")).not.toContainText("writer@example.com");
+
+  await page.getByRole("button", { name: "この接続を使用" }).click();
+  await expect(page.getByText(/Local compatible API.*local-model/)).toBeVisible();
+  await page.getByRole("button", { name: "ProviderからModelを取得" }).click();
+  await expect(page.getByLabel("取得したModel")).toHaveValue("writer-a");
+  await page.getByLabel("取得したModel").selectOption("writer-z");
+  await expect(page.getByText(/Local compatible API.*writer-z/)).toBeVisible();
+  await page.getByRole("button", { name: "送信内容を生成してレビュー" }).click();
+
+  await expect(page.getByText("http://127.0.0.1:11434/v1")).toBeVisible();
+  await expect(page.locator(".handoff-review").getByText("writer-z")).toBeVisible();
+  await expect(page.getByText("Context SHA-256")).toBeVisible();
+  await expect(page.getByText("Outbound SHA-256")).toBeVisible();
+  const send = page.getByRole("button", { name: "確認済み内容をAIへ送信" });
+  await expect(send).toBeDisabled();
+  await page.getByLabel(/表示された1 MessageをLocal compatible API/).check();
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect(page.getByText(/Memoryへ追加しました/)).toBeVisible();
+  await expect(page.locator(".handoff-context")).toContainText("Safe continuation");
+
+  const stored = await page.evaluate(() => JSON.stringify({
+    local: { ...localStorage },
+    session: { ...sessionStorage }
+  }));
+  expect(stored).not.toContain("apiKey");
 });
 
 test("connects an authenticated workspace and submits the exact reviewed bytes after confirmation", async ({ page }) => {
   const workspaceId = "0198d0aa-0000-7000-8000-000000000010";
   const importId = "0198d0aa-0000-7000-8000-000000000011";
-  const conversationId = "0198d0aa-0000-7000-8000-000000000012";
   const content = JSON.stringify([{
     id: "conversation-cloud",
     title: "Exact cloud import",
@@ -124,6 +175,10 @@ test("connects an authenticated workspace and submits the exact reviewed bytes a
       }
     }
   }]);
+  const cloudInspection = await inspectConversationExport(Buffer.from(content), "auto", {
+    identityScope: workspaceId
+  });
+  const conversationId = cloudInspection.canonicalConversations[0].id;
   let importedRequest = null;
 
   await page.route("http://127.0.0.1:3000/api/v1/**", async (route) => {

@@ -35,7 +35,10 @@ docker run --rm komyaku-server:bun-1.4.0 bun --version
 
 ```sh
 RUN_DB_INTEGRATION=1 bun test apps/server/test/integration/conversation-import-repository.integration.test.js
+RUN_DB_INTEGRATION=1 bun test apps/server/test/integration/cloud-ai-handoff-repository.integration.test.js
 ```
+
+Cloud AI Handoff統合テストはMigration 0011適用後に実行し、専用User、Workspace、Conversation、Provider Connectionを作成する。正常終了時も失敗時もFixtureのIDに限定して削除し、既存ConversationやProvider Connectionを変更しない。
 
 環境変数や秘密鍵をGitへCommitしない。`.env.example`には開発用の例だけを記載し、本番Credentialを保存しない。
 

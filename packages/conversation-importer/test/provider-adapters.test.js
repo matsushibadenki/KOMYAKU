@@ -88,6 +88,22 @@ describe("provider conversation export adapters", () => {
     expect(new Set(provenances.map((value) => value.sourceHash)).size).toBe(1);
   });
 
+  test("produces the same provider Conversation and Message IDs in independent parses", async () => {
+    for (const [name, importer] of [
+      ["chatgpt-conversations.json", importChatGptExport],
+      ["claude-conversations.json", importClaudeExport],
+      ["gemini-conversations.json", importGeminiExport],
+      ["gemini-my-activity.json", importGeminiExport]
+    ]) {
+      const raw = await fixture(name);
+      const first = await importer(raw, { importId: crypto.randomUUID() });
+      const second = await importer(raw, { importId: crypto.randomUUID() });
+      expect(second.conversations.map(({ id }) => id)).toEqual(first.conversations.map(({ id }) => id));
+      expect(second.conversations.map((conversation) => conversation.messages.map(({ id }) => id)))
+        .toEqual(first.conversations.map((conversation) => conversation.messages.map(({ id }) => id)));
+    }
+  });
+
   test("rejects an empty provider export", async () => {
     await expect(importChatGptExport("[]")).rejects.toThrow("no conversations");
   });

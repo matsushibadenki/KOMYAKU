@@ -34,8 +34,8 @@ The repository already contains working infrastructure, schemas, security bounda
 | Identity and sessions | Implemented domain layer | Argon2id passwords, hashed sessions, revocation, verification/reset tokens |
 | Distributed authentication rate limits | Implemented domain layer | PostgreSQL-shared counters with HMAC-protected identifiers |
 | Conversation archive | Implemented foundation | Canonical DAG, generic JSON importer, immutable raw archive service |
-| Authenticated conversation import API | Implemented, gated | Idempotent raw JSON POST and membership-checked status GET |
-| AI handoff | Local/BYOK gateway foundation | Single-branch review, context and outbound hashes, bounded compatible-API transport, and continuation branches; Desktop sending UI is not enabled |
+| Authenticated conversation import API | Implemented, gated | Idempotent raw JSON POST, membership-checked status GET, and Workspace-scoped deterministic Canonical identities |
+| AI handoff | Desktop and Cloud persistence foundation | Exact single-branch disclosure, masking, dual hashes, Local/BYOK setup, OS-secured API keys, bounded streaming, atomic local persistence, a metadata-only local library, and an authenticated idempotent Cloud completion API |
 | Public authentication endpoints | Implemented, disabled by default | SMTP delivery and rate-limited routes exist behind an explicit production feature gate |
 | Document editing UI and Version Graph | Editor feasibility implemented; graph planned | Two-replica browser workbench exists; persistence, final product workflow, and Version Graph remain incomplete |
 | Public/restricted/unlisted sharing | Designed | Database and policy model are planned; public APIs are not yet exposed |
@@ -195,7 +195,7 @@ AI handoff is designed only for official APIs, user-configured compatible endpoi
 
 Sending context to an AI provider and allowing data to be used for model training are separate permissions.
 
-See [docs/guides/conversation-json-import.md](docs/guides/conversation-json-import.md) and [docs/architecture/conversation-archive-and-ai-handoff.md](docs/architecture/conversation-archive-and-ai-handoff.md).
+See [docs/guides/conversation-json-import.md](docs/guides/conversation-json-import.md), [docs/guides/ai-handoff.md](docs/guides/ai-handoff.md), and [docs/architecture/conversation-archive-and-ai-handoff.md](docs/architecture/conversation-archive-and-ai-handoff.md).
 
 ## Local and cloud product model
 
@@ -319,6 +319,7 @@ packages/
 ├── document-schema/          Canonical document boundary
 ├── editor-core/              ProseMirror schema foundation
 ├── i18n/                     en, ja, and zh-Hans resources
+├── preview-core/             Isolated static preview policy and bounded LaTeX rendering
 ├── shared/                   Cross-runtime policies and constants
 ├── storage-core/             S3-compatible immutable storage
 ├── sync-core/                Offline/cloud synchronization boundary

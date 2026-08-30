@@ -57,7 +57,11 @@ Stage status: [Done] Identity engineering complete; production launch gates rema
 - [Done] Bounded Asset orphan reconciliation and audited reference-zero quarantine/retention GC foundation
 - [Done] Leased media inspection state machine, conservative signature policy, and authenticated short-lived attachment reads
 - [Next] Production malware scanner, inline preview isolation, published/archive/legal holds, and quota metering
-- [Next] Secure isolated renderers for Math/LaTeX, Mermaid/SVG, images, and PDF previews
+- [Done] Deny-by-default static preview Descriptor and sandboxed iframe boundary, plus bounded script-free KaTeX-to-MathML rendering for untrusted LaTeX
+- [Done] Bounded Basic SVG XML parser and new-document allowlist sanitizer excluding active content, foreign namespaces, events, styles, animation, and external resources
+- [Done] Pinned Mermaid 11.17.2 parser and isolated Renderer Adapter contract with fixed secure configuration, authored-config/interaction/style rejection, budgets, and mandatory SVG re-sanitization
+- [Done] Capability-minimized hidden Mermaid WebView with explicit Tauri application-command ACL, event-only bounded transport, lazy renderer loading, timeout/backpressure, and mandatory SVG re-sanitization
+- [Next] Packaged Mermaid sensitive-command denial, adversarial load, timeout/recovery QA and editor integration; then isolated accepted-image and PDF previews using the gates in `docs/architecture/isolated-content-previews.md`
 - [Done] Structured editor feasibility view, validated Canonical local autosave, page/app restart recovery, and Japanese/English/Simplified Chinese UI
 - [Next] Asset insertion, accessible captions/alt text authoring, and production document-management workflow
 - [Done] Headless Yjs and `y-prosemirror` working-state foundation covering concurrent convergence, state-vector offline rejoin, stable Node IDs, deterministic Canonical checkpoints, bounded updates, and selective local undo
@@ -137,5 +141,17 @@ Stage status: [Done] Identity engineering complete; production launch gates rema
 - [Done] Authenticated Workspace connection and explicit confirmation that submits the reviewed exact bytes to the Cloud import API
 - [Done] Opt-in durable Tauri session storage through OS credential stores, startup revalidation, revocation handling, and a persisted threat model
 - [Done] Local/BYOK AI provider gateway foundation with single-branch selection, dual review hashes, bounded OpenAI-compatible transport, and immutable continuation branches
-- [Next] Desktop AI Handoff review UI, OS-secured Provider credential registration, model discovery, streaming cancellation, and transactional branch persistence
+- [Done] Desktop AI Handoff review UI with exact single-branch disclosure, dual hashes, explicit one-send consent, Local/BYOK connection setup, and OS-secured Provider credential registration
+- [Done] Bounded OpenAI-compatible Provider model discovery with send-time credential resolution, duplicate removal, localized selection UI, and manual Model ID fallback
+- [Done] On-device selected-branch sensitive-data detection with value-free findings, explicit outbound-copy masking, immutable archive preservation, and localized review UI
+- [Done] Bounded OpenAI-compatible SSE streaming with incremental Desktop display, Abort cancellation, strict event validation, and complete-response-only branch creation
+- [Done] Packaged Tauri transactional persistence of completed AI Handoff, assistant Message, `ai_continuation` Edge, and Canonical Conversation in one SQLite commit, with idempotent replay and save-only retry
+- [Done] Privacy-bounded Local Conversation library with startup enumeration, metadata-only summaries, explicit one-conversation loading, and validated Canonical restoration
+- [Done] Cloud PostgreSQL transactional persistence foundation for completed Handoff, assistant Message, continuation Edge, dual hashes, Conversation timestamp, and ID-only Outbox event, with in-transaction authorization and Branch validation
+- [Done] Authenticated, 1 MiB-bounded, no-store, idempotent Cloud Handoff API with workspace-scoped replay lookup and stable authorization/conflict errors
+- [Done] Real PostgreSQL Cloud Handoff integration coverage for migration 0011, atomic Message／Edge／Handoff／Outbox commit, UUID array encoding, and idempotent replay
+- [Done] Workspace-scoped deterministic UUIDv5 import identity v1 across Generic JSON, ChatGPT, Claude, structured Gemini, and Gemini My Activity, with Parser 1.1.0 and cross-Workspace collision isolation
+- [Done] Desktop opt-in Cloud synchronization using an exact-byte Workspace-scoped reparse, explicit metadata-only Cloud Provider Connection selection, Local-first persistence, and idempotent Cloud save-only retry
+- [Done] File-backed SQLite close/reopen regression for completed AI Handoff recovery, with metadata and Canonical Branch verification
+- [Next] Interactive packaged-app quit/relaunch and native credential-store QA on macOS, Windows, and Linux; use `docs/testing/ai-handoff-restart-recovery.md`
 - [Later] Managed AI credits and Workspace AI connections

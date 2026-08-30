@@ -18,7 +18,7 @@ function importerFor(provider) {
   return null;
 }
 
-export async function previewConversationExport(input, providerOption = "auto") {
+export async function inspectConversationExport(input, providerOption = "auto", { identityScope = "local" } = {}) {
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   if (!CONVERSATION_PROVIDER_OPTIONS.includes(providerOption)) {
     throw new Error("unsupported_provider");
@@ -30,13 +30,13 @@ export async function previewConversationExport(input, providerOption = "auto") 
   if (provider === "auto") provider = detectConversationExportProvider(bytes) ?? "generic";
   const importer = importerFor(provider);
   const parsed = importer
-    ? await importer(bytes, { maxBytes: DEFAULT_MAX_IMPORT_BYTES })
+    ? await importer(bytes, { identityScope, maxBytes: DEFAULT_MAX_IMPORT_BYTES })
     : await importGenericJsonConversation(bytes, {
-      sourceProvider: "generic", maxBytes: DEFAULT_MAX_IMPORT_BYTES
+      sourceProvider: "generic", identityScope, maxBytes: DEFAULT_MAX_IMPORT_BYTES
     });
   const conversations = parsed.conversations ?? [parsed.conversation];
 
-  return Object.freeze({
+  const preview = Object.freeze({
     provider,
     sourceHash: parsed.sourceHash,
     status: parsed.status,
@@ -54,4 +54,9 @@ export async function previewConversationExport(input, providerOption = "auto") 
       }, new Map()).values()].filter((count) => count > 1).length
     })))
   });
+  return Object.freeze({ preview, canonicalConversations: Object.freeze([...conversations]) });
+}
+
+export async function previewConversationExport(input, providerOption = "auto") {
+  return (await inspectConversationExport(input, providerOption)).preview;
 }

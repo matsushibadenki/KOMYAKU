@@ -1,7 +1,7 @@
 # Conversation ArchiveとAI Handoff Architecture
 
-- Status: Import and Local/BYOK gateway foundations implemented
-- Updated: 2026-08-28
+- Status: Import, Local/BYOK gateway, Desktop explicit review, streaming, and local transactional continuation persistence implemented
+- Updated: 2026-08-30
 
 ## 1. Goal
 
@@ -221,6 +221,30 @@ AdapterはProvider固有PayloadをCanonical Schemaへ漏らさない。未知Fie
 `@komyaku/ai-gateway`はLocal loopback endpointとHTTPS BYOK endpointを区別する。ConnectionはCredential Referenceだけを持ち、秘密値は送信直前に解決する。選択範囲は一つの連続Branchに限定し、Canonical Context Hashと変換後Outbound Payload Hashを別々に確認する。
 
 初期OpenAI-compatible AdapterはText MessageをJSONへ変換し、未対応PartとAssetをWarningとしてReview対象へ含める。応答本文とContent-Lengthに上限を設け、Provider Error本文を保持しない。成功応答はContinuation元をParentとする`ai_continuation` Branchへ追加する。
+
+### 5.2 Implemented Desktop review boundary
+
+DesktopはImport Review後のCanonical ConversationをMemoryで受け取り、選択地点までの単一Parent Chainを本文付きで表示する。Connection設定をDomain Schemaで検証してから、LocalはLoopback、BYOKはHTTPSへ限定する。BYOK Secretは固定Tauri Commandを通してOS Credential Storeの`ai-provider-<uuid>` accountへ保存し、Web Storage fallbackを設けない。
+
+Provider変換後にEndpoint、Model、Message数、推定入力単位、Warning、Canonical Context Hash、Outbound Payload Hashを表示する。表示内容に対するCheckbox ConsentとSend操作を分離する。
+
+OpenAI-compatible Model discoveryは同じValidated ConnectionとCredential Resolverを使い、`GET /models`を明示操作時だけ実行する。Responseを1 MiB、1,000 Model、各ID 300文字へ制限し、重複を除いた安定順で表示する。失敗時は手入力Model IDを維持する。
+
+Sensitive Handoff Scanは選択BranchのText Partだけを端末内で調べ、Finding KindとCountだけをUIへ返す。UserがMaskを選んだ場合は一時Outbound Copyへ型付きPlaceholderを挿入し、そのCopyからContext HashとOutbound Hashを生成する。Import原本は変更せず、Continuationは元Conversationへ追加する。
+
+OpenAI-compatible StreamingはReview済みのModel／Message PayloadへTransport-only `stream: true`を加え、SSE `data:` Deltaを上限付きで処理する。Desktopは受信中TextをTransient表示するが、正常完了したResponseだけを`ai_continuation`へ変換する。Abort、Malformed Event、Size超過時は一時Textを破棄し、Graphを変更しない。
+
+### 5.3 Implemented local transaction boundary
+
+正常完了後、Packaged TauriはCanonical Conversation、Message、Edge、completed HandoffをSQLiteの単一Transactionへ保存する。Native CommandはJavaScript側の事前Validationを信頼せず、Schema Version、UUID、Hash、Message一意性、Edge参照、Handoffと結果Branchの対応を再検証する。
+
+同一Handoff IDと同一結果の再保存は成功扱いとし、異なる内容へのID再利用はConflictで全Rollbackする。保存失敗時は完成済みBranchをMemoryに保持して保存だけを再試行するため、Providerへの重複送信を起こさない。Browser PreviewはMemory-onlyであり、Conversation本文をWeb Storageへ退避しない。同じConversation IDが再度読み込まれた時は保存済みCanonical JSONを復元する。
+
+Local Conversation Libraryは起動時に最大100件のID、Title、Message数、更新日時だけを更新日時降順で列挙する。Conversation本文を一覧Commandへ含めず、Userが明示的に選択した1件だけを固定Commandで取得し、JavaScript境界のCanonical Schemaで再検証してからAI Handoffへ渡す。これによりApp再起動後も保存済みConversationを発見できる一方、一覧表示だけで全本文をProcess間転送しない。
+
+### 5.4 Cloud transaction foundation
+
+CloudではClientからConversation全体の上書きを受け取らず、Confirmed Handoffと一つのAssistant Messageだけを入力境界とする。PostgreSQL Transaction内でConversationとMembershipをLockし、Actor、Provider Connection所有権、選択Message、連続Edge、Source終端を再検証する。その後Message、`ai_continuation` Edge、dual-hash Handoff、Conversation更新日時、本文を含まないOutbox Eventを原子的に保存する。同一Handoff／同一結果はReplayとし、異なる結果はConflictにする。HTTP RouteはSession、1 MiB Body上限、Idempotency Key、Path Conversation ID一致、no-storeを必須とし、ReplayもActor／Workspace Scopeで再取得する。Desktop同期は明示的Opt-in UIを完成後に接続する。詳細は`docs/adr/ADR-048-cloud-transactional-ai-handoff-persistence.md`を正本とする。
 
 ## 6. Handoff Review
 

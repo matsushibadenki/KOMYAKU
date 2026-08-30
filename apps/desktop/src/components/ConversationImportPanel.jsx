@@ -2,10 +2,12 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   CONVERSATION_PROVIDER_OPTIONS,
-  previewConversationExport
+  inspectConversationExport
 } from "../services/conversation-import-preview.js";
 import { cloudApiClient } from "../services/cloud-api.js";
 import { secureSessionStore } from "../services/secure-session.js";
+import { AiHandoffPanel } from "./AiHandoffPanel.jsx";
+import { LocalConversationLibrary } from "./LocalConversationLibrary.jsx";
 
 function previewErrorCode(error) {
   if (["unsupported_provider", "empty_file", "file_too_large"].includes(error?.message)) return error.message;
@@ -21,6 +23,9 @@ export function ConversationImportPanel({ apiClient = cloudApiClient, sessionSto
   const [provider, setProvider] = useState("auto");
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [canonicalConversations, setCanonicalConversations] = useState([]);
+  const [cloudCanonicalConversations, setCloudCanonicalConversations] = useState([]);
+  const [localConversationKey, setLocalConversationKey] = useState(null);
   const [status, setStatus] = useState("idle");
   const [errorCode, setErrorCode] = useState(null);
   const [warningsReviewed, setWarningsReviewed] = useState(false);
@@ -75,6 +80,9 @@ export function ConversationImportPanel({ apiClient = cloudApiClient, sessionSto
     const sequence = ++inspectionSequence.current;
     setFile(nextFile);
     setPreview(null);
+    setCanonicalConversations([]);
+    setCloudCanonicalConversations([]);
+    setLocalConversationKey(null);
     setSourceBytes(null);
     setWarningsReviewed(false);
     setCloudConsent(false);
@@ -89,9 +97,10 @@ export function ConversationImportPanel({ apiClient = cloudApiClient, sessionSto
     setStatus("reading");
     try {
       const bytes = new Uint8Array(await nextFile.arrayBuffer());
-      const result = await previewConversationExport(bytes, nextProvider);
+      const inspected = await inspectConversationExport(bytes, nextProvider);
       if (sequence !== inspectionSequence.current) return;
-      setPreview(result);
+      setPreview(inspected.preview);
+      setCanonicalConversations(inspected.canonicalConversations);
       setSourceBytes(bytes);
       setStatus("ready");
     } catch (error) {
@@ -177,7 +186,16 @@ export function ConversationImportPanel({ apiClient = cloudApiClient, sessionSto
         sourceProvider: provider,
         idempotencyKey: idempotencyKey.current
       });
+      const aligned = await inspectConversationExport(sourceBytes, provider, { identityScope: workspaceId });
+      const alignedIds = aligned.canonicalConversations.map(({ id }) => id);
+      if (JSON.stringify(alignedIds) !== JSON.stringify(result.conversationIds ?? [])) {
+        setCloudError("cloud_identity_mismatch");
+        setCloudCanonicalConversations([]);
+        setCloudStatus("connected");
+        return;
+      }
       setImportResult(result);
+      setCloudCanonicalConversations([...aligned.canonicalConversations]);
       setCloudStatus("imported");
     } catch (error) {
       if (error?.status === 401) {
@@ -302,6 +320,11 @@ export function ConversationImportPanel({ apiClient = cloudApiClient, sessionSto
       </div>
       <p className="import-privacy">{t("conversationImport.privacy")}</p>
 
+      <LocalConversationLibrary onOpen={(conversation) => {
+        setCanonicalConversations([conversation]);
+        setLocalConversationKey(conversation.id);
+      }} />
+
       <div className="cloud-boundary" aria-labelledby="cloud-import-title">
         <div className="cloud-heading">
           <div>
@@ -412,6 +435,18 @@ export function ConversationImportPanel({ apiClient = cloudApiClient, sessionSto
           cloudStatus === "restoring" ? "sessionRestoring" : sessionPersistence === "secure" ? "sessionSecure" : "sessionMemoryOnly"
         }`)}</p>
       </div>
+      {(reviewed || localConversationKey) && canonicalConversations.length > 0 ? (
+        <AiHandoffPanel
+          key={localConversationKey ?? `${preview.sourceHash}:${provider}`}
+          conversations={canonicalConversations}
+          cloudSync={session && importResult && cloudCanonicalConversations.length ? {
+            apiClient,
+            token: session.token,
+            workspaceId,
+            conversations: cloudCanonicalConversations
+          } : null}
+        />
+      ) : null}
     </section>
   );
 }

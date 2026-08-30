@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { previewConversationExport } from "../src/services/conversation-import-preview.js";
+import { inspectConversationExport, previewConversationExport } from "../src/services/conversation-import-preview.js";
 
 function chatGptExport() {
   return new TextEncoder().encode(JSON.stringify([{
@@ -41,5 +41,18 @@ describe("conversation export local preview", () => {
     await expect(previewConversationExport(new Uint8Array())).rejects.toThrow("empty_file");
     await expect(previewConversationExport(new Uint8Array(10 * 1024 * 1024 + 1))).rejects.toThrow("file_too_large");
     await expect(previewConversationExport(chatGptExport(), "claude")).rejects.toThrow("chat_messages");
+  });
+
+  test("can derive a Workspace-scoped Cloud identity without changing the reviewed bytes", async () => {
+    const bytes = new TextEncoder().encode(JSON.stringify([
+      { id: "root", role: "user", content: "same source" }
+    ]));
+    const workspaceId = crypto.randomUUID();
+    const local = await inspectConversationExport(bytes, "generic");
+    const cloudFirst = await inspectConversationExport(bytes, "generic", { identityScope: workspaceId });
+    const cloudSecond = await inspectConversationExport(bytes, "generic", { identityScope: workspaceId });
+    expect(cloudFirst.preview.sourceHash).toBe(local.preview.sourceHash);
+    expect(cloudFirst.canonicalConversations[0].id).toBe(cloudSecond.canonicalConversations[0].id);
+    expect(cloudFirst.canonicalConversations[0].id).not.toBe(local.canonicalConversations[0].id);
   });
 });

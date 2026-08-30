@@ -103,10 +103,12 @@ export function createConversationImportService({
     try {
       const providerImporter = importerFor(sourceProvider);
       if (providerImporter) {
-        parsed = await providerImporter(bytes, { importId, maxBytes: maxImportBytes });
+        parsed = await providerImporter(bytes, {
+          importId, identityScope: request.workspaceId, maxBytes: maxImportBytes
+        });
       } else {
         const single = await importGenericJsonConversation(bytes, {
-          importId, conversationId: uuidv7(), sourceProvider, maxBytes: maxImportBytes
+          importId, identityScope: request.workspaceId, sourceProvider, maxBytes: maxImportBytes
         });
         parsed = { ...single, provider: sourceProvider, conversations: [single.conversation] };
       }

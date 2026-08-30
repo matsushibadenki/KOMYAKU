@@ -177,6 +177,126 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the delete_cloud_session command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-delete-cloud-session",
+          "markdownDescription": "Enables the delete_cloud_session command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the delete_provider_credential command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-delete-provider-credential",
+          "markdownDescription": "Enables the delete_provider_credential command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the list_local_conversations command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-list-local-conversations",
+          "markdownDescription": "Enables the list_local_conversations command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the load_cloud_session command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-load-cloud-session",
+          "markdownDescription": "Enables the load_cloud_session command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the load_local_conversation command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-load-local-conversation",
+          "markdownDescription": "Enables the load_local_conversation command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the load_provider_credential command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-load-provider-credential",
+          "markdownDescription": "Enables the load_provider_credential command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the save_local_ai_handoff_atomic command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-save-local-ai-handoff-atomic",
+          "markdownDescription": "Enables the save_local_ai_handoff_atomic command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the save_local_draft_atomic command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-save-local-draft-atomic",
+          "markdownDescription": "Enables the save_local_draft_atomic command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the store_cloud_session command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-store-cloud-session",
+          "markdownDescription": "Enables the store_cloud_session command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the store_provider_credential command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-store-provider-credential",
+          "markdownDescription": "Enables the store_provider_credential command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the delete_cloud_session command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-delete-cloud-session",
+          "markdownDescription": "Denies the delete_cloud_session command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the delete_provider_credential command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-delete-provider-credential",
+          "markdownDescription": "Denies the delete_provider_credential command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the list_local_conversations command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-list-local-conversations",
+          "markdownDescription": "Denies the list_local_conversations command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the load_cloud_session command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-load-cloud-session",
+          "markdownDescription": "Denies the load_cloud_session command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the load_local_conversation command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-load-local-conversation",
+          "markdownDescription": "Denies the load_local_conversation command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the load_provider_credential command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-load-provider-credential",
+          "markdownDescription": "Denies the load_provider_credential command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the save_local_ai_handoff_atomic command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-save-local-ai-handoff-atomic",
+          "markdownDescription": "Denies the save_local_ai_handoff_atomic command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the save_local_draft_atomic command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-save-local-draft-atomic",
+          "markdownDescription": "Denies the save_local_draft_atomic command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the store_cloud_session command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-store-cloud-session",
+          "markdownDescription": "Denies the store_cloud_session command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the store_provider_credential command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-store-provider-credential",
+          "markdownDescription": "Denies the store_provider_credential command without any pre-configured scope."
+        },
+        {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",
           "type": "string",
           "const": "core:default",
