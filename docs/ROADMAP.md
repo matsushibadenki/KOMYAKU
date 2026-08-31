@@ -84,7 +84,8 @@ Stage status: [Done] Identity engineering complete; production launch gates rema
 - [Done] Export-gated Asset retention safety with digest-bound verified export/archive evidence, evidence invalidation, publication/legal holds, fail-closed SQL claims, defense-in-depth purge capability, audited operator controls, and disabled automatic orphan deletion
 - [Done] Automated open `.komyaku` v1 export with deterministic store-only ZIP, strict manifest, Canonical/Asset-set validation, immutable write, persisted reread, full CRC32/SHA-256 verification, automatic retention evidence, and localized Cloud workflow
 - [Done] Authorized `.komyaku` export listing, 60-second forced download, transactional export/evidence invalidation, and fail-closed local Canonical recovery through the public Reader
-- [Next] Atomic Archive Asset materialization into Local and Cloud stores, cross-Workspace import mapping, and production document library workflow
+- [Done] Atomic Cloud Archive Asset materialization with full reread verification, bounded media inspection, content-addressed Asset identity remapping, source/render references, transactional Document publication and audit, digest replay, and Document-ID conflict rejection
+- [Next] Atomic Local SQLite Archive Asset materialization and production document library workflow
 - [Later] Expand Generic File originals beyond inspected text after production malware scanning and format-specific parser/decoder policies
 - [Done] Headless Yjs and `y-prosemirror` working-state foundation covering concurrent convergence, state-vector offline rejoin, stable Node IDs, deterministic Canonical checkpoints, bounded updates, and selective local undo
 - [Done] Browser two-replica feasibility view with live Yjs synchronization, disconnect/reconnect lifecycle, Relative Position selection capture/restore path, composition-safe checkpoints, accessible labels, and responsive layouts

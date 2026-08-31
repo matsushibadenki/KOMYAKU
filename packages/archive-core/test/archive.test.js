@@ -19,6 +19,7 @@ describe("open .komyaku Archive v1", () => {
     expect(verified.document).toEqual(input.document);
     expect(verified.manifest.formatVersion).toBe(1);
     expect(verified.manifest.assets[0]).toMatchObject({ id: input.assets[0].id, mediaType: "text/markdown" });
+    expect(verified.assets[0].bytes).toEqual(input.assets[0].bytes);
     expect(new TextDecoder().decode(archive.slice(30 + "mimetype".length, 30 + "mimetype".length + KOMYAKU_ARCHIVE_MEDIA_TYPE.length))).toBe(KOMYAKU_ARCHIVE_MEDIA_TYPE);
     expect(verified.archiveDigest).toMatch(/^[0-9a-f]{64}$/);
   });

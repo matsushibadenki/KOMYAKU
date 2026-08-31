@@ -202,6 +202,17 @@ export function createApiClient({ baseUrl, fetchImpl = fetch }) {
       ));
     },
 
+    async importKomyakuArchive({ token, workspaceId, bytes }) {
+      return checked(await fetchImpl(
+        `${root}/workspaces/${encodeURIComponent(workspaceId)}/archive-imports`,
+        {
+          method: "POST",
+          headers: { ...bearer(token), "Content-Type": "application/vnd.komyaku.archive+zip" },
+          body: bytes
+        }
+      ));
+    },
+
     async verifiedDocumentExports({ token, workspaceId, documentId }) {
       return checked(await fetchImpl(
         `${root}/workspaces/${encodeURIComponent(workspaceId)}/documents/${encodeURIComponent(documentId)}/exports`,

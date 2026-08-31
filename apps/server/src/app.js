@@ -12,6 +12,7 @@ export function createApp({
   assetRoutes = null,
   documentAssetRoutes = null,
   documentExportRoutes = null,
+  archiveImportRoutes = null,
   conversationImportRoutes = null,
   cloudAiHandoffRoutes = null,
   corsOrigins = ["http://localhost:1420", "http://127.0.0.1:1420"],
@@ -78,6 +79,7 @@ export function createApp({
   if (assetRoutes) app.route("/api/v1", assetRoutes);
   if (documentAssetRoutes) app.route("/api/v1", documentAssetRoutes);
   if (documentExportRoutes) app.route("/api/v1", documentExportRoutes);
+  if (archiveImportRoutes) app.route("/api/v1", archiveImportRoutes);
   if (conversationImportRoutes) app.route("/api/v1", conversationImportRoutes);
   if (cloudAiHandoffRoutes) app.route("/api/v1", cloudAiHandoffRoutes);
 

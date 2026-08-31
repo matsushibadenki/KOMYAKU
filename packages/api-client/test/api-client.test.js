@@ -246,4 +246,20 @@ describe("KOMYAKU API client", () => {
     expect(request.init.method).toBe("POST");
     expect(JSON.parse(request.init.body)).toEqual(document);
   });
+
+  test("uploads exact .komyaku bytes with the registered media type", async () => {
+    let request;
+    const bytes = new Uint8Array([80, 75, 3, 4]);
+    const client = createApiClient({
+      baseUrl: "https://komyaku.example/api/v1",
+      fetchImpl: async (url, init) => {
+        request = { url, init };
+        return json({ importId: "import", archiveDigest: "a".repeat(64), replayed: false, assetCount: 0 });
+      }
+    });
+    await client.importKomyakuArchive({ token: "session", workspaceId: "workspace", bytes });
+    expect(request.url).toEndWith("/workspaces/workspace/archive-imports");
+    expect(request.init.headers["Content-Type"]).toBe("application/vnd.komyaku.archive+zip");
+    expect(request.init.body).toBe(bytes);
+  });
 });

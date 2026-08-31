@@ -14,6 +14,7 @@ import { createAssetDeliveryRepository } from "./repositories/asset-delivery-rep
 import { createAssetRepository } from "./repositories/asset-repository.js";
 import { createAssetReferenceReconciliationRepository } from "./repositories/asset-reference-reconciliation-repository.js";
 import { createDocumentExportRepository } from "./repositories/document-export-repository.js";
+import { createArchiveImportRepository } from "./repositories/archive-import-repository.js";
 import { createAssetInspectionRepository } from "./repositories/asset-inspection-repository.js";
 import { createAuthRateLimitService } from "./services/auth-rate-limit-service.js";
 import { createIdentityService } from "./services/identity-service.js";
@@ -28,6 +29,7 @@ import { createAssetDeliveryService } from "./services/asset-delivery-service.js
 import { createAssetService } from "./services/asset-service.js";
 import { createAssetReferenceReconciliationService } from "./services/asset-reference-reconciliation-service.js";
 import { createDocumentExportService } from "./services/document-export-service.js";
+import { createArchiveImportService } from "./services/archive-import-service.js";
 import { createAssetInspectionService } from "./services/asset-inspection-service.js";
 import { createAssetInspectionRunner } from "./services/asset-inspection-runner.js";
 import { createDecoderBackedMediaInspector } from "./services/decoder-backed-media-inspector.js";
@@ -38,6 +40,7 @@ import { createCloudAiHandoffRoutes } from "./routes/cloud-ai-handoff-routes.js"
 import { createAssetRoutes } from "./routes/asset-routes.js";
 import { createDocumentAssetRoutes } from "./routes/document-asset-routes.js";
 import { createDocumentExportRoutes } from "./routes/document-export-routes.js";
+import { createArchiveImportRoutes } from "./routes/archive-import-routes.js";
 import { workspaceAssetAuthorizer, workspaceConversationImportAuthorizer } from "./middleware/session-auth.js";
 import { createNetworkIdentifierResolver } from "./security/network-identifier.js";
 import {
@@ -61,6 +64,7 @@ let authRoutes = null;
 let assetRoutes = null;
 let documentAssetRoutes = null;
 let documentExportRoutes = null;
+let archiveImportRoutes = null;
 let conversationImportRoutes = null;
 let cloudAiHandoffRoutes = null;
 let outboxDispatcher = null;
@@ -173,6 +177,14 @@ if (config.authRoutesEnabled) {
       repository: createDocumentExportRepository(database.sql), objectStore
     })
   });
+  archiveImportRoutes = createArchiveImportRoutes({
+    identityService,
+    service: createArchiveImportService({
+      repository: createArchiveImportRepository(database.sql),
+      objectStore,
+      inspector: createDecoderBackedMediaInspector()
+    })
+  });
   const importRepository = createConversationImportRepository(database.sql);
   const authorizeImport = workspaceConversationImportAuthorizer(identityRepository);
   const importService = createConversationImportService({
@@ -211,6 +223,7 @@ const { app, runtimeState } = createApp({
   assetRoutes,
   documentAssetRoutes,
   documentExportRoutes,
+  archiveImportRoutes,
   conversationImportRoutes,
   cloudAiHandoffRoutes,
   corsOrigins,

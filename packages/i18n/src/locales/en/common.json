@@ -70,10 +70,10 @@
   },
   "archiveImport": {
     "choose": "Open .komyaku archive",
-    "loading": "Verifying archive…",
-    "idle": "Archive import verifies locally before replacing the working document.",
-    "ready": "The verified Canonical document was restored locally.",
-    "error": "The archive failed integrity or compatibility verification. Nothing was imported."
+    "loading": "Verifying and importing archive…",
+    "idle": "Local archives are verified on-device; Cloud archives are atomically materialized after server verification.",
+    "ready": "The verified Canonical document was restored without a partial import.",
+    "error": "The archive failed integrity, policy, or compatibility verification. No document was imported."
   },
   "imageInsertion": {
     "altText": "Image alternative text (required)",

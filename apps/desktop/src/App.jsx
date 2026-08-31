@@ -14,6 +14,7 @@ import { loadLocalDraft, saveLocalDraft } from "./services/local-database.js";
 import { reconcileCloudDocumentAssets } from "./services/cloud-asset-reconciliation.js";
 import { createVerifiedCloudDocumentExport } from "./services/cloud-document-export.js";
 import { verifyLocalKomyakuImport } from "./services/local-komyaku-import.js";
+import { materializeCloudKomyakuImport } from "./services/cloud-komyaku-import.js";
 import {
   createEditorImagePreviewResolver,
   LOCAL_EDITOR_WORKSPACE
@@ -220,7 +221,12 @@ export function App() {
     if (!file) return;
     setArchiveImportStatus("loading");
     try {
-      const imported = await verifyLocalKomyakuImport(new Uint8Array(await file.arrayBuffer()));
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const imported = editorWorkspace.mode === "cloud"
+        ? await materializeCloudKomyakuImport({
+          token: editorWorkspace.token, workspaceId: editorWorkspace.workspaceId, bytes
+        })
+        : await verifyLocalKomyakuImport(bytes);
       const existing = await loadLocalDraft(imported.document.id);
       localRevision.current = existing?.localRevision ?? 0;
       persistenceBlocked.current = false;

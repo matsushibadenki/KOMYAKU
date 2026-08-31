@@ -145,5 +145,8 @@ export async function verifyKomyakuArchive(bytes, limits = {}) {
       || asset.path !== `assets/sha256/${asset.sha256.slice(0, 2)}/${asset.sha256}`) throw new Error("archive_asset_integrity_mismatch");
   }
   const archiveDigest = await digest(bytes);
-  return Object.freeze({ manifest, document, archiveDigest, byteSize: bytes.byteLength });
+  const assets = manifest.assets.map((asset) => Object.freeze({
+    ...asset, bytes: entries.get(asset.path).slice()
+  }));
+  return Object.freeze({ manifest, document, assets, archiveDigest, byteSize: bytes.byteLength });
 }

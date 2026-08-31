@@ -70,10 +70,10 @@
   },
   "archiveImport": {
     "choose": ".komyaku Archiveを開く",
-    "loading": "Archiveをローカル検証中…",
-    "idle": "Archiveは作業文書を置き換える前にローカルで検証されます。",
-    "ready": "検証済みCanonical文書をローカルへ復元しました。",
-    "error": "整合性または互換性を検証できませんでした。何もImportしていません。"
+    "loading": "Archiveを検証・Import中…",
+    "idle": "Localでは端末内検証し、CloudではServer検証後に原子的に取り込みます。",
+    "ready": "検証済みCanonical文書を、途中状態を残さず復元しました。",
+    "error": "整合性・安全Policy・互換性を検証できませんでした。文書はImportしていません。"
   },
   "imageInsertion": {
     "altText": "画像の代替テキスト（必須）",
