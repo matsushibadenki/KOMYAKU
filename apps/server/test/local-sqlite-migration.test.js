@@ -16,7 +16,9 @@ describe("Tauri local SQLite migration", () => {
       "../../desktop/src-tauri/migrations/0001_local_foundation.sql",
       "../../desktop/src-tauri/migrations/0002_local_ai_handoffs.sql",
       "../../desktop/src-tauri/migrations/0003_local_asset_previews.sql",
-      "../../desktop/src-tauri/migrations/0004_local_asset_reference_lifecycle.sql"
+      "../../desktop/src-tauri/migrations/0004_local_asset_reference_lifecycle.sql",
+      "../../desktop/src-tauri/migrations/0005_local_archive_materialization.sql",
+      "../../desktop/src-tauri/migrations/0006_local_document_library.sql"
     ];
     for (const relativePath of migrationPaths) {
       const migration = await Bun.file(path.resolve(import.meta.dir, relativePath)).text();
@@ -33,6 +35,9 @@ describe("Tauri local SQLite migration", () => {
 
     expect(rows.map((row) => row.name)).toEqual([
       "local_ai_handoffs",
+      "local_archive_asset_references",
+      "local_archive_assets",
+      "local_archive_imports",
       "local_asset_previews",
       "local_conversation_edges",
       "local_conversation_imports",

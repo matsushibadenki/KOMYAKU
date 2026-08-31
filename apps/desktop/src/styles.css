@@ -1010,6 +1010,49 @@ select:disabled,
   border-radius: 10px;
 }
 
+.document-library {
+  display: grid;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  border: 1px solid var(--color-rule);
+  background: color-mix(in srgb, var(--color-paper) 92%, var(--color-accent));
+}
+
+.document-library-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  align-items: end;
+  justify-content: space-between;
+}
+
+.document-library-heading h2,
+.document-library-heading p,
+.document-library-list p { margin: 0; }
+
+.document-library-list {
+  display: grid;
+  gap: var(--space-sm);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.document-library-list li {
+  display: grid;
+  gap: var(--space-xs);
+  min-width: 0;
+  padding: var(--space-sm);
+  border-block-start: 1px solid var(--color-rule);
+}
+
+.document-library-list li[data-archived="true"] { opacity: 0.68; }
+
+.document-library-list form,
+.library-actions { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
+.document-library-list input { flex: 1 1 14rem; min-width: 0; padding: var(--space-xs); }
+.document-library-list button { min-height: 2.75rem; padding-inline: var(--space-sm); }
+
 .structured-image-identity {
   font: 500 12px/1.5 "IBM Plex Sans", sans-serif;
   overflow-wrap: anywhere;

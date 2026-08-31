@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mutate-local-document-atomic"
+description = "Enables the mutate_local_document_atomic command without any pre-configured scope."
+commands.allow = ["mutate_local_document_atomic"]
+
+[[permission]]
+identifier = "deny-mutate-local-document-atomic"
+description = "Denies the mutate_local_document_atomic command without any pre-configured scope."
+commands.deny = ["mutate_local_document_atomic"]

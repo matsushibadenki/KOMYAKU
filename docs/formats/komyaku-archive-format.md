@@ -37,7 +37,9 @@ A conforming verifier must check ZIP structure and CRC32 before interpreting JSO
 
 KOMYAKU Cloud writes the Archive to immutable Object Storage, reads it back, repeats full verification, and only then records retention evidence bound to the complete Archive digest.
 
-A format-v1 reader can restore the Canonical document and unchanged Asset entries independently. Application import policy is separate from format validity. Local Desktop recovery currently restores Canonical structure without adopting Asset bytes into SQLite. Cloud import accepts the safe profile below, materializes immutable Asset bytes and remapped references, and publishes the Document only when one PostgreSQL transaction succeeds.
+A format-v1 reader can restore the Canonical document and unchanged Asset entries independently. Application import policy is separate from format validity. The packaged Desktop adopts accepted Asset bytes, remapped references, and the Document in one SQLite transaction; its browser build can only verify and restore Canonical structure. Cloud import accepts the safe profile below, materializes immutable Asset bytes and remapped references, and publishes the Document only when one PostgreSQL transaction succeeds.
+
+The Local and Cloud safe profiles both limit entries to 1 MiB. Local PNG adoption retains the stricter 256 KiB decoded-preview limit. This is an application limit and does not narrow the open Archive format.
 
 ### Current Cloud import safe profile
 

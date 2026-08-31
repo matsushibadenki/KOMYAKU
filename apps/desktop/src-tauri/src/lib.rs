@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::{Pool, Sqlite};
 use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::io::Cursor;
 use tauri::State;
 use tauri_plugin_sql::{DbInstances, DbPool, Migration, MigrationKind};
@@ -16,6 +17,55 @@ const MAX_LOCAL_CONVERSATION_BYTES: usize = 12 * 1024 * 1024;
 const MAX_LOCAL_CONVERSATION_LIST_ITEMS: i64 = 100;
 const MAX_LOCAL_PNG_PREVIEW_BYTES: usize = 256 * 1024;
 const MAX_LOCAL_PNG_PREVIEW_PIXELS: u64 = 16_000_000;
+const MAX_LOCAL_ARCHIVE_ASSET_BYTES: usize = 1024 * 1024;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalArchiveAssetInput {
+    asset_id: String,
+    media_type: String,
+    content_hash: String,
+    bytes: Vec<u8>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalArchiveImportInput {
+    archive_digest: String,
+    document: LocalDraftInput,
+    assets: Vec<LocalArchiveAssetInput>,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct LocalArchiveImportResult {
+    archive_digest: String,
+    document_id: String,
+    content_json: String,
+    asset_count: usize,
+    replayed: bool,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct LocalDocumentSummary {
+    document_id: String,
+    title: String,
+    default_language: String,
+    local_revision: i64,
+    updated_at: String,
+    archived_at: Option<String>,
+    archive_digest: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalDocumentMutationInput {
+    document_id: String,
+    title: Option<String>,
+    archived: Option<bool>,
+    updated_at: String,
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -801,12 +851,21 @@ fn collect_local_asset_ids(content_json: &str) -> Result<BTreeSet<String>, Local
             let Some(object) = node.as_object() else {
                 continue;
             };
-            if object.get("type").and_then(serde_json::Value::as_str) == Some("image") {
-                if let Some(asset_id) = object.get("assetId").and_then(serde_json::Value::as_str) {
-                    if validate_provider_reference(asset_id).is_ok()
-                        && !asset_id.bytes().any(|value| value.is_ascii_uppercase())
-                    {
-                        assets.insert(asset_id.to_string());
+            if let Some(asset_id) = object.get("assetId").and_then(serde_json::Value::as_str) {
+                if validate_provider_reference(asset_id).is_ok()
+                    && !asset_id.bytes().any(|value| value.is_ascii_uppercase())
+                {
+                    assets.insert(asset_id.to_string());
+                }
+            }
+            if let Some(artifacts) = object.get("renderArtifacts").and_then(serde_json::Value::as_array) {
+                for artifact in artifacts {
+                    if let Some(asset_id) = artifact.get("assetId").and_then(serde_json::Value::as_str) {
+                        if validate_provider_reference(asset_id).is_ok()
+                            && !asset_id.bytes().any(|value| value.is_ascii_uppercase())
+                        {
+                            assets.insert(asset_id.to_string());
+                        }
                     }
                 }
             }
@@ -907,8 +966,40 @@ async fn save_local_draft_transaction(
         .bind(asset_id)
         .execute(&mut *transaction)
         .await
+            .map_err(|_| LocalDraftSaveError::StorageFailure)?;
+        sqlx::query(
+            "INSERT INTO local_archive_asset_references (document_id, asset_id, updated_at)
+             SELECT ?, asset_id, ? FROM local_archive_assets WHERE asset_id = ?
+             ON CONFLICT(document_id, asset_id) DO UPDATE SET updated_at = excluded.updated_at",
+        )
+        .bind(&input.document_id)
+        .bind(&input.updated_at)
+        .bind(asset_id)
+        .execute(&mut *transaction)
+        .await
         .map_err(|_| LocalDraftSaveError::StorageFailure)?;
     }
+
+    sqlx::query(
+        "DELETE FROM local_archive_asset_references
+         WHERE document_id = ? AND asset_id NOT IN (SELECT value FROM json_each(?))",
+    )
+    .bind(&input.document_id)
+    .bind(serde_json::to_string(&asset_ids).map_err(|_| LocalDraftSaveError::InvalidInput)?)
+    .execute(&mut *transaction)
+    .await
+    .map_err(|_| LocalDraftSaveError::StorageFailure)?;
+
+    sqlx::query(
+        "UPDATE local_archive_assets SET lifecycle_status = CASE
+           WHEN EXISTS (SELECT 1 FROM local_archive_asset_references reference
+                        WHERE reference.asset_id = local_archive_assets.asset_id)
+           THEN 'active' ELSE 'quarantined' END, updated_at = ?",
+    )
+    .bind(&input.updated_at)
+    .execute(&mut *transaction)
+    .await
+    .map_err(|_| LocalDraftSaveError::StorageFailure)?;
 
     sqlx::query(
         "UPDATE local_asset_previews
@@ -960,6 +1051,259 @@ async fn save_local_draft_transaction(
         .commit()
         .await
         .map_err(|_| LocalDraftSaveError::StorageFailure)
+}
+
+fn remap_archive_asset_ids(value: &mut serde_json::Value, mapping: &BTreeMap<String, String>) {
+    match value {
+        serde_json::Value::Array(items) => {
+            for item in items { remap_archive_asset_ids(item, mapping); }
+        }
+        serde_json::Value::Object(object) => {
+            if let Some(serde_json::Value::String(asset_id)) = object.get_mut("assetId") {
+                if let Some(mapped) = mapping.get(asset_id) { *asset_id = mapped.clone(); }
+            }
+            for child in object.values_mut() { remap_archive_asset_ids(child, mapping); }
+        }
+        _ => {}
+    }
+}
+
+fn inspect_local_archive_asset(
+    asset: &LocalArchiveAssetInput,
+    updated_at: &str,
+) -> Result<(String, Option<i64>, Option<i64>), &'static str> {
+    if asset.bytes.is_empty() || asset.bytes.len() > MAX_LOCAL_ARCHIVE_ASSET_BYTES
+        || validate_provider_reference(&asset.asset_id).is_err()
+        || asset.asset_id.bytes().any(|value| value.is_ascii_uppercase())
+        || asset.content_hash.len() != 64
+        || asset.content_hash.bytes().any(|value| !value.is_ascii_hexdigit() || value.is_ascii_uppercase())
+    {
+        return Err("invalid_local_archive_asset");
+    }
+    let digest: String = Sha256::digest(&asset.bytes).iter().map(|byte| format!("{byte:02x}")).collect();
+    if digest != asset.content_hash { return Err("local_archive_asset_integrity_mismatch"); }
+    if asset.media_type == "image/png" {
+        let inspected = inspect_local_png_preview(&LocalPngPreviewInput {
+            asset_id: asset.asset_id.clone(), bytes: asset.bytes.clone(), updated_at: updated_at.into()
+        })?;
+        return Ok(("decoder-backed-png-v1".into(), Some(i64::from(inspected.width)), Some(i64::from(inspected.height))));
+    }
+    let text = std::str::from_utf8(&asset.bytes).map_err(|_| "invalid_local_archive_asset")?;
+    if text.contains('\0') { return Err("invalid_local_archive_asset"); }
+    let trimmed = text.trim_start();
+    if trimmed.starts_with("<svg") || (trimmed.starts_with("<?xml") && trimmed.contains("<svg")) {
+        return Err("invalid_local_archive_asset");
+    }
+    match asset.media_type.as_str() {
+        "text/plain" | "text/markdown" | "text/csv" | "text/vnd.mermaid" => {}
+        "application/json" => {
+            serde_json::from_str::<serde_json::Value>(text).map_err(|_| "invalid_local_archive_asset")?;
+        }
+        _ => return Err("unsupported_local_archive_asset"),
+    }
+    Ok(("baseline-signature-v1".into(), None, None))
+}
+
+async fn import_local_archive_transaction(
+    pool: &Pool<Sqlite>, input: &LocalArchiveImportInput,
+) -> Result<LocalArchiveImportResult, &'static str> {
+    if input.archive_digest.len() != 64
+        || input.archive_digest.bytes().any(|value| !value.is_ascii_hexdigit() || value.is_ascii_uppercase())
+        || input.assets.len() > 5000
+    { return Err("invalid_local_archive_import"); }
+    validate_local_draft_input(&input.document).map_err(|_| "invalid_local_archive_import")?;
+    let expected = collect_local_asset_ids(&input.document.content_json)
+        .map_err(|_| "invalid_local_archive_import")?;
+    let supplied: BTreeSet<String> = input.assets.iter().map(|asset| asset.asset_id.clone()).collect();
+    if expected != supplied || supplied.len() != input.assets.len() {
+        return Err("local_archive_asset_set_mismatch");
+    }
+    let inspections: Vec<(String, Option<i64>, Option<i64>)> = input.assets.iter()
+        .map(|asset| inspect_local_archive_asset(asset, &input.document.updated_at))
+        .collect::<Result<_, _>>()?;
+    let mut transaction = pool.begin().await.map_err(|_| "local_archive_storage_failure")?;
+    let replay: Option<(String, String)> = sqlx::query_as(
+        "SELECT imported.document_id, draft.content_json FROM local_archive_imports imported
+         JOIN local_drafts draft ON draft.document_id = imported.document_id
+         WHERE imported.archive_digest = ? AND imported.document_id = ? LIMIT 1")
+        .bind(&input.archive_digest).bind(&input.document.document_id)
+        .fetch_optional(&mut *transaction).await
+        .map_err(|_| "local_archive_storage_failure")?;
+    if let Some((document_id, content_json)) = replay {
+        return Ok(LocalArchiveImportResult { archive_digest: input.archive_digest.clone(), document_id,
+            content_json, asset_count: input.assets.len(), replayed: true });
+    }
+    let document_conflict: Option<String> = sqlx::query_scalar(
+        "SELECT id FROM local_documents WHERE id = ? LIMIT 1")
+        .bind(&input.document.document_id).fetch_optional(&mut *transaction).await
+        .map_err(|_| "local_archive_storage_failure")?;
+    if document_conflict.is_some() { return Err("local_archive_document_identity_conflict"); }
+
+    let mut mapping = BTreeMap::new();
+    for (asset, (policy, width, height)) in input.assets.iter().zip(inspections.iter()) {
+        let existing: Option<String> = sqlx::query_scalar(
+            "SELECT asset_id FROM local_archive_assets WHERE content_hash = ? LIMIT 1")
+            .bind(&asset.content_hash).fetch_optional(&mut *transaction).await
+            .map_err(|_| "local_archive_storage_failure")?;
+        let materialized_id = existing.unwrap_or_else(|| asset.asset_id.clone());
+        sqlx::query(
+            "INSERT INTO local_archive_assets
+             (asset_id, bytes, byte_size, content_hash, media_type, inspection_policy_version,
+              inspected_width, inspected_height, lifecycle_status, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+             ON CONFLICT(content_hash) DO UPDATE SET lifecycle_status = 'active', updated_at = excluded.updated_at")
+            .bind(&materialized_id).bind(&asset.bytes).bind(asset.bytes.len() as i64)
+            .bind(&asset.content_hash).bind(&asset.media_type).bind(policy)
+            .bind(width).bind(height).bind(&input.document.updated_at).bind(&input.document.updated_at)
+            .execute(&mut *transaction).await.map_err(|_| "local_archive_asset_conflict")?;
+        if asset.media_type == "image/png" {
+            sqlx::query(
+                "INSERT INTO local_asset_previews
+                 (asset_id, bytes, byte_size, content_hash, detected_media_type, inspection_status,
+                  inspection_policy_version, inspected_width, inspected_height, updated_at, lifecycle_status)
+                 VALUES (?, ?, ?, ?, 'image/png', 'accepted', 'decoder-backed-png-v1', ?, ?, ?, 'active')
+                 ON CONFLICT(asset_id) DO NOTHING")
+                .bind(&materialized_id).bind(&asset.bytes).bind(asset.bytes.len() as i64)
+                .bind(&asset.content_hash).bind(width).bind(height).bind(&input.document.updated_at)
+                .execute(&mut *transaction).await.map_err(|_| "local_archive_asset_conflict")?;
+        }
+        mapping.insert(asset.asset_id.clone(), materialized_id);
+    }
+    let mut document_value: serde_json::Value = serde_json::from_str(&input.document.content_json)
+        .map_err(|_| "invalid_local_archive_import")?;
+    remap_archive_asset_ids(&mut document_value, &mapping);
+    let content_json = serde_json::to_string(&document_value).map_err(|_| "invalid_local_archive_import")?;
+    let document_id = input.document.document_id.clone();
+    sqlx::query(
+        "INSERT INTO local_documents
+         (id, title, default_language, default_direction, default_writing_mode, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)")
+        .bind(&document_id).bind(&input.document.title).bind(&input.document.language)
+        .bind(&input.document.direction).bind(&input.document.writing_mode)
+        .bind(&input.document.updated_at).bind(&input.document.updated_at)
+        .execute(&mut *transaction).await.map_err(|_| "local_archive_storage_failure")?;
+    sqlx::query(
+        "INSERT INTO local_drafts
+         (document_id, schema_version, content_json, local_revision, is_composing, updated_at)
+         VALUES (?, ?, ?, 1, 0, ?)")
+        .bind(&document_id).bind(input.document.schema_version).bind(&content_json)
+        .bind(&input.document.updated_at).execute(&mut *transaction).await
+        .map_err(|_| "local_archive_storage_failure")?;
+    for asset_id in mapping.values().collect::<BTreeSet<_>>() {
+        sqlx::query(
+            "INSERT INTO local_archive_asset_references (document_id, asset_id, updated_at) VALUES (?, ?, ?)")
+            .bind(&document_id).bind(asset_id).bind(&input.document.updated_at)
+            .execute(&mut *transaction).await.map_err(|_| "local_archive_storage_failure")?;
+        sqlx::query(
+            "INSERT INTO local_document_asset_references (document_id, asset_id, updated_at)
+             SELECT ?, asset_id, ? FROM local_asset_previews WHERE asset_id = ?")
+            .bind(&document_id).bind(&input.document.updated_at).bind(asset_id)
+            .execute(&mut *transaction).await.map_err(|_| "local_archive_storage_failure")?;
+    }
+    sqlx::query(
+        "INSERT INTO local_archive_imports (archive_digest, document_id, asset_count, imported_at)
+         VALUES (?, ?, ?, ?)")
+        .bind(&input.archive_digest).bind(&document_id).bind(input.assets.len() as i64)
+        .bind(&input.document.updated_at).execute(&mut *transaction).await
+        .map_err(|_| "local_archive_storage_failure")?;
+    transaction.commit().await.map_err(|_| "local_archive_storage_failure")?;
+    Ok(LocalArchiveImportResult { archive_digest: input.archive_digest.clone(), document_id,
+        content_json, asset_count: input.assets.len(), replayed: false })
+}
+
+#[tauri::command]
+async fn import_local_komyaku_archive_atomic(
+    db_instances: State<'_, DbInstances>, input: LocalArchiveImportInput,
+) -> Result<LocalArchiveImportResult, String> {
+    let pool = {
+        let instances = db_instances.0.read().await;
+        match instances.get(LOCAL_DATABASE_URL) {
+            Some(DbPool::Sqlite(pool)) => pool.clone(),
+            _ => return Err("tauri_database_unavailable".to_string()),
+        }
+    };
+    import_local_archive_transaction(&pool, &input).await.map_err(str::to_string)
+}
+
+async fn list_local_documents_transaction(
+    pool: &Pool<Sqlite>,
+) -> Result<Vec<LocalDocumentSummary>, &'static str> {
+    sqlx::query_as(
+        "SELECT document.id AS document_id, document.title, document.default_language,
+                draft.local_revision, document.updated_at, document.archived_at, imported.archive_digest
+         FROM local_documents document JOIN local_drafts draft ON draft.document_id = document.id
+         LEFT JOIN local_archive_imports imported ON imported.document_id = document.id
+         ORDER BY document.archived_at IS NOT NULL, document.updated_at DESC, document.id
+         LIMIT 200")
+        .fetch_all(pool).await.map_err(|_| "local_document_library_unavailable")
+}
+
+async fn mutate_local_document_transaction(
+    pool: &Pool<Sqlite>, input: &LocalDocumentMutationInput,
+) -> Result<LocalDocumentSummary, &'static str> {
+    if validate_provider_reference(&input.document_id).is_err()
+        || input.updated_at.is_empty() || input.updated_at.len() > 64
+        || input.title.is_none() && input.archived.is_none()
+        || input.title.as_ref().is_some_and(|title| title.len() > 1000)
+    { return Err("invalid_local_document_mutation"); }
+    let mut transaction = pool.begin().await.map_err(|_| "local_document_library_failure")?;
+    if let Some(title) = &input.title {
+        let content_json: String = sqlx::query_scalar(
+            "SELECT content_json FROM local_drafts WHERE document_id = ? LIMIT 1")
+            .bind(&input.document_id).fetch_optional(&mut *transaction).await
+            .map_err(|_| "local_document_library_failure")?
+            .ok_or("local_document_not_found")?;
+        let mut content: serde_json::Value = serde_json::from_str(&content_json)
+            .map_err(|_| "local_document_corrupt")?;
+        let metadata = content.get_mut("metadata").and_then(serde_json::Value::as_object_mut)
+            .ok_or("local_document_corrupt")?;
+        metadata.insert("title".into(), serde_json::Value::String(title.clone()));
+        let next_json = serde_json::to_string(&content).map_err(|_| "local_document_corrupt")?;
+        sqlx::query("UPDATE local_drafts SET content_json = ?, local_revision = local_revision + 1, updated_at = ? WHERE document_id = ?")
+            .bind(next_json).bind(&input.updated_at).bind(&input.document_id)
+            .execute(&mut *transaction).await.map_err(|_| "local_document_library_failure")?;
+        sqlx::query("UPDATE local_documents SET title = ?, updated_at = ? WHERE id = ?")
+            .bind(title).bind(&input.updated_at).bind(&input.document_id)
+            .execute(&mut *transaction).await.map_err(|_| "local_document_library_failure")?;
+    }
+    if let Some(archived) = input.archived {
+        sqlx::query("UPDATE local_documents SET archived_at = ?, updated_at = ? WHERE id = ?")
+            .bind(if archived { Some(input.updated_at.as_str()) } else { None })
+            .bind(&input.updated_at).bind(&input.document_id)
+            .execute(&mut *transaction).await.map_err(|_| "local_document_library_failure")?;
+    }
+    let summary = sqlx::query_as(
+        "SELECT document.id AS document_id, document.title, document.default_language,
+                draft.local_revision, document.updated_at, document.archived_at, imported.archive_digest
+         FROM local_documents document JOIN local_drafts draft ON draft.document_id = document.id
+         LEFT JOIN local_archive_imports imported ON imported.document_id = document.id
+         WHERE document.id = ? LIMIT 1")
+        .bind(&input.document_id).fetch_optional(&mut *transaction).await
+        .map_err(|_| "local_document_library_failure")?.ok_or("local_document_not_found")?;
+    transaction.commit().await.map_err(|_| "local_document_library_failure")?;
+    Ok(summary)
+}
+
+#[tauri::command]
+async fn list_local_documents(db_instances: State<'_, DbInstances>) -> Result<Vec<LocalDocumentSummary>, String> {
+    let pool = {
+        let instances = db_instances.0.read().await;
+        match instances.get(LOCAL_DATABASE_URL) { Some(DbPool::Sqlite(pool)) => pool.clone(),
+            _ => return Err("tauri_database_unavailable".into()) }
+    };
+    list_local_documents_transaction(&pool).await.map_err(str::to_string)
+}
+
+#[tauri::command]
+async fn mutate_local_document_atomic(
+    db_instances: State<'_, DbInstances>, input: LocalDocumentMutationInput,
+) -> Result<LocalDocumentSummary, String> {
+    let pool = {
+        let instances = db_instances.0.read().await;
+        match instances.get(LOCAL_DATABASE_URL) { Some(DbPool::Sqlite(pool)) => pool.clone(),
+            _ => return Err("tauri_database_unavailable".into()) }
+    };
+    mutate_local_document_transaction(&pool, &input).await.map_err(str::to_string)
 }
 
 #[tauri::command]
@@ -1040,6 +1384,18 @@ pub fn run() {
             sql: include_str!("../migrations/0004_local_asset_reference_lifecycle.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 5,
+            description: "create_local_archive_materialization",
+            sql: include_str!("../migrations/0005_local_archive_materialization.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 6,
+            description: "create_local_document_library",
+            sql: include_str!("../migrations/0006_local_document_library.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -1047,6 +1403,9 @@ pub fn run() {
             save_local_draft_atomic,
             store_local_png_preview_atomic,
             list_quarantined_local_assets,
+            import_local_komyaku_archive_atomic,
+            list_local_documents,
+            mutate_local_document_atomic,
             store_cloud_session,
             load_cloud_session,
             delete_cloud_session,
@@ -1122,6 +1481,12 @@ mod tests {
         .execute(&pool)
         .await
         .expect("apply local asset reference lifecycle schema");
+        sqlx::raw_sql(include_str!("../migrations/0005_local_archive_materialization.sql"))
+            .execute(&pool)
+            .await
+            .expect("apply local Archive materialization schema");
+        sqlx::raw_sql(include_str!("../migrations/0006_local_document_library.sql"))
+            .execute(&pool).await.expect("apply local Document library schema");
         pool
     }
 
@@ -1136,6 +1501,93 @@ mod tests {
             ],
             updated_at: "2026-08-30T00:00:00.000Z".into(),
         }
+    }
+
+    fn local_archive_input(document_id: &str, asset_id: &str) -> LocalArchiveImportInput {
+        let bytes = b"# Imported\n".to_vec();
+        let content_hash: String = Sha256::digest(&bytes).iter()
+            .map(|byte| format!("{byte:02x}")).collect();
+        let content = serde_json::json!({
+            "id": document_id,
+            "schemaVersion": 1,
+            "attrs": { "language": "ja", "direction": "auto", "writingMode": "horizontal-tb" },
+            "metadata": { "title": "Imported" },
+            "content": [{
+                "id": "00000000-0000-4000-8000-000000000099", "schemaVersion": 1,
+                "metadata": {}, "extensions": {}, "renderArtifacts": [], "type": "file",
+                "assetId": asset_id, "mediaType": "text/markdown", "fileName": "draft.md",
+                "title": null, "description": null
+            }]
+        });
+        LocalArchiveImportInput {
+            archive_digest: "a".repeat(64),
+            document: LocalDraftInput {
+                document_id: document_id.into(), schema_version: 1, content_json: content.to_string(),
+                local_revision: 1, updated_at: "2026-08-31T00:00:00.000Z".into(),
+                title: "Imported".into(), language: "ja".into(), direction: "auto".into(),
+                writing_mode: "horizontal-tb".into()
+            },
+            assets: vec![LocalArchiveAssetInput {
+                asset_id: asset_id.into(), media_type: "text/markdown".into(), content_hash, bytes
+            }]
+        }
+    }
+
+    #[tokio::test]
+    async fn atomically_materializes_and_replays_local_archive_assets() {
+        let pool = pool().await;
+        let document_id = "00000000-0000-4000-8000-000000000088";
+        let asset_id = "00000000-0000-4000-8000-000000000077";
+        let input = local_archive_input(document_id, asset_id);
+        let result = import_local_archive_transaction(&pool, &input).await.expect("materialize Archive");
+        assert!(!result.replayed);
+        assert_eq!(result.asset_count, 1);
+        let state: (i64, i64, i64) = sqlx::query_as(
+            "SELECT (SELECT COUNT(*) FROM local_archive_assets),
+                    (SELECT COUNT(*) FROM local_archive_asset_references),
+                    (SELECT COUNT(*) FROM local_drafts WHERE document_id = ?)")
+            .bind(document_id).fetch_one(&pool).await.expect("read materialized state");
+        assert_eq!(state, (1, 1, 1));
+        let replay = import_local_archive_transaction(&pool, &input).await.expect("replay Archive");
+        assert!(replay.replayed);
+        assert_eq!(replay.content_json, result.content_json);
+    }
+
+    #[tokio::test]
+    async fn rejected_local_archive_leaves_no_document_or_asset() {
+        let pool = pool().await;
+        let mut input = local_archive_input(
+            "00000000-0000-4000-8000-000000000066",
+            "00000000-0000-4000-8000-000000000055",
+        );
+        input.assets[0].content_hash = "b".repeat(64);
+        assert_eq!(import_local_archive_transaction(&pool, &input).await,
+            Err("local_archive_asset_integrity_mismatch"));
+        let state: (i64, i64) = sqlx::query_as(
+            "SELECT (SELECT COUNT(*) FROM local_archive_assets), (SELECT COUNT(*) FROM local_documents)")
+            .fetch_one(&pool).await.expect("read empty state");
+        assert_eq!(state, (0, 0));
+    }
+
+    #[tokio::test]
+    async fn local_document_library_lists_renames_and_archives_atomically() {
+        let pool = pool().await;
+        let draft = input(1, "Original");
+        save_local_draft_transaction(&pool, &draft).await.expect("save library Document");
+        let listed = list_local_documents_transaction(&pool).await.expect("list Documents");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].title, "Original");
+        let renamed = mutate_local_document_transaction(&pool, &LocalDocumentMutationInput {
+            document_id: draft.document_id.clone(), title: Some("Renamed".into()), archived: Some(true),
+            updated_at: "2026-09-01T00:00:00.000Z".into()
+        }).await.expect("rename and archive");
+        assert_eq!(renamed.title, "Renamed");
+        assert!(renamed.archived_at.is_some());
+        assert_eq!(renamed.local_revision, 2);
+        let content_json: String = sqlx::query_scalar("SELECT content_json FROM local_drafts WHERE document_id = ?")
+            .bind(&draft.document_id).fetch_one(&pool).await.expect("read renamed Canonical JSON");
+        assert_eq!(serde_json::from_str::<serde_json::Value>(&content_json).unwrap()
+            .pointer("/metadata/title").and_then(serde_json::Value::as_str), Some("Renamed"));
     }
 
     fn draft_with_image(revision: i64, asset_id: &str) -> LocalDraftInput {

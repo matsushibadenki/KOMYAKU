@@ -71,9 +71,26 @@
   "archiveImport": {
     "choose": "Open .komyaku archive",
     "loading": "Verifying and importing archive…",
-    "idle": "Local archives are verified on-device; Cloud archives are atomically materialized after server verification.",
+    "idle": "Packaged Local and Cloud archives are verified and atomically materialized before the working document changes.",
     "ready": "The verified Canonical document was restored without a partial import.",
+    "conflict": "This document identity already exists. Open it or import a copy with fresh document and node identities.",
+    "openExisting": "Open existing",
+    "importCopy": "Import as copy",
     "error": "The archive failed integrity, policy, or compatibility verification. No document was imported."
+  },
+  "documentLibrary": {
+    "title": "Local document library",
+    "description": "Open, rename, archive, or restore durable local documents.",
+    "count": "{{count}} documents",
+    "empty": "A document appears here after its first durable checkpoint.",
+    "untitled": "Untitled",
+    "renameLabel": "Rename {{title}}",
+    "rename": "Rename",
+    "open": "Open",
+    "opened": "Open now",
+    "archive": "Archive",
+    "restore": "Restore",
+    "archiveSource": "source"
   },
   "imageInsertion": {
     "altText": "Image alternative text (required)",

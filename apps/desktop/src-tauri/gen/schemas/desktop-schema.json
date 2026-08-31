@@ -195,10 +195,22 @@
           "markdownDescription": "Enables the delete_provider_credential command without any pre-configured scope."
         },
         {
+          "description": "Enables the import_local_komyaku_archive_atomic command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-import-local-komyaku-archive-atomic",
+          "markdownDescription": "Enables the import_local_komyaku_archive_atomic command without any pre-configured scope."
+        },
+        {
           "description": "Enables the list_local_conversations command without any pre-configured scope.",
           "type": "string",
           "const": "allow-list-local-conversations",
           "markdownDescription": "Enables the list_local_conversations command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the list_local_documents command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-list-local-documents",
+          "markdownDescription": "Enables the list_local_documents command without any pre-configured scope."
         },
         {
           "description": "Enables the list_quarantined_local_assets command without any pre-configured scope.",
@@ -223,6 +235,12 @@
           "type": "string",
           "const": "allow-load-provider-credential",
           "markdownDescription": "Enables the load_provider_credential command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the mutate_local_document_atomic command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-mutate-local-document-atomic",
+          "markdownDescription": "Enables the mutate_local_document_atomic command without any pre-configured scope."
         },
         {
           "description": "Enables the save_local_ai_handoff_atomic command without any pre-configured scope.",
@@ -273,10 +291,22 @@
           "markdownDescription": "Denies the delete_provider_credential command without any pre-configured scope."
         },
         {
+          "description": "Denies the import_local_komyaku_archive_atomic command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-import-local-komyaku-archive-atomic",
+          "markdownDescription": "Denies the import_local_komyaku_archive_atomic command without any pre-configured scope."
+        },
+        {
           "description": "Denies the list_local_conversations command without any pre-configured scope.",
           "type": "string",
           "const": "deny-list-local-conversations",
           "markdownDescription": "Denies the list_local_conversations command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the list_local_documents command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-list-local-documents",
+          "markdownDescription": "Denies the list_local_documents command without any pre-configured scope."
         },
         {
           "description": "Denies the list_quarantined_local_assets command without any pre-configured scope.",
@@ -301,6 +331,12 @@
           "type": "string",
           "const": "deny-load-provider-credential",
           "markdownDescription": "Denies the load_provider_credential command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the mutate_local_document_atomic command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-mutate-local-document-atomic",
+          "markdownDescription": "Denies the mutate_local_document_atomic command without any pre-configured scope."
         },
         {
           "description": "Denies the save_local_ai_handoff_atomic command without any pre-configured scope.",

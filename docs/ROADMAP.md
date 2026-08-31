@@ -56,7 +56,8 @@ Stage status: [Done] Identity engineering complete; production launch gates rema
 - [Done] Workspace-scoped content-addressed Asset storage foundation, immutable originals, safe deduplication, and reference accounting
 - [Done] Bounded Asset orphan reconciliation and audited reference-zero quarantine/retention GC foundation
 - [Done] Leased media inspection state machine, conservative signature policy, and authenticated short-lived attachment reads
-- [Next] Production malware scanner, inline preview isolation, published/archive/legal holds, and quota metering
+- [Done] Inline preview isolation and published/archive/legal retention holds for the current decoder-inspected PNG and complete-input text safe profile
+- [Later] Production malware scanner and quota metering before expanding uploads to broader binary formats or enabling commercial Cloud limits
 - [Done] Deny-by-default static preview Descriptor and sandboxed iframe boundary, plus bounded script-free KaTeX-to-MathML rendering for untrusted LaTeX
 - [Done] Bounded Basic SVG XML parser and new-document allowlist sanitizer excluding active content, foreign namespaces, events, styles, animation, and external resources
 - [Done] Pinned Mermaid 11.17.2 parser and isolated Renderer Adapter contract with fixed secure configuration, authored-config/interaction/style rejection, budgets, and mandatory SVG re-sanitization
@@ -85,7 +86,8 @@ Stage status: [Done] Identity engineering complete; production launch gates rema
 - [Done] Automated open `.komyaku` v1 export with deterministic store-only ZIP, strict manifest, Canonical/Asset-set validation, immutable write, persisted reread, full CRC32/SHA-256 verification, automatic retention evidence, and localized Cloud workflow
 - [Done] Authorized `.komyaku` export listing, 60-second forced download, transactional export/evidence invalidation, and fail-closed local Canonical recovery through the public Reader
 - [Done] Atomic Cloud Archive Asset materialization with full reread verification, bounded media inspection, content-addressed Asset identity remapping, source/render references, transactional Document publication and audit, digest replay, and Document-ID conflict rejection
-- [Next] Atomic Local SQLite Archive Asset materialization and production document library workflow
+- [Done] Atomic Local SQLite Archive materialization with exact Asset-set verification, native SHA-256 and media reinspection, content-hash deduplication and ID remapping, transactional Document/Asset/reference publication, PNG preview adoption, lifecycle tracking, and digest replay
+- [Done] Production Local Document Library workflow with bounded inventory, multi-document navigation, Canonical-aware rename, Archive/restore controls, source Archive digest inventory, and explicit import-conflict choices to open existing or create a fresh-identity copy
 - [Later] Expand Generic File originals beyond inspected text after production malware scanning and format-specific parser/decoder policies
 - [Done] Headless Yjs and `y-prosemirror` working-state foundation covering concurrent convergence, state-vector offline rejoin, stable Node IDs, deterministic Canonical checkpoints, bounded updates, and selective local undo
 - [Done] Browser two-replica feasibility view with live Yjs synchronization, disconnect/reconnect lifecycle, Relative Position selection capture/restore path, composition-safe checkpoints, accessible labels, and responsive layouts
@@ -158,7 +160,7 @@ Stage status: [Done] Identity engineering complete; production launch gates rema
 
 - [Done] Raw conversation archive metadata verification job
 - [Done] Authenticated, idempotent Generic JSON conversation import and status API
-- [Next] Orphan-object reconciliation scan
+- [Done] Bounded Conversation Import orphan-object reconciliation with canonical-key validation, database ownership comparison, non-destructive quarantine/recovery records, pagination, operator audit, and maintenance CLI
 - [Done] Versioned ChatGPT mapping, Claude chat_messages, structured Gemini, and Gemini My Activity adapter foundation with maintained synthetic export fixtures
 - [Done] Atomic Cloud persistence and authenticated API for multi-conversation provider export bundles
 - [Done] On-device Provider export selection UI with localized preview, provider override, provenance summary, and explicit partial-import warning review

@@ -39,7 +39,7 @@ describe("Archive import repository", () => {
       archiveDigest: "a".repeat(64), document, importedAt: "2026-08-31T00:00:00.000Z",
       assets: [{ id: originalAssetId, mediaType: "text/markdown", byteSize: 5, contentHash: "b".repeat(64), storageKey: "key", detectedMediaType: "text/markdown", policyVersion: "baseline-signature-v1", width: null, height: null }]
     });
-    expect(result.document.content[0].assetId).toBe("22222222-2222-4222-8222-222222222222");
+    expect(result.document.content[1].assetId).toBe("22222222-2222-4222-8222-222222222222");
     expect(database.calls.some((call) => call.query.includes("INSERT INTO asset_references")
       && call.values.includes("22222222-2222-4222-8222-222222222222"))).toBe(true);
     expect(database.calls.some((call) => call.query.includes("archive.import_materialized"))).toBe(true);

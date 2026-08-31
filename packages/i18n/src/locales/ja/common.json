@@ -71,9 +71,26 @@
   "archiveImport": {
     "choose": ".komyaku Archiveを開く",
     "loading": "Archiveを検証・Import中…",
-    "idle": "Localでは端末内検証し、CloudではServer検証後に原子的に取り込みます。",
+    "idle": "Packaged LocalとCloudのArchiveは検証後、作業文書を変える前に原子的に取り込みます。",
     "ready": "検証済みCanonical文書を、途中状態を残さず復元しました。",
+    "conflict": "同じ文書Identityが存在します。既存文書を開くか、新しい文書・Node IdentityでCopyとしてImportできます。",
+    "openExisting": "既存文書を開く",
+    "importCopy": "CopyとしてImport",
     "error": "整合性・安全Policy・互換性を検証できませんでした。文書はImportしていません。"
+  },
+  "documentLibrary": {
+    "title": "ローカル文書ライブラリ",
+    "description": "永続保存した文書を開く、名前変更、Archive、復元できます。",
+    "count": "{{count}}件の文書",
+    "empty": "最初の永続Checkpoint後に文書がここへ表示されます。",
+    "untitled": "無題",
+    "renameLabel": "{{title}}の名前を変更",
+    "rename": "名前を変更",
+    "open": "開く",
+    "opened": "編集中",
+    "archive": "Archive",
+    "restore": "復元",
+    "archiveSource": "取込元"
   },
   "imageInsertion": {
     "altText": "画像の代替テキスト（必須）",

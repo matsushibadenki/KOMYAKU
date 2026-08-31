@@ -10,11 +10,13 @@ import {
 import { CollaborativeEditor } from "./components/CollaborativeEditor.jsx";
 import { ConversationImportPanel } from "./components/ConversationImportPanel.jsx";
 import { PreviewQaRecoveryProbe } from "./components/PreviewQaRecoveryProbe.jsx";
+import { LocalDocumentLibrary } from "./components/LocalDocumentLibrary.jsx";
 import { loadLocalDraft, saveLocalDraft } from "./services/local-database.js";
 import { reconcileCloudDocumentAssets } from "./services/cloud-asset-reconciliation.js";
 import { createVerifiedCloudDocumentExport } from "./services/cloud-document-export.js";
-import { verifyLocalKomyakuImport } from "./services/local-komyaku-import.js";
+import { LocalArchiveImportConflictError, materializeLocalKomyakuImport } from "./services/local-komyaku-import.js";
 import { materializeCloudKomyakuImport } from "./services/cloud-komyaku-import.js";
+import { listLocalDocuments, mutateLocalDocument } from "./services/local-document-library.js";
 import {
   createEditorImagePreviewResolver,
   LOCAL_EDITOR_WORKSPACE
@@ -119,6 +121,12 @@ export function App() {
   const [documentExportStatus, setDocumentExportStatus] = useState("idle");
   const [archiveImportStatus, setArchiveImportStatus] = useState("idle");
   const [packagedImageQaStatus, setPackagedImageQaStatus] = useState("waiting");
+  const [localDocuments, setLocalDocuments] = useState([]);
+  const [archiveImportConflict, setArchiveImportConflict] = useState(null);
+
+  const refreshLocalDocuments = useCallback(async () => {
+    try { setLocalDocuments(await listLocalDocuments()); } catch { setLocalDocuments([]); }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -138,6 +146,8 @@ export function App() {
       });
     return () => { cancelled = true; };
   }, [welcomeDocument]);
+
+  useEffect(() => { void refreshLocalDocuments(); }, [refreshLocalDocuments]);
 
   const createCheckpoint = useCallback(async () => {
     if (!replicas) return;
@@ -179,6 +189,7 @@ export function App() {
       }
       setCheckpoint({ ...nextCheckpoint, createdAt: new Date() });
       setCheckpointStatus("ready");
+      void refreshLocalDocuments();
       return true;
     } catch (error) {
       if (sequence === checkpointSequence.current) {
@@ -189,7 +200,7 @@ export function App() {
       }
       return false;
     }
-  }, [editorWorkspace, replicas]);
+  }, [editorWorkspace, refreshLocalDocuments, replicas]);
 
   const scheduleCheckpoint = useCallback(() => {
     if (composingEditors.current.size > 0) return;
@@ -220,21 +231,64 @@ export function App() {
     event.target.value = "";
     if (!file) return;
     setArchiveImportStatus("loading");
+    setArchiveImportConflict(null);
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
       const imported = editorWorkspace.mode === "cloud"
         ? await materializeCloudKomyakuImport({
           token: editorWorkspace.token, workspaceId: editorWorkspace.workspaceId, bytes
         })
-        : await verifyLocalKomyakuImport(bytes);
+        : await materializeLocalKomyakuImport(bytes);
       const existing = await loadLocalDraft(imported.document.id);
       localRevision.current = existing?.localRevision ?? 0;
       persistenceBlocked.current = false;
       setReplicas(createReplicas(imported.document));
       setArchiveImportStatus("ready");
-    } catch {
-      setArchiveImportStatus("error");
+      void refreshLocalDocuments();
+    } catch (error) {
+      if (error instanceof LocalArchiveImportConflictError) {
+        setArchiveImportConflict({ bytes: new Uint8Array(await file.arrayBuffer()), documentId: error.documentId });
+        setArchiveImportStatus("conflict");
+      } else setArchiveImportStatus("error");
     }
+  };
+
+  const resolveArchiveConflict = async (choice) => {
+    const conflict = archiveImportConflict;
+    if (!conflict) return;
+    setArchiveImportStatus("loading");
+    try {
+      if (choice === "open") await openLocalDocument(conflict.documentId);
+      else {
+        const imported = await materializeLocalKomyakuImport(conflict.bytes, { copy: true });
+        localRevision.current = 1;
+        persistenceBlocked.current = false;
+        setReplicas(createReplicas(imported.document));
+      }
+      setArchiveImportConflict(null);
+      setArchiveImportStatus("ready");
+      await refreshLocalDocuments();
+    } catch { setArchiveImportStatus("error"); }
+  };
+
+  const openLocalDocument = async (documentId) => {
+    try {
+      const draft = await loadLocalDraft(documentId);
+      if (!draft) return;
+      localRevision.current = draft.localRevision;
+      persistenceBlocked.current = false;
+      setReplicas(createReplicas(draft.content));
+    } catch { setPersistenceStatus("error"); }
+  };
+
+  const renameLocalDocument = async (documentId, title) => {
+    try { await mutateLocalDocument({ documentId, title: String(title) }); await refreshLocalDocuments(); }
+    catch { setPersistenceStatus("error"); }
+  };
+
+  const archiveLocalDocument = async (documentId, archived) => {
+    try { await mutateLocalDocument({ documentId, archived }); await refreshLocalDocuments(); }
+    catch { setPersistenceStatus("error"); }
   };
 
   const handlePackagedImageQaStatus = useCallback((status) => {
@@ -466,6 +520,24 @@ export function App() {
         </div>
       </section>
 
+      {editorWorkspace.mode === "local" ? (
+        <LocalDocumentLibrary
+          documents={localDocuments}
+          activeDocumentId={checkpoint?.document?.id ?? null}
+          onOpen={openLocalDocument}
+          onRename={renameLocalDocument}
+          onArchive={archiveLocalDocument}
+          labels={{
+            title: t("documentLibrary.title"), description: t("documentLibrary.description"),
+            count: t("documentLibrary.count"), empty: t("documentLibrary.empty"),
+            untitled: t("documentLibrary.untitled"), renameLabel: t("documentLibrary.renameLabel"),
+            rename: t("documentLibrary.rename"), open: t("documentLibrary.open"),
+            opened: t("documentLibrary.opened"), archive: t("documentLibrary.archive"),
+            restore: t("documentLibrary.restore"), archiveSource: t("documentLibrary.archiveSource")
+          }}
+        />
+      ) : null}
+
       <ConversationImportPanel onWorkspaceSessionChange={handleWorkspaceSessionChange} />
 
       {previewQa ? <PreviewQaRecoveryProbe /> : null}
@@ -506,6 +578,12 @@ export function App() {
           <p className="persistence-status" role="status" data-state={archiveImportStatus}>
             {t(`archiveImport.${archiveImportStatus}`)}
           </p>
+          {archiveImportConflict ? (
+            <div className="library-actions">
+              <button type="button" onClick={() => resolveArchiveConflict("open")}>{t("archiveImport.openExisting")}</button>
+              <button type="button" onClick={() => resolveArchiveConflict("copy")}>{t("archiveImport.importCopy")}</button>
+            </div>
+          ) : null}
         </div>
       </aside>
 

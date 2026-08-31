@@ -71,9 +71,26 @@
   "archiveImport": {
     "choose": "打开 .komyaku 归档",
     "loading": "正在验证并导入归档…",
-    "idle": "本地归档在设备上验证；云端归档经服务器验证后以原子方式写入。",
+    "idle": "桌面本地与云端归档均先验证并以原子方式写入，再更改工作文档。",
     "ready": "已恢复通过验证的 Canonical 文档，未留下部分导入状态。",
+    "conflict": "相同文档标识已存在。可打开现有文档，或使用新的文档和节点标识导入副本。",
+    "openExisting": "打开现有文档",
+    "importCopy": "导入为副本",
     "error": "归档未通过完整性、安全策略或兼容性验证，未导入文档。"
+  },
+  "documentLibrary": {
+    "title": "本地文档库",
+    "description": "打开、重命名、归档或恢复持久化的本地文档。",
+    "count": "{{count}} 个文档",
+    "empty": "首次持久化检查点完成后，文档会显示在这里。",
+    "untitled": "无标题",
+    "renameLabel": "重命名 {{title}}",
+    "rename": "重命名",
+    "open": "打开",
+    "opened": "正在编辑",
+    "archive": "归档",
+    "restore": "恢复",
+    "archiveSource": "来源"
   },
   "imageInsertion": {
     "altText": "图像替代文本（必填）",
