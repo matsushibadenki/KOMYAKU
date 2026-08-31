@@ -54,10 +54,10 @@ export function createAssetRepository(sql) {
 
         const insertedReferences = await tx`
           INSERT INTO asset_references
-            (id, workspace_id, asset_id, referrer_type, referrer_id, relation, created_by)
+            (id, workspace_id, asset_id, referrer_type, referrer_id, relation, document_id, created_by)
           VALUES
             (${reference.id}, ${candidate.workspaceId}, ${asset.id}, ${reference.referrerType},
-             ${reference.referrerId}, ${reference.relation}, ${candidate.createdBy})
+             ${reference.referrerId}, ${reference.relation}, ${reference.documentId ?? null}, ${candidate.createdBy})
           ON CONFLICT (workspace_id, asset_id, referrer_type, referrer_id, relation)
             WHERE released_at IS NULL
           DO NOTHING
@@ -70,10 +70,22 @@ export function createAssetRepository(sql) {
             AND asset_id = ${asset.id}
             AND released_at IS NULL
         `;
+        const referenceRows = insertedReferences.length === 1 ? insertedReferences : await tx`
+          SELECT id
+          FROM asset_references
+          WHERE workspace_id = ${candidate.workspaceId}
+            AND asset_id = ${asset.id}
+            AND referrer_type = ${reference.referrerType}
+            AND referrer_id = ${reference.referrerId}
+            AND relation = ${reference.relation}
+            AND released_at IS NULL
+          LIMIT 1
+        `;
         return {
           assetId: asset.id,
           assetCreated: asset.created,
           referenceCreated: insertedReferences.length === 1,
+          referenceId: referenceRows[0]?.id,
           activeReferenceCount: Number(counts[0]?.active_count ?? 0),
           mediaType: asset.media_type,
           byteSize: Number(asset.byte_size),
@@ -83,13 +95,14 @@ export function createAssetRepository(sql) {
       });
     },
 
-    async releaseAssetReference({ workspaceId, referenceId }) {
+    async releaseAssetReference({ workspaceId, assetId, referenceId }) {
       return sql.begin(async (tx) => {
         const released = await tx`
           UPDATE asset_references
           SET released_at = now()
           WHERE id = ${referenceId}
             AND workspace_id = ${workspaceId}
+            AND asset_id = ${assetId}
             AND released_at IS NULL
           RETURNING asset_id
         `;

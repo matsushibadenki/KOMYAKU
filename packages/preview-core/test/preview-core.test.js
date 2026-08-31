@@ -5,6 +5,7 @@ import {
   PreviewError,
   createStaticPreviewDocument,
   renderLatexPreview,
+  renderAcceptedPngPreview,
   renderMermaidPreview,
   renderSvgPreview,
   sanitizeSvg,
@@ -13,6 +14,16 @@ import {
 } from "../src/index.js";
 
 describe("isolated static preview foundation", () => {
+  function pngHeader({ width = 1, height = 1 } = {}) {
+    const bytes = new Uint8Array(33);
+    bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    new DataView(bytes.buffer).setUint32(8, 13);
+    bytes.set([0x49, 0x48, 0x44, 0x52], 12);
+    new DataView(bytes.buffer).setUint32(16, width);
+    new DataView(bytes.buffer).setUint32(20, height);
+    return bytes;
+  }
+
   test("renders untrusted LaTeX as script-free MathML with a deny-by-default CSP", () => {
     const preview = renderLatexPreview(String.raw`E^2 = p^2c^2 + m^2c^4`, { language: "ja" });
     expect(preview.kind).toBe("static-html");
@@ -53,6 +64,46 @@ describe("isolated static preview foundation", () => {
         kind: "unavailable", reason: `${kind}_isolated_renderer_unavailable`, sourceMustRemainVisible: true
       });
     }
+  });
+
+  test("wraps only an accepted bounded PNG preview in a script-free static descriptor", () => {
+    const bytes = pngHeader({ width: 640, height: 480 });
+    const preview = renderAcceptedPngPreview({
+      bytes,
+      inspection: {
+        status: "accepted", detectedMediaType: "image/png",
+        byteSize: bytes.byteLength, width: 640, height: 480
+      },
+      altText: `Graph <script>alert(1)</script>`,
+      language: "en"
+    });
+    expect(preview.sandbox).toBe("");
+    expect(preview.document).toContain("data:image/png;base64,");
+    expect(preview.document).toContain('width="640" height="480"');
+    expect(preview.document).toContain("Graph &lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(preview.document).not.toContain("<script>");
+    expect(preview.document).toContain("img-src data:");
+  });
+
+  test("rejects unaccepted, mismatched, oversized-pixel, and forged PNG previews", () => {
+    const bytes = pngHeader({ width: 10, height: 20 });
+    const accepted = {
+      status: "accepted", detectedMediaType: "image/png",
+      byteSize: bytes.byteLength, width: 10, height: 20
+    };
+    expect(() => renderAcceptedPngPreview({ bytes, inspection: { ...accepted, status: "pending" } }))
+      .toThrow(new PreviewError("png_preview_not_accepted"));
+    expect(() => renderAcceptedPngPreview({ bytes, inspection: { ...accepted, byteSize: 99 } }))
+      .toThrow(new PreviewError("invalid_png_preview_bytes"));
+    expect(() => renderAcceptedPngPreview({ bytes, inspection: { ...accepted, width: 11 } }))
+      .toThrow(new PreviewError("png_preview_metadata_mismatch"));
+    expect(() => renderAcceptedPngPreview({
+      bytes: pngHeader({ width: 5_000, height: 5_000 }),
+      inspection: { ...accepted, byteSize: 33, width: 5_000, height: 5_000 }
+    })).toThrow(new PreviewError("png_preview_dimensions_exceeded"));
+    expect(() => renderAcceptedPngPreview({
+      bytes: new Uint8Array(33), inspection: { ...accepted }
+    })).toThrow(new PreviewError("invalid_png_preview"));
   });
 
   test("rebuilds basic SVG through a static element and attribute allowlist", () => {

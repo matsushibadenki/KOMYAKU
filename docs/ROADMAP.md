@@ -60,10 +60,32 @@ Stage status: [Done] Identity engineering complete; production launch gates rema
 - [Done] Deny-by-default static preview Descriptor and sandboxed iframe boundary, plus bounded script-free KaTeX-to-MathML rendering for untrusted LaTeX
 - [Done] Bounded Basic SVG XML parser and new-document allowlist sanitizer excluding active content, foreign namespaces, events, styles, animation, and external resources
 - [Done] Pinned Mermaid 11.17.2 parser and isolated Renderer Adapter contract with fixed secure configuration, authored-config/interaction/style rejection, budgets, and mandatory SVG re-sanitization
-- [Done] Capability-minimized hidden Mermaid WebView with explicit Tauri application-command ACL, event-only bounded transport, lazy renderer loading, timeout/backpressure, and mandatory SVG re-sanitization
-- [Next] Packaged Mermaid sensitive-command denial, adversarial load, timeout/recovery QA and editor integration; then isolated accepted-image and PDF previews using the gates in `docs/architecture/isolated-content-previews.md`
+- [Done] Capability-minimized hidden Mermaid WebView with explicit Tauri application-command ACL, fail-closed runtime application-command and direct SQL canaries, event-only bounded transport, lazy renderer loading, timeout/backpressure, timeout-triggered WebView recreation, and mandatory SVG re-sanitization
+- [Done] Mermaid Diagram NodeView integration retaining visible Canonical source, script-free static iframe output, localized fail-closed Web fallback, and responsive layout
+- [Done] Isolated-profile packaged macOS Mermaid QA covering live static rendering, malformed and forbidden-source rejection, fail-closed application-command/SQL readiness canaries, full quit/relaunch recovery, and deterministic timeout → WebView recreation → post-recovery rendering
+- [Done] Accepted-PNG static Descriptor foundation requiring inspected MIME, exact byte size, inspection-confirmed dimensions, 256 KiB encoded and 16 MP decoded budgets, data-only CSP, and an empty iframe sandbox
+- [Done] Server-only decoder-backed PNG inspection with a 1 MiB complete-input budget, 16 MP libvips limit, full raw decode, persisted inspected dimensions, lease-safe completion, and opaque failure handling
+- [Done] Authorized Cloud PNG preview-byte proxy and Desktop Resolver with Workspace membership, exact inspection policy, 256 KiB limit, immutable SHA-256 recheck, no-store binary response, no Object Storage URL exposure, and memory-only Session use
+- [Done] Local SQLite accepted-PNG preview cache, byte length/SHA-256 revalidation, lazy Descriptor loading, and localized Image NodeView retaining visible Asset identity and alternative text on failure
+- [Done] Decoder-verified local PNG insertion with capability-scoped native command, bounded full decode, atomic/idempotent SQLite cache write, required alternative text, and Canonical Image Node creation only after durable acceptance
+- [Done] Centralized editor Workspace preview state selecting either the Local Resolver or a Cloud Resolver bound to one memory-only Session and Workspace, with no cross-authority fallback
+- [Done] Isolated-profile packaged macOS Image QA covering decoder-verified native insertion, Yjs replication, explicit durable Canonical checkpoint, complete process quit, SQLite reopen, stable Image Node recovery, and restored static preview without Asset rewrite
+- [Done] Atomic local document-to-Asset reference accounting with pending/active/quarantined/legacy lifecycle, 24-hour insertion grace, final-reference quarantine, stale-revision rollback, migration-era protection, and no destructive byte deletion
+- [Done] Accessible Image Node metadata authoring with required alternative text, optional visible plain-text captions, stable-Node-ID ProseMirror transactions, Yjs replica synchronization, Canonical restart recovery, and rich-caption preservation
+- [Done] Structured rich Image caption authoring for marked text, hard breaks, and stable-ID inline LaTeX, with bounded Canonical validation, reordering, Yjs synchronization, and exact restart recovery
+- [Done] Authenticated Cloud PNG insertion with preallocated stable Node identity, exact-byte content-addressed upload, bounded asynchronous decoder inspection, accepted-only Canonical insertion, authorized static preview, and failed-staging reference release
+- [Done] Authenticated Cloud immutable text-original insertion for TXT, Markdown, CSV, Mermaid, and JSON with stable File Node identity, 1 MiB complete-input inspection, multilingual display filenames, accepted-only Canonical insertion, and failed-staging reference release
+- [Done] Revision-monotonic Cloud document-to-Asset checkpoint reconciliation with Document-bound upload references, deterministic digests, accepted-reference validation, transactional stale-reference release, idempotent replay, and multi-replica PostgreSQL locking
+- [Done] Explicit local Asset quarantine management with a bounded metadata-only native list, localized responsive UI, required recovery alternative text, non-destructive reinsertion, and checkpoint-gated reactivation
+- [Done] Packaged macOS Mermaid pressure/backpressure QA covering pre-IPC source rejection, permitted 200-edge rendering, exact eight-request reservation, ninth-request busy rejection, timeout-wide fail-closed cleanup, hidden WebView recreation, and post-pressure recovery
+- [Next] Windows WebView2/Linux WebKitGTK packaged pressure passes and remaining platform-specific sensitive-command denial probes
+- [Later] JPEG/WebP still-image policies, animated-image policy, and isolated PDF rasterization/viewing using the gates in `docs/architecture/isolated-content-previews.md`
 - [Done] Structured editor feasibility view, validated Canonical local autosave, page/app restart recovery, and Japanese/English/Simplified Chinese UI
-- [Next] Asset insertion, accessible captions/alt text authoring, and production document-management workflow
+- [Done] Export-gated Asset retention safety with digest-bound verified export/archive evidence, evidence invalidation, publication/legal holds, fail-closed SQL claims, defense-in-depth purge capability, audited operator controls, and disabled automatic orphan deletion
+- [Done] Automated open `.komyaku` v1 export with deterministic store-only ZIP, strict manifest, Canonical/Asset-set validation, immutable write, persisted reread, full CRC32/SHA-256 verification, automatic retention evidence, and localized Cloud workflow
+- [Done] Authorized `.komyaku` export listing, 60-second forced download, transactional export/evidence invalidation, and fail-closed local Canonical recovery through the public Reader
+- [Next] Atomic Archive Asset materialization into Local and Cloud stores, cross-Workspace import mapping, and production document library workflow
+- [Later] Expand Generic File originals beyond inspected text after production malware scanning and format-specific parser/decoder policies
 - [Done] Headless Yjs and `y-prosemirror` working-state foundation covering concurrent convergence, state-vector offline rejoin, stable Node IDs, deterministic Canonical checkpoints, bounded updates, and selective local undo
 - [Done] Browser two-replica feasibility view with live Yjs synchronization, disconnect/reconnect lifecycle, Relative Position selection capture/restore path, composition-safe checkpoints, accessible labels, and responsive layouts
 - [Done] Automated browser regression coverage for collaboration, composition lifecycle, restart recovery, and responsive layout
@@ -81,7 +103,8 @@ Stage status: [Done] Identity engineering complete; production launch gates rema
 - [Later] Diff dispatcher with Text, Math source, Diagram, Image, Table, Code, and Binary Asset engines
 - [Later] Grapheme-safe Text/LaTeX/Mermaid Diff and binary added/replaced/deleted/hash/size comparison
 - [Later] Recovery snapshots, offline sync queue, and conflict branches
-- [Later] Publish the open `.komyaku` Archive specification, schemas, conformance fixtures, and compatibility policy alongside its first implementation
+- [Done] Publish the open `.komyaku` Archive v1 specification, manifest schema, deterministic minimal fixture, security limits, and compatibility policy alongside its first writer/reader
+- [Later] Extend `.komyaku` with immutable Version DAG, branches, merges, and corresponding conformance fixtures without breaking v1 readers
 - [Later] Backup, open Archive export/import, and automated restore verification
 
 ## Collaborative Editing and Local-first Sync

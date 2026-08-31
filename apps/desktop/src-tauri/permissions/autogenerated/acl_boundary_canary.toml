@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-acl-boundary-canary"
+description = "Enables the acl_boundary_canary command without any pre-configured scope."
+commands.allow = ["acl_boundary_canary"]
+
+[[permission]]
+identifier = "deny-acl-boundary-canary"
+description = "Denies the acl_boundary_canary command without any pre-configured scope."
+commands.deny = ["acl_boundary_canary"]

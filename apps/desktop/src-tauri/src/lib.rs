@@ -1,5 +1,9 @@
+use image::{ImageFormat, ImageReader, Limits};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use sqlx::{Pool, Sqlite};
+use std::collections::BTreeSet;
+use std::io::Cursor;
 use tauri::State;
 use tauri_plugin_sql::{DbInstances, DbPool, Migration, MigrationKind};
 
@@ -10,6 +14,147 @@ const SECURE_SESSION_ACCOUNT: &str = "cloud-session-v1";
 const MAX_PROVIDER_SECRET_BYTES: usize = 16 * 1024;
 const MAX_LOCAL_CONVERSATION_BYTES: usize = 12 * 1024 * 1024;
 const MAX_LOCAL_CONVERSATION_LIST_ITEMS: i64 = 100;
+const MAX_LOCAL_PNG_PREVIEW_BYTES: usize = 256 * 1024;
+const MAX_LOCAL_PNG_PREVIEW_PIXELS: u64 = 16_000_000;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalPngPreviewInput {
+    asset_id: String,
+    bytes: Vec<u8>,
+    updated_at: String,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct LocalPngPreviewResult {
+    asset_id: String,
+    byte_size: usize,
+    content_hash: String,
+    width: u32,
+    height: u32,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct QuarantinedLocalAssetSummary {
+    asset_id: String,
+    byte_size: i64,
+    width: i64,
+    height: i64,
+    quarantined_at: String,
+}
+
+async fn list_quarantined_local_assets_transaction(
+    pool: &Pool<Sqlite>,
+) -> Result<Vec<QuarantinedLocalAssetSummary>, &'static str> {
+    sqlx::query_as(
+        "SELECT asset_id, byte_size, inspected_width AS width, inspected_height AS height,
+                quarantined_at
+         FROM local_asset_previews
+         WHERE lifecycle_status = 'quarantined'
+           AND inspection_status = 'accepted'
+           AND detected_media_type = 'image/png'
+           AND quarantined_at IS NOT NULL
+         ORDER BY quarantined_at DESC, asset_id ASC
+         LIMIT 100",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|_| "local_asset_quarantine_unavailable")
+}
+
+fn inspect_local_png_preview(
+    input: &LocalPngPreviewInput,
+) -> Result<LocalPngPreviewResult, &'static str> {
+    if input.bytes.is_empty()
+        || input.bytes.len() > MAX_LOCAL_PNG_PREVIEW_BYTES
+        || input.updated_at.is_empty()
+        || input.updated_at.len() > 64
+        || validate_provider_reference(&input.asset_id).is_err()
+        || input
+            .asset_id
+            .bytes()
+            .any(|value| value.is_ascii_uppercase())
+    {
+        return Err("invalid_local_png_preview");
+    }
+    let mut reader = ImageReader::with_format(Cursor::new(&input.bytes), ImageFormat::Png);
+    let mut limits = Limits::default();
+    limits.max_image_width = Some(MAX_LOCAL_PNG_PREVIEW_PIXELS as u32);
+    limits.max_image_height = Some(MAX_LOCAL_PNG_PREVIEW_PIXELS as u32);
+    limits.max_alloc = Some(MAX_LOCAL_PNG_PREVIEW_PIXELS * 4);
+    reader.limits(limits);
+    let image = reader.decode().map_err(|_| "invalid_local_png_preview")?;
+    let width = image.width();
+    let height = image.height();
+    if width == 0
+        || height == 0
+        || u64::from(width) * u64::from(height) > MAX_LOCAL_PNG_PREVIEW_PIXELS
+    {
+        return Err("local_png_preview_dimensions_exceeded");
+    }
+    let content_hash = Sha256::digest(&input.bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    Ok(LocalPngPreviewResult {
+        asset_id: input.asset_id.clone(),
+        byte_size: input.bytes.len(),
+        content_hash,
+        width,
+        height,
+    })
+}
+
+async fn store_local_png_preview_transaction(
+    pool: &Pool<Sqlite>,
+    input: &LocalPngPreviewInput,
+) -> Result<LocalPngPreviewResult, &'static str> {
+    let result = inspect_local_png_preview(input)?;
+    let mut transaction = pool
+        .begin()
+        .await
+        .map_err(|_| "local_png_preview_storage_failure")?;
+    sqlx::query(
+        "INSERT INTO local_asset_previews
+         (asset_id, bytes, byte_size, content_hash, detected_media_type,
+          inspection_status, inspection_policy_version, inspected_width,
+          inspected_height, updated_at, lifecycle_status)
+         VALUES (?, ?, ?, ?, 'image/png', 'accepted', 'decoder-backed-png-v1', ?, ?, ?, 'pending')
+         ON CONFLICT(asset_id) DO NOTHING",
+    )
+    .bind(&result.asset_id)
+    .bind(&input.bytes)
+    .bind(result.byte_size as i64)
+    .bind(&result.content_hash)
+    .bind(i64::from(result.width))
+    .bind(i64::from(result.height))
+    .bind(&input.updated_at)
+    .execute(&mut *transaction)
+    .await
+    .map_err(|_| "local_png_preview_storage_failure")?;
+    let stored: (i64, String, i64, i64) = sqlx::query_as(
+        "SELECT byte_size, content_hash, inspected_width, inspected_height
+         FROM local_asset_previews WHERE asset_id = ? LIMIT 1",
+    )
+    .bind(&result.asset_id)
+    .fetch_one(&mut *transaction)
+    .await
+    .map_err(|_| "local_png_preview_storage_failure")?;
+    if stored.0 != result.byte_size as i64
+        || stored.1 != result.content_hash
+        || stored.2 != i64::from(result.width)
+        || stored.3 != i64::from(result.height)
+    {
+        return Err("local_png_preview_conflict");
+    }
+    transaction
+        .commit()
+        .await
+        .map_err(|_| "local_png_preview_storage_failure")?;
+    Ok(result)
+}
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
@@ -540,6 +685,13 @@ async fn list_local_conversations(
         .map_err(|error| error.code().to_string())
 }
 
+/// Harmless command used by the isolated renderer to prove that application
+/// command ACL enforcement is active. It is deliberately granted only to main.
+#[tauri::command]
+fn acl_boundary_canary() -> &'static str {
+    "main-command-accessible"
+}
+
 async fn list_local_conversation_summaries(
     pool: &Pool<Sqlite>,
 ) -> Result<Vec<LocalConversationSummary>, LocalAiHandoffError> {
@@ -640,11 +792,45 @@ fn validate_local_draft_input(input: &LocalDraftInput) -> Result<(), LocalDraftS
     Ok(())
 }
 
+fn collect_local_asset_ids(content_json: &str) -> Result<BTreeSet<String>, LocalDraftSaveError> {
+    fn visit_nodes(value: &serde_json::Value, assets: &mut BTreeSet<String>) {
+        let Some(nodes) = value.as_array() else {
+            return;
+        };
+        for node in nodes {
+            let Some(object) = node.as_object() else {
+                continue;
+            };
+            if object.get("type").and_then(serde_json::Value::as_str) == Some("image") {
+                if let Some(asset_id) = object.get("assetId").and_then(serde_json::Value::as_str) {
+                    if validate_provider_reference(asset_id).is_ok()
+                        && !asset_id.bytes().any(|value| value.is_ascii_uppercase())
+                    {
+                        assets.insert(asset_id.to_string());
+                    }
+                }
+            }
+            if let Some(content) = object.get("content") {
+                visit_nodes(content, assets);
+            }
+        }
+    }
+
+    let content: serde_json::Value =
+        serde_json::from_str(content_json).map_err(|_| LocalDraftSaveError::InvalidInput)?;
+    let mut assets = BTreeSet::new();
+    if let Some(nodes) = content.get("content") {
+        visit_nodes(nodes, &mut assets);
+    }
+    Ok(assets)
+}
+
 async fn save_local_draft_transaction(
     pool: &Pool<Sqlite>,
     input: &LocalDraftInput,
 ) -> Result<(), LocalDraftSaveError> {
     validate_local_draft_input(input)?;
+    let asset_ids = collect_local_asset_ids(&input.content_json)?;
     let mut transaction = pool
         .begin()
         .await
@@ -697,6 +883,79 @@ async fn save_local_draft_transaction(
         return Err(LocalDraftSaveError::StaleRevision);
     }
 
+    let previous_asset_ids: Vec<String> = sqlx::query_scalar(
+        "SELECT asset_id FROM local_document_asset_references WHERE document_id = ?",
+    )
+    .bind(&input.document_id)
+    .fetch_all(&mut *transaction)
+    .await
+    .map_err(|_| LocalDraftSaveError::StorageFailure)?;
+
+    sqlx::query("DELETE FROM local_document_asset_references WHERE document_id = ?")
+        .bind(&input.document_id)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|_| LocalDraftSaveError::StorageFailure)?;
+
+    for asset_id in &asset_ids {
+        sqlx::query(
+            "INSERT INTO local_document_asset_references (document_id, asset_id, updated_at)
+             SELECT ?, asset_id, ? FROM local_asset_previews WHERE asset_id = ?",
+        )
+        .bind(&input.document_id)
+        .bind(&input.updated_at)
+        .bind(asset_id)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|_| LocalDraftSaveError::StorageFailure)?;
+    }
+
+    sqlx::query(
+        "UPDATE local_asset_previews
+         SET lifecycle_status = 'active', last_referenced_at = ?, quarantined_at = NULL
+         WHERE asset_id IN (
+           SELECT asset_id FROM local_document_asset_references WHERE document_id = ?
+         )",
+    )
+    .bind(&input.updated_at)
+    .bind(&input.document_id)
+    .execute(&mut *transaction)
+    .await
+    .map_err(|_| LocalDraftSaveError::StorageFailure)?;
+
+    for asset_id in previous_asset_ids {
+        sqlx::query(
+            "UPDATE local_asset_previews
+             SET lifecycle_status = 'quarantined', quarantined_at = ?
+             WHERE asset_id = ? AND lifecycle_status = 'active'
+               AND NOT EXISTS (
+                 SELECT 1 FROM local_document_asset_references WHERE asset_id = ?
+               )",
+        )
+        .bind(&input.updated_at)
+        .bind(&asset_id)
+        .bind(&asset_id)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|_| LocalDraftSaveError::StorageFailure)?;
+    }
+
+    sqlx::query(
+        "UPDATE local_asset_previews
+         SET lifecycle_status = 'quarantined', quarantined_at = ?
+         WHERE lifecycle_status = 'pending'
+           AND datetime(updated_at) <= datetime(?, '-1 day')
+           AND NOT EXISTS (
+             SELECT 1 FROM local_document_asset_references
+             WHERE asset_id = local_asset_previews.asset_id
+           )",
+    )
+    .bind(&input.updated_at)
+    .bind(&input.updated_at)
+    .execute(&mut *transaction)
+    .await
+    .map_err(|_| LocalDraftSaveError::StorageFailure)?;
+
     transaction
         .commit()
         .await
@@ -721,6 +980,39 @@ async fn save_local_draft_atomic(
         .map_err(|error| error.code().to_string())
 }
 
+#[tauri::command]
+async fn store_local_png_preview_atomic(
+    db_instances: State<'_, DbInstances>,
+    input: LocalPngPreviewInput,
+) -> Result<LocalPngPreviewResult, String> {
+    let pool = {
+        let instances = db_instances.0.read().await;
+        match instances.get(LOCAL_DATABASE_URL) {
+            Some(DbPool::Sqlite(pool)) => pool.clone(),
+            _ => return Err("tauri_database_unavailable".to_string()),
+        }
+    };
+    store_local_png_preview_transaction(&pool, &input)
+        .await
+        .map_err(str::to_string)
+}
+
+#[tauri::command]
+async fn list_quarantined_local_assets(
+    db_instances: State<'_, DbInstances>,
+) -> Result<Vec<QuarantinedLocalAssetSummary>, String> {
+    let pool = {
+        let instances = db_instances.0.read().await;
+        match instances.get(LOCAL_DATABASE_URL) {
+            Some(DbPool::Sqlite(pool)) => pool.clone(),
+            _ => return Err("tauri_database_unavailable".to_string()),
+        }
+    };
+    list_quarantined_local_assets_transaction(&pool)
+        .await
+        .map_err(str::to_string)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let migrations = vec![
@@ -736,11 +1028,25 @@ pub fn run() {
             sql: include_str!("../migrations/0002_local_ai_handoffs.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 3,
+            description: "create_local_asset_previews",
+            sql: include_str!("../migrations/0003_local_asset_previews.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 4,
+            description: "create_local_asset_reference_lifecycle",
+            sql: include_str!("../migrations/0004_local_asset_reference_lifecycle.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             save_local_draft_atomic,
+            store_local_png_preview_atomic,
+            list_quarantined_local_assets,
             store_cloud_session,
             load_cloud_session,
             delete_cloud_session,
@@ -749,7 +1055,8 @@ pub fn run() {
             delete_provider_credential,
             save_local_ai_handoff_atomic,
             load_local_conversation,
-            list_local_conversations
+            list_local_conversations,
+            acl_boundary_canary
         ])
         .plugin(
             tauri_plugin_sql::Builder::default()
@@ -805,7 +1112,262 @@ mod tests {
             .execute(&pool)
             .await
             .expect("apply local AI schema");
+        sqlx::raw_sql(include_str!("../migrations/0003_local_asset_previews.sql"))
+            .execute(&pool)
+            .await
+            .expect("apply local asset preview schema");
+        sqlx::raw_sql(include_str!(
+            "../migrations/0004_local_asset_reference_lifecycle.sql"
+        ))
+        .execute(&pool)
+        .await
+        .expect("apply local asset reference lifecycle schema");
         pool
+    }
+
+    fn local_png_preview_input(asset_id: &str) -> LocalPngPreviewInput {
+        LocalPngPreviewInput {
+            asset_id: asset_id.into(),
+            bytes: vec![
+                137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0,
+                1, 8, 4, 0, 0, 0, 181, 28, 12, 2, 0, 0, 0, 11, 73, 68, 65, 84, 120, 218, 99, 100,
+                248, 15, 0, 1, 5, 1, 1, 39, 24, 227, 102, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96,
+                130,
+            ],
+            updated_at: "2026-08-30T00:00:00.000Z".into(),
+        }
+    }
+
+    fn draft_with_image(revision: i64, asset_id: &str) -> LocalDraftInput {
+        let mut draft = input(revision, "Image lifecycle");
+        draft.updated_at = "2026-08-30T00:05:00.000Z".into();
+        let mut content: serde_json::Value =
+            serde_json::from_str(&draft.content_json).expect("parse draft fixture");
+        content["content"] = serde_json::json!([{
+            "type": "image",
+            "assetId": asset_id,
+            "mediaType": "image/png",
+            "altText": "Lifecycle fixture"
+        }]);
+        draft.content_json = content.to_string();
+        draft
+    }
+
+    #[tokio::test]
+    async fn decoder_verified_png_is_stored_idempotently() {
+        let pool = pool().await;
+        let input = local_png_preview_input("00000000-0000-4000-8000-000000000201");
+        let first = store_local_png_preview_transaction(&pool, &input)
+            .await
+            .expect("store decoded PNG");
+        let replay = store_local_png_preview_transaction(&pool, &input)
+            .await
+            .expect("replay identical PNG");
+        assert_eq!(first, replay);
+        assert_eq!((first.width, first.height), (1, 1));
+
+        let inspection: (String, String, i64) = sqlx::query_as(
+            "SELECT detected_media_type, inspection_status, byte_size
+             FROM local_asset_previews WHERE asset_id = ?",
+        )
+        .bind(&input.asset_id)
+        .fetch_one(&pool)
+        .await
+        .expect("read stored preview");
+        assert_eq!(inspection.0, "image/png");
+        assert_eq!(inspection.1, "accepted");
+        assert_eq!(inspection.2, input.bytes.len() as i64);
+    }
+
+    #[tokio::test]
+    async fn corrupt_png_and_asset_identity_conflict_are_rejected() {
+        let pool = pool().await;
+        let asset_id = "00000000-0000-4000-8000-000000000202";
+        let input = local_png_preview_input(asset_id);
+        store_local_png_preview_transaction(&pool, &input)
+            .await
+            .expect("store original PNG");
+
+        let mut conflict = input;
+        conflict.bytes.push(0);
+        assert_eq!(
+            store_local_png_preview_transaction(&pool, &conflict).await,
+            Err("local_png_preview_conflict")
+        );
+
+        let mut corrupt = local_png_preview_input("00000000-0000-4000-8000-000000000203");
+        corrupt.bytes[0] = 0;
+        assert_eq!(
+            inspect_local_png_preview(&corrupt),
+            Err("invalid_local_png_preview")
+        );
+    }
+
+    #[tokio::test]
+    async fn canonical_checkpoint_activates_then_quarantines_removed_local_asset() {
+        let pool = pool().await;
+        let asset_id = "00000000-0000-4000-8000-000000000204";
+        store_local_png_preview_transaction(&pool, &local_png_preview_input(asset_id))
+            .await
+            .expect("store pending preview");
+
+        save_local_draft_transaction(&pool, &draft_with_image(1, asset_id))
+            .await
+            .expect("save referencing draft");
+        let active: (String, i64) = sqlx::query_as(
+            "SELECT lifecycle_status,
+                    (SELECT COUNT(*) FROM local_document_asset_references WHERE asset_id = ?)
+             FROM local_asset_previews WHERE asset_id = ?",
+        )
+        .bind(asset_id)
+        .bind(asset_id)
+        .fetch_one(&pool)
+        .await
+        .expect("read active lifecycle");
+        assert_eq!(active, ("active".into(), 1));
+
+        let mut removed = input(2, "Image lifecycle");
+        removed.updated_at = "2026-08-30T00:10:00.000Z".into();
+        save_local_draft_transaction(&pool, &removed)
+            .await
+            .expect("save draft without image");
+        let quarantined: (String, Option<String>, i64, i64) = sqlx::query_as(
+            "SELECT lifecycle_status, quarantined_at, length(bytes),
+                    (SELECT COUNT(*) FROM local_document_asset_references WHERE asset_id = ?)
+             FROM local_asset_previews WHERE asset_id = ?",
+        )
+        .bind(asset_id)
+        .bind(asset_id)
+        .fetch_one(&pool)
+        .await
+        .expect("read quarantined lifecycle");
+        assert_eq!(quarantined.0, "quarantined");
+        assert_eq!(quarantined.1.as_deref(), Some("2026-08-30T00:10:00.000Z"));
+        assert!(
+            quarantined.2 > 0,
+            "quarantine must preserve recoverable bytes"
+        );
+        assert_eq!(quarantined.3, 0);
+    }
+
+    #[tokio::test]
+    async fn lists_bounded_quarantined_metadata_and_reactivates_only_after_checkpoint() {
+        let pool = pool().await;
+        let asset_id = "00000000-0000-4000-8000-000000000208";
+        store_local_png_preview_transaction(&pool, &local_png_preview_input(asset_id))
+            .await
+            .expect("store pending preview");
+        save_local_draft_transaction(&pool, &draft_with_image(1, asset_id))
+            .await
+            .expect("activate preview");
+        let mut removed = input(2, "Image lifecycle");
+        removed.updated_at = "2026-08-30T00:10:00.000Z".into();
+        save_local_draft_transaction(&pool, &removed)
+            .await
+            .expect("quarantine preview");
+
+        let summaries = list_quarantined_local_assets_transaction(&pool)
+            .await
+            .expect("list quarantine");
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].asset_id, asset_id);
+        assert_eq!((summaries[0].width, summaries[0].height), (1, 1));
+        assert_eq!(summaries[0].quarantined_at, "2026-08-30T00:10:00.000Z");
+
+        let mut restored = draft_with_image(3, asset_id);
+        restored.updated_at = "2026-08-30T00:15:00.000Z".into();
+        save_local_draft_transaction(&pool, &restored)
+            .await
+            .expect("reactivate through canonical checkpoint");
+        assert!(list_quarantined_local_assets_transaction(&pool)
+            .await
+            .expect("list after restore")
+            .is_empty());
+        let state: String = sqlx::query_scalar(
+            "SELECT lifecycle_status FROM local_asset_previews WHERE asset_id = ?",
+        )
+        .bind(asset_id)
+        .fetch_one(&pool)
+        .await
+        .expect("read reactivated lifecycle");
+        assert_eq!(state, "active");
+    }
+
+    #[tokio::test]
+    async fn stale_checkpoint_cannot_change_asset_reference_lifecycle() {
+        let pool = pool().await;
+        let asset_id = "00000000-0000-4000-8000-000000000205";
+        store_local_png_preview_transaction(&pool, &local_png_preview_input(asset_id))
+            .await
+            .expect("store pending preview");
+        save_local_draft_transaction(&pool, &draft_with_image(2, asset_id))
+            .await
+            .expect("save current draft");
+
+        let stale = input(1, "Image lifecycle");
+        assert_eq!(
+            save_local_draft_transaction(&pool, &stale).await,
+            Err(LocalDraftSaveError::StaleRevision)
+        );
+        let state: String = sqlx::query_scalar(
+            "SELECT lifecycle_status FROM local_asset_previews WHERE asset_id = ?",
+        )
+        .bind(asset_id)
+        .fetch_one(&pool)
+        .await
+        .expect("read lifecycle after rollback");
+        assert_eq!(state, "active");
+    }
+
+    #[tokio::test]
+    async fn aged_pending_preview_is_quarantined_without_deleting_legacy_or_bytes() {
+        let pool = pool().await;
+        let pending_id = "00000000-0000-4000-8000-000000000206";
+        let legacy_id = "00000000-0000-4000-8000-000000000207";
+        store_local_png_preview_transaction(&pool, &local_png_preview_input(pending_id))
+            .await
+            .expect("store pending preview");
+        store_local_png_preview_transaction(&pool, &local_png_preview_input(legacy_id))
+            .await
+            .expect("store legacy fixture");
+        sqlx::query(
+            "UPDATE local_asset_previews SET lifecycle_status = 'legacy' WHERE asset_id = ?",
+        )
+        .bind(legacy_id)
+        .execute(&pool)
+        .await
+        .expect("mark migration-era fixture");
+
+        let mut checkpoint = input(1, "Sweep pending");
+        checkpoint.updated_at = "2026-09-01T00:00:00.000Z".into();
+        save_local_draft_transaction(&pool, &checkpoint)
+            .await
+            .expect("save checkpoint and reconcile pending previews");
+
+        let states: Vec<(String, String, i64)> = sqlx::query_as(
+            "SELECT asset_id, lifecycle_status, length(bytes)
+             FROM local_asset_previews ORDER BY asset_id",
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("read protected lifecycle states");
+        assert_eq!(states[0].1, "quarantined");
+        assert_eq!(states[1].1, "legacy");
+        assert!(states.iter().all(|row| row.2 > 0));
+    }
+
+    #[test]
+    fn asset_reference_extraction_ignores_image_shaped_metadata() {
+        let real_id = "00000000-0000-4000-8000-000000000208";
+        let metadata_id = "00000000-0000-4000-8000-000000000209";
+        let content = serde_json::json!({
+            "metadata": { "type": "image", "assetId": metadata_id },
+            "content": [{ "type": "image", "assetId": real_id }]
+        });
+        assert_eq!(
+            collect_local_asset_ids(&content.to_string()).expect("extract canonical references"),
+            BTreeSet::from([real_id.to_string()])
+        );
     }
 
     fn ai_handoff_input(result_message_id: &str) -> LocalAiHandoffInput {

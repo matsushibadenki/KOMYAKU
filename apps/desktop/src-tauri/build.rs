@@ -1,6 +1,8 @@
 fn main() {
     const APP_COMMANDS: &[&str] = &[
         "save_local_draft_atomic",
+        "store_local_png_preview_atomic",
+        "list_quarantined_local_assets",
         "store_cloud_session",
         "load_cloud_session",
         "delete_cloud_session",
@@ -10,6 +12,7 @@ fn main() {
         "save_local_ai_handoff_atomic",
         "load_local_conversation",
         "list_local_conversations",
+        "acl_boundary_canary",
     ];
 
     tauri_build::try_build(

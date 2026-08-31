@@ -24,7 +24,10 @@ describe("Asset inspection service", () => {
       },
       inspector: {
         inspect() {
-          return { decision: "accepted", detectedMediaType: "image/png", policyVersion: "test-v1" };
+          return {
+            decision: "accepted", detectedMediaType: "image/png", policyVersion: "test-v1",
+            width: 640, height: 480
+          };
         }
       }
     });
@@ -32,6 +35,9 @@ describe("Asset inspection service", () => {
       claimed: 1, accepted: 1, rejected: 0, retried: 0, errors: 0, leaseLost: 0
     });
     expect(calls[0]).toEqual(["range", { key: "asset-key", start: 0, end: 7 }]);
+    expect(calls.find(([name]) => name === "complete")?.[1]).toMatchObject({
+      width: 640, height: 480
+    });
     expect(calls.some(([name]) => name === "fail")).toBe(false);
   });
 

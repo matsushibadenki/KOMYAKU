@@ -198,6 +198,12 @@ export function loadRuntimeConfig(env = Bun.env) {
     jobBatchSize: parsePositiveInteger(env.JOB_BATCH_SIZE, 10, "JOB_BATCH_SIZE"),
     jobLeaseSeconds: parsePositiveInteger(env.JOB_LEASE_SECONDS, 60, "JOB_LEASE_SECONDS"),
     jobPollIntervalMs: parsePositiveInteger(env.JOB_POLL_INTERVAL_MS, 1_000, "JOB_POLL_INTERVAL_MS"),
+    assetInspectionBatchSize: parsePositiveInteger(
+      env.ASSET_INSPECTION_BATCH_SIZE, 10, "ASSET_INSPECTION_BATCH_SIZE"
+    ),
+    assetInspectionPollIntervalMs: parsePositiveInteger(
+      env.ASSET_INSPECTION_POLL_INTERVAL_MS, 1_000, "ASSET_INSPECTION_POLL_INTERVAL_MS"
+    ),
     objectStorage: Object.freeze({
       endpoint: env.OBJECT_STORAGE_ENDPOINT || "http://127.0.0.1:9000",
       region: env.OBJECT_STORAGE_REGION || "us-east-1",

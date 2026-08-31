@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
   isMermaidRenderRequest,
-  isMermaidRenderResult
+  isMermaidRenderResult,
+  verifyMermaidRendererBoundary,
+  verifyMermaidRendererSqlBoundary
 } from "../src/services/mermaid-renderer-protocol.js";
 
 const tauriRoot = new URL("../src-tauri/", import.meta.url);
@@ -29,6 +31,10 @@ describe("Mermaid renderer privilege boundary", () => {
     expect(capability.permissions).toContain("sql:allow-execute");
     expect(capability.permissions).toContain("allow-load-provider-credential");
     expect(capability.permissions).toContain("allow-load-cloud-session");
+    expect(capability.permissions).toContain("allow-list-quarantined-local-assets");
+    expect(capability.permissions).toContain("allow-acl-boundary-canary");
+    expect(capability.permissions).toContain("core:webview:allow-create-webview-window");
+    expect(capability.permissions).toContain("core:window:allow-close");
   });
 
   test("declares a hidden renderer window with its dedicated entry mode", async () => {
@@ -42,6 +48,17 @@ describe("Mermaid renderer privilege boundary", () => {
     });
   });
 
+  test("keeps packaged preview QA in a separate application identity", async () => {
+    const config = await json("tauri.preview-qa.conf.json");
+    expect(config).toMatchObject({
+      productName: "KOMYAKU Preview QA",
+      identifier: "app.komyaku.desktop.preview-qa"
+    });
+    expect(config.app.windows.find(({ label }) => label === "main")?.url).toBe("/?previewQa=1");
+    expect(config.app.windows.find(({ label }) => label === "mermaid-renderer")?.url)
+      .toBe("/?mode=mermaid-renderer&previewQa=1");
+  });
+
   test("accepts only bounded request and result envelopes", () => {
     expect(isMermaidRenderRequest({ requestId: "abc-123", source: "flowchart LR\nA-->B", language: "ja" }))
       .toBe(true);
@@ -52,5 +69,24 @@ describe("Mermaid renderer privilege boundary", () => {
     })).toBe(true);
     expect(isMermaidRenderResult({ requestId: "abc-123", ok: true, preview: { kind: "raw-svg" } }))
       .toBe(false);
+  });
+
+  test("fails closed unless the harmless main-only canary is denied", async () => {
+    expect(await verifyMermaidRendererBoundary(async () => {
+      throw new Error("not allowed");
+    })).toBe(true);
+    expect(await verifyMermaidRendererBoundary(async () => "main-command-accessible")).toBe(false);
+    expect(await verifyMermaidRendererBoundary(null)).toBe(false);
+  });
+
+  test("fails closed unless the renderer is denied SQL plugin loading", async () => {
+    const calls = [];
+    expect(await verifyMermaidRendererSqlBoundary(async (command, payload) => {
+      calls.push([command, payload]);
+      throw new Error("not allowed");
+    })).toBe(true);
+    expect(calls).toEqual([["plugin:sql|load", { db: "sqlite:komyaku.db" }]]);
+    expect(await verifyMermaidRendererSqlBoundary(async () => "sqlite:komyaku.db")).toBe(false);
+    expect(await verifyMermaidRendererSqlBoundary(null)).toBe(false);
   });
 });

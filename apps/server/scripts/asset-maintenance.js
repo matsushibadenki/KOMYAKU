@@ -3,9 +3,11 @@ import { loadRuntimeConfig } from "../src/config.js";
 import { createDatabase } from "../src/database/client.js";
 import { createAssetLifecycleRepository } from "../src/repositories/asset-lifecycle-repository.js";
 import { createAssetInspectionRepository } from "../src/repositories/asset-inspection-repository.js";
+import { createAssetRetentionSafetyRepository } from "../src/repositories/asset-retention-safety-repository.js";
 import { createAssetLifecycleService } from "../src/services/asset-lifecycle-service.js";
 import { createAssetInspectionService } from "../src/services/asset-inspection-service.js";
-import { createBaselineMediaInspector } from "../src/services/baseline-media-inspector.js";
+import { createDecoderBackedMediaInspector } from "../src/services/decoder-backed-media-inspector.js";
+import { createAssetRetentionSafetyService } from "../src/services/asset-retention-safety-service.js";
 
 function argument(name) {
   const index = Bun.argv.indexOf(name);
@@ -13,8 +15,8 @@ function argument(name) {
 }
 
 const action = argument("--action");
-if (!new Set(["inspect", "reconcile", "quarantine", "purge"]).has(action)) {
-  throw new Error("Use --action inspect|reconcile|quarantine|purge");
+if (!new Set(["inspect", "reconcile", "quarantine", "purge", "evidence", "invalidate-evidence", "hold", "release-hold"]).has(action)) {
+  throw new Error("Use --action inspect|reconcile|quarantine|purge|evidence|invalidate-evidence|hold|release-hold");
 }
 
 const config = loadRuntimeConfig();
@@ -23,6 +25,9 @@ const client = createS3Client(config.objectStorage);
 const objectStore = createObjectStore({ client, bucket: config.objectStorage.bucket });
 const service = createAssetLifecycleService({
   repository: createAssetLifecycleRepository(database.sql), objectStore
+});
+const safetyService = createAssetRetentionSafetyService({
+  repository: createAssetRetentionSafetyRepository(database.sql)
 });
 const operator = {
   operatorId: Bun.env.OPERATOR_ID,
@@ -37,7 +42,24 @@ const policy = {
 
 try {
   let result;
-  if (action === "reconcile") {
+  if (action === "evidence" || action === "invalidate-evidence") {
+    const evidenceInput = {
+      workspaceId: argument("--workspace"), assetId: argument("--asset"),
+      evidenceType: argument("--type"), artifactId: argument("--artifact"),
+      ...operator
+    };
+    result = action === "evidence"
+      ? await safetyService.recordEvidence({ ...evidenceInput, artifactDigest: argument("--digest") })
+      : await safetyService.invalidateEvidence(evidenceInput);
+  } else if (action === "hold" || action === "release-hold") {
+    const input = {
+      workspaceId: argument("--workspace"), assetId: argument("--asset"),
+      holdType: argument("--type"), scopeId: argument("--scope"), ...operator
+    };
+    result = action === "hold"
+      ? await safetyService.placeHold(input)
+      : await safetyService.releaseHold(input);
+  } else if (action === "reconcile") {
     const workspaceId = argument("--workspace");
     const pages = [];
     let continuationToken;
@@ -59,9 +81,10 @@ try {
     result = await createAssetInspectionService({
       repository: createAssetInspectionRepository(database.sql),
       objectStore,
-      inspector: createBaselineMediaInspector(),
+      inspector: createDecoderBackedMediaInspector(),
       instanceId: config.instanceId,
-      batchSize: policy.batchSize
+      batchSize: policy.batchSize,
+      sampleBytes: 1024 * 1024
     }).runOnce();
   } else if (action === "quarantine") {
     result = await service.quarantineReferenceZero({ ...operator, policy });

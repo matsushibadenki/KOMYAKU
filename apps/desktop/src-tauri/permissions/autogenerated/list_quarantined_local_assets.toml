@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-quarantined-local-assets"
+description = "Enables the list_quarantined_local_assets command without any pre-configured scope."
+commands.allow = ["list_quarantined_local_assets"]
+
+[[permission]]
+identifier = "deny-list-quarantined-local-assets"
+description = "Denies the list_quarantined_local_assets command without any pre-configured scope."
+commands.deny = ["list_quarantined_local_assets"]

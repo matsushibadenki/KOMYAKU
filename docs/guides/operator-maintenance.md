@@ -37,6 +37,8 @@ AssetのFormat検査と認証済みDownloadは`docs/guides/asset-inspection-and-
 
 Use `jobs:dead-letters list` for payload-free, cursor-paginated inspection. Retry only an exact reviewed job with `OPERATOR_ID`, `--reason`, and bounded additional attempts. Run `maintenance:retention` without flags first; it is dry-run by default. Applying deletion requires `--apply`, `OPERATOR_ID`, and `RETENTION_REASON`. Unresolved failed and dead-letter jobs are never removed automatically. Do not bypass these controls with direct database updates.
 
+Asset physical purge is separately fail-closed. It requires verified export/archive evidence, no active references, no published-Version/legal hold, and an expired recovery window. Use the evidence and hold commands documented in `docs/guides/asset-retention-safety.md`; do not create or release records with direct SQL.
+
 Follow `docs/guides/asset-lifecycle-maintenance.md` for orphan reconciliation, reference-zero quarantine, and expired GC. Discovery never deletes an unknown object. Keep scheduled production purge disabled until publication, archive, legal-hold, and backup/restore policies are connected.
 
 Follow `docs/guides/asset-inspection-and-delivery.md` for format inspection and authenticated downloads. Do not treat the baseline inspection as antivirus.

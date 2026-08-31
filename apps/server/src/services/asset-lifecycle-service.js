@@ -144,7 +144,8 @@ export function createAssetLifecycleService({
       for (const candidate of candidates) {
         const contentHash = parseContentAddressedKey(candidate.workspaceId, candidate.storageKey);
         const repositoryPrefix = candidate.kind === "asset" ? "Asset" : "Orphan";
-        if (!contentHash || contentHash !== candidate.contentHash) {
+        if (!contentHash || contentHash !== candidate.contentHash
+          || candidate.retentionGateVerified !== true) {
           await repository[`retry${repositoryPrefix}Purge`]({
             id: candidate.id,
             workspaceId: candidate.workspaceId,

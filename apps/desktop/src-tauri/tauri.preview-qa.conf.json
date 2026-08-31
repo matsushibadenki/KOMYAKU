@@ -1,0 +1,28 @@
+{
+  "productName": "KOMYAKU Preview QA",
+  "identifier": "app.komyaku.desktop.preview-qa",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "KOMYAKU Preview QA",
+        "url": "/?previewQa=1",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 320,
+        "minHeight": 568,
+        "resizable": true
+      },
+      {
+        "label": "mermaid-renderer",
+        "title": "KOMYAKU Mermaid Renderer",
+        "url": "/?mode=mermaid-renderer&previewQa=1",
+        "width": 800,
+        "height": 600,
+        "visible": false,
+        "resizable": false,
+        "skipTaskbar": true
+      }
+    ]
+  }
+}

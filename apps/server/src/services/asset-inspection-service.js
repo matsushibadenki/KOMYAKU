@@ -48,7 +48,7 @@ export function createAssetInspectionService({
                 candidate.storageKey, 0, expectedBytes - 1
               )).Body);
           if (bytes.byteLength !== expectedBytes) throw new Error("Inspection sample length mismatch");
-          const result = inspector.inspect({
+          const result = await inspector.inspect({
             declaredMediaType: candidate.declaredMediaType,
             bytes,
             complete: candidate.byteSize <= sampleBytes
@@ -63,6 +63,8 @@ export function createAssetInspectionService({
             decision: result.decision,
             detectedMediaType: result.detectedMediaType,
             policyVersion: result.policyVersion,
+            width: result.width ?? null,
+            height: result.height ?? null,
             inspectedAt: now().toISOString()
           });
           if (completed) summary[result.decision] += 1;

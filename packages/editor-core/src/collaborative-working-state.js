@@ -16,6 +16,7 @@ import { EditorState, TextSelection } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { canonicalToEditorDocument, editorToCanonicalDocument } from "./canonical-adapter.js";
 import { createStableNodeIdentityPlugin, komyakuSchema } from "./prosemirror-schema.js";
+import { DOCUMENT_SCHEMA_VERSION, createNodeId, inlineNodeSchema } from "@komyaku/document-schema";
 
 export const COLLABORATIVE_FRAGMENT_NAME = "komyaku:document-content";
 export const COLLABORATIVE_METADATA_NAME = "komyaku:document-metadata";
@@ -282,17 +283,171 @@ export function createCollaborativeEditorState(document, { plugins = [] } = {}) 
 
 export function createCollaborativeEditorView(mount, document, {
   plugins = [],
+  nodeViews = {},
   onTransaction = () => {}
 } = {}) {
   if (!(mount instanceof Element)) throw new CollaborativeStateError("invalid_editor_mount");
   return new EditorView(mount, {
     state: createCollaborativeEditorState(document, { plugins }),
+    nodeViews,
     dispatchTransaction(transaction) {
       const result = this.state.applyTransaction(transaction);
       this.updateState(result.state);
       onTransaction({ transaction, transactions: result.transactions, view: this });
     }
   });
+}
+
+export function insertCollaborativeImage(view, {
+  assetId,
+  mediaType = "image/png",
+  altText,
+  width,
+  height,
+  nodeId = createNodeId()
+}) {
+  if (!(view instanceof EditorView) || view.isDestroyed) {
+    throw new CollaborativeStateError("invalid_editor_view");
+  }
+  if (
+    typeof assetId !== "string" || assetId.length === 0 ||
+    mediaType !== "image/png" ||
+    typeof altText !== "string" || altText.trim().length === 0 ||
+    !Number.isSafeInteger(width) || width < 1 ||
+    !Number.isSafeInteger(height) || height < 1
+  ) {
+    throw new CollaborativeStateError("invalid_image_insertion");
+  }
+  const node = view.state.schema.nodes.image.create({
+    nodeId,
+    schemaVersion: DOCUMENT_SCHEMA_VERSION,
+    metadata: {},
+    extensions: {},
+    renderArtifacts: [],
+    provenance: null,
+    assetId,
+    mediaType,
+    altText: altText.trim(),
+    caption: [],
+    width,
+    height
+  });
+  view.dispatch(view.state.tr.replaceSelectionWith(node).scrollIntoView());
+  view.focus();
+  return node;
+}
+
+export function insertCollaborativeFile(view, {
+  assetId,
+  mediaType,
+  fileName,
+  title = null,
+  description = null,
+  nodeId = createNodeId()
+}) {
+  if (!(view instanceof EditorView) || view.isDestroyed) {
+    throw new CollaborativeStateError("invalid_editor_view");
+  }
+  if (typeof assetId !== "string" || assetId.length === 0
+    || typeof mediaType !== "string" || mediaType.length < 1 || mediaType.length > 200
+    || typeof fileName !== "string" || fileName.trim().length < 1 || fileName.length > 1000
+    || (title !== null && (typeof title !== "string" || title.length > 1000))
+    || (description !== null && (typeof description !== "string" || description.length > 10_000))) {
+    throw new CollaborativeStateError("invalid_file_insertion");
+  }
+  const node = view.state.schema.nodes.file.create({
+    nodeId,
+    schemaVersion: DOCUMENT_SCHEMA_VERSION,
+    metadata: {},
+    extensions: {},
+    renderArtifacts: [],
+    provenance: null,
+    assetId,
+    mediaType,
+    fileName: fileName.trim(),
+    title: title?.trim() || null,
+    description: description?.trim() || null
+  });
+  view.dispatch(view.state.tr.replaceSelectionWith(node).scrollIntoView());
+  view.focus();
+  return node;
+}
+
+function plainCaption(text) {
+  const value = text.trim();
+  return value.length === 0 ? [] : [{
+    type: "text",
+    text: value,
+    marks: [],
+    metadata: {},
+    extensions: {}
+  }];
+}
+
+function validatedCaption(caption, occupiedNodeIds = new Set()) {
+  if (!Array.isArray(caption) || caption.length > 256) {
+    throw new CollaborativeStateError("invalid_image_caption");
+  }
+  let sourceLength = 0;
+  const captionNodeIds = new Set();
+  const parsed = caption.map((inline) => {
+    const result = inlineNodeSchema.safeParse(inline);
+    if (!result.success) throw new CollaborativeStateError("invalid_image_caption");
+    sourceLength += result.data.type === "text" ? result.data.text.length
+      : result.data.type === "math_inline" ? result.data.source.length : 1;
+    if (result.data.type === "math_inline") {
+      if (occupiedNodeIds.has(result.data.id) || captionNodeIds.has(result.data.id)) {
+        throw new CollaborativeStateError("invalid_image_caption");
+      }
+      captionNodeIds.add(result.data.id);
+    }
+    return result.data;
+  });
+  if (sourceLength > 10_000) throw new CollaborativeStateError("invalid_image_caption");
+  return parsed;
+}
+
+export function updateCollaborativeImageAccessibility(view, {
+  nodeId,
+  altText,
+  captionText,
+  caption
+}) {
+  if (!(view instanceof EditorView) || view.isDestroyed) {
+    throw new CollaborativeStateError("invalid_editor_view");
+  }
+  if (
+    typeof nodeId !== "string" || nodeId.length === 0 ||
+    typeof altText !== "string" || altText.trim().length === 0 || altText.length > 10_000 ||
+    (captionText !== undefined && (typeof captionText !== "string" || captionText.length > 10_000)) ||
+    (captionText !== undefined && caption !== undefined)
+  ) {
+    throw new CollaborativeStateError("invalid_image_accessibility_update");
+  }
+  let position = null;
+  let image = null;
+  view.state.doc.descendants((node, nodePosition) => {
+    if (image || node.type.name !== "image" || node.attrs.nodeId !== nodeId) return;
+    position = nodePosition;
+    image = node;
+  });
+  if (!image || position === null) throw new CollaborativeStateError("image_node_not_found");
+  const occupiedNodeIds = new Set();
+  view.state.doc.descendants((node) => {
+    if (typeof node.attrs?.nodeId === "string") occupiedNodeIds.add(node.attrs.nodeId);
+    if (node === image) return;
+    for (const inline of node.attrs?.caption ?? []) {
+      if (inline.type === "math_inline" && typeof inline.id === "string") occupiedNodeIds.add(inline.id);
+    }
+  });
+  const nextCaption = caption !== undefined ? validatedCaption(caption, occupiedNodeIds)
+    : captionText !== undefined ? plainCaption(captionText) : image.attrs.caption;
+  view.dispatch(view.state.tr.setNodeMarkup(position, undefined, {
+    ...image.attrs,
+    altText: altText.trim(),
+    caption: nextCaption
+  }, image.marks).scrollIntoView());
+  return true;
 }
 
 export function captureCollaborativeSelection(view) {

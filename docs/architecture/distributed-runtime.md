@@ -146,6 +146,8 @@ Job Handlerは、対象Resourceの完了状態または一意Constraintを確認
 - Uploadは将来Multipart / Signed URLへ移行可能にする。
 - Object書き込みとDB Transactionの不一致はPending StateとOutboxで回復する。
 
+Cloud PNG uploadはAPI Replicaがcontent-addressed Objectと`pending`検査行を作り、単体構成では同じProcess内のInspection Runnerが処理する。分散構成ではAPI Roleは検査を実行せず、Worker RoleだけがPostgreSQLの期限付きLeaseと`FOR UPDATE SKIP LOCKED`で候補を取得する。したがってSticky Sessionや特定API Replicaへの再接続を正しさの条件にしない。RunnerはSIGTERM時に新しいPollを停止し、実行中Batchの完了を待つ。
+
 ## 9. Database Evolution
 
 初期は単一PostgreSQL Primaryを使用する。
@@ -167,6 +169,10 @@ MigrationはExpand / Migrate / Contractを使用し、複数Application Version�
 - Dependency障害でLivenessまで失敗させ、Restart Stormを起こさない。
 - SIGTERM時はReadinessをFalseにしてからGraceful Shutdownする。
 - Job Leaseは完了、失効、または明示返却する。
+
+### Cloud Document Asset checkpoints
+
+Cloud Document Asset checkpoints are serialized per Workspace/Document with a PostgreSQL advisory transaction lock and a locked monotonic checkpoint row. API replicas may receive retries or competing revisions in any order: identical revision digests replay, stale revisions fail, and only a validated newer checkpoint can soft-release references. Load-balancer affinity is not part of correctness.
 
 ## 11. Observability
 

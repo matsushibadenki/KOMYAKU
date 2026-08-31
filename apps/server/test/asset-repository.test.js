@@ -38,7 +38,10 @@ describe("Asset repository SQL boundary", () => {
       }
     });
 
-    expect(result).toMatchObject({ assetId: candidate.id, assetCreated: true, referenceCreated: true, activeReferenceCount: 1 });
+    expect(result).toMatchObject({
+      assetId: candidate.id, assetCreated: true, referenceCreated: true,
+      referenceId: expect.any(String), activeReferenceCount: 1
+    });
     expect(sql.statements[0]).toContain("pg_advisory_xact_lock");
     expect(sql.statements[1]).toContain("FROM asset_orphan_objects");
     expect(sql.statements[2]).toContain("ON CONFLICT (storage_key)");
@@ -84,7 +87,7 @@ describe("Asset repository SQL boundary", () => {
     const assetId = crypto.randomUUID();
     const sql = fakeSql([[{ asset_id: assetId }], [{ active_count: "2" }]]);
     const result = await createAssetRepository(sql).releaseAssetReference({
-      workspaceId: crypto.randomUUID(), referenceId: crypto.randomUUID()
+      workspaceId: crypto.randomUUID(), assetId, referenceId: crypto.randomUUID()
     });
     expect(result).toEqual({ assetId, activeReferenceCount: 2 });
     expect(sql.statements[0]).toContain("SET released_at = now()");

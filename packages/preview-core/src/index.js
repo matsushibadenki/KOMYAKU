@@ -7,6 +7,8 @@ export const PREVIEW_LIMITS = Object.freeze({
   maxMacroExpansions: 500,
   maxRenderedSizeEm: 20,
   maxDocumentBytes: 512 * 1024,
+  maxRasterPreviewBytes: 256 * 1024,
+  maxRasterPreviewPixels: 16_000_000,
   maxSvgBytes: 1024 * 1024,
   maxSvgNodes: 5_000,
   maxSvgDepth: 64,
@@ -87,6 +89,68 @@ export function renderLatexPreview(source, { displayMode = true, language = "und
     allow: "",
     referrerPolicy: "no-referrer",
     document: createStaticPreviewDocument({ title: "Math preview", bodyHtml: mathml, language })
+  });
+}
+
+const PNG_SIGNATURE = Object.freeze([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+function pngDimensions(bytes) {
+  if (!(bytes instanceof Uint8Array) || bytes.byteLength < 33) {
+    throw new PreviewError("invalid_png_preview");
+  }
+  if (!PNG_SIGNATURE.every((value, index) => bytes[index] === value)) {
+    throw new PreviewError("invalid_png_preview");
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (view.getUint32(8) !== 13
+    || String.fromCharCode(...bytes.subarray(12, 16)) !== "IHDR") {
+    throw new PreviewError("invalid_png_preview");
+  }
+  const width = view.getUint32(16);
+  const height = view.getUint32(20);
+  if (width < 1 || height < 1
+    || width * height > PREVIEW_LIMITS.maxRasterPreviewPixels) {
+    throw new PreviewError("png_preview_dimensions_exceeded");
+  }
+  return { width, height };
+}
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  if (typeof btoa === "function") return btoa(binary);
+  return Buffer.from(bytes).toString("base64");
+}
+
+export function renderAcceptedPngPreview({ bytes, inspection, altText = "", language = "und" }) {
+  if (!inspection || inspection.status !== "accepted"
+    || inspection.detectedMediaType !== "image/png") {
+    throw new PreviewError("png_preview_not_accepted");
+  }
+  if (!(bytes instanceof Uint8Array) || bytes.byteLength === 0
+    || bytes.byteLength > PREVIEW_LIMITS.maxRasterPreviewBytes
+    || inspection.byteSize !== bytes.byteLength) {
+    throw new PreviewError("invalid_png_preview_bytes");
+  }
+  if (typeof altText !== "string" || altText.length > 2_000) {
+    throw new PreviewError("invalid_png_preview_alt_text");
+  }
+  const { width, height } = pngDimensions(bytes);
+  if (!Number.isSafeInteger(inspection.width) || !Number.isSafeInteger(inspection.height)
+    || inspection.width !== width || inspection.height !== height) {
+    throw new PreviewError("png_preview_metadata_mismatch");
+  }
+  const bodyHtml = `<img src="data:image/png;base64,${bytesToBase64(bytes)}" alt="${escapeHtml(altText)}" width="${width}" height="${height}" decoding="async">`;
+  return Object.freeze({
+    kind: "static-html",
+    mediaType: "text/html; charset=utf-8",
+    sandbox: STATIC_PREVIEW_SANDBOX,
+    allow: "",
+    referrerPolicy: "no-referrer",
+    document: createStaticPreviewDocument({ title: "Image preview", bodyHtml, language })
   });
 }
 

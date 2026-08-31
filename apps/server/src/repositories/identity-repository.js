@@ -303,6 +303,22 @@ export function createIdentityRepository(sql) {
         LIMIT 1
       `;
       return rows.length === 1;
+    },
+
+    async canWriteAssets({ workspaceId, userId }) {
+      const rows = await sql`
+        SELECT 1 AS allowed
+        FROM workspace_members wm
+        JOIN users u ON u.id = wm.user_id
+        WHERE wm.workspace_id = ${workspaceId}
+          AND wm.user_id = ${userId}
+          AND wm.revoked_at IS NULL
+          AND wm.member_role IN ('owner', 'admin', 'editor')
+          AND u.email_verified_at IS NOT NULL
+          AND u.deleted_at IS NULL
+        LIMIT 1
+      `;
+      return rows.length === 1;
     }
   });
 }

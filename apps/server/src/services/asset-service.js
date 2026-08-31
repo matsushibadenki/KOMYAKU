@@ -12,13 +12,15 @@ const storeRequestSchema = z.object({
   reference: z.object({
     referrerType: tokenSchema,
     referrerId: z.string().uuid(),
-    relation: tokenSchema
+    relation: tokenSchema,
+    documentId: z.string().uuid().optional()
   }).strict()
 }).strict();
 
 const releaseRequestSchema = z.object({
   workspaceId: z.string().uuid(),
   actorId: z.string().uuid(),
+  assetId: z.string().uuid(),
   referenceId: z.string().uuid()
 }).strict();
 
@@ -87,6 +89,7 @@ export function createAssetService({
       if (authorized !== true) throw new Error("Asset reference release is not authorized");
       return repository.releaseAssetReference({
         workspaceId: request.workspaceId,
+        assetId: request.assetId,
         referenceId: request.referenceId
       });
     }

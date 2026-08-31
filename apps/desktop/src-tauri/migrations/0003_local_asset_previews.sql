@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS local_asset_previews (
+    asset_id TEXT PRIMARY KEY,
+    bytes BLOB NOT NULL,
+    byte_size INTEGER NOT NULL,
+    content_hash TEXT NOT NULL,
+    detected_media_type TEXT NOT NULL,
+    inspection_status TEXT NOT NULL,
+    inspection_policy_version TEXT NOT NULL,
+    inspected_width INTEGER NOT NULL,
+    inspected_height INTEGER NOT NULL,
+    updated_at TEXT NOT NULL,
+    CHECK (length(asset_id) = 36),
+    CHECK (byte_size BETWEEN 1 AND 262144),
+    CHECK (length(bytes) = byte_size),
+    CHECK (content_hash NOT GLOB '*[^0-9a-f]*' AND length(content_hash) = 64),
+    CHECK (detected_media_type = 'image/png'),
+    CHECK (inspection_status = 'accepted'),
+    CHECK (inspection_policy_version = 'decoder-backed-png-v1'),
+    CHECK (inspected_width > 0 AND inspected_height > 0),
+    CHECK (inspected_width * inspected_height <= 16000000)
+);

@@ -14,7 +14,13 @@ function previewErrorCode(error) {
   return "invalid_export";
 }
 
-export function ConversationImportPanel({ apiClient = cloudApiClient, sessionStore = secureSessionStore }) {
+const ignoreWorkspaceSessionChange = () => {};
+
+export function ConversationImportPanel({
+  apiClient = cloudApiClient,
+  sessionStore = secureSessionStore,
+  onWorkspaceSessionChange = ignoreWorkspaceSessionChange
+}) {
   const { t, i18n } = useTranslation();
   const inputId = useId();
   const fileInput = useRef(null);
@@ -41,6 +47,12 @@ export function ConversationImportPanel({ apiClient = cloudApiClient, sessionSto
   const [workspaces, setWorkspaces] = useState([]);
   const [workspaceId, setWorkspaceId] = useState("");
   const [importResult, setImportResult] = useState(null);
+
+  useEffect(() => {
+    onWorkspaceSessionChange(session && workspaceId
+      ? { mode: "cloud", token: session.token, workspaceId }
+      : { mode: "local" });
+  }, [onWorkspaceSessionChange, session, workspaceId]);
 
   useEffect(() => {
     let cancelled = false;

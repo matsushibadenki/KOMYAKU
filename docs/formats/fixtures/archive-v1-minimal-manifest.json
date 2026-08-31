@@ -1,0 +1,11 @@
+{
+  "format": "komyaku-archive",
+  "formatVersion": 1,
+  "createdAt": "2026-08-31T00:00:00.000Z",
+  "document": {
+    "id": "00000000-0000-4000-8000-000000000001",
+    "path": "documents/00000000-0000-4000-8000-000000000001.json"
+  },
+  "assets": [],
+  "extensions": {}
+}

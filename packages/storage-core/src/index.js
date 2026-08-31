@@ -45,6 +45,14 @@ export function buildAssetObjectKey({ workspaceId, contentHash }) {
   return `workspaces/${workspace}/assets/sha256/${hash.slice(0, 2)}/${hash}`;
 }
 
+export function buildArchiveObjectKey({ workspaceId, documentId, artifactId, contentHash }) {
+  const workspace = uuidSchema.parse(workspaceId);
+  const document = uuidSchema.parse(documentId);
+  const artifact = uuidSchema.parse(artifactId);
+  const hash = sha256HexSchema.parse(contentHash);
+  return `workspaces/${workspace}/documents/${document}/exports/${artifact}/${hash}.komyaku`;
+}
+
 export async function sha256(bytes) {
   const input = typeof bytes === "string" ? new TextEncoder().encode(bytes) : bytes;
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", input));

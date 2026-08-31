@@ -10,6 +10,8 @@ export function createApp({
   aiTrainingDefault = parseAiTrainingPolicy(Bun.env.AI_TRAINING_DEFAULT),
   authRoutes = null,
   assetRoutes = null,
+  documentAssetRoutes = null,
+  documentExportRoutes = null,
   conversationImportRoutes = null,
   cloudAiHandoffRoutes = null,
   corsOrigins = ["http://localhost:1420", "http://127.0.0.1:1420"],
@@ -29,9 +31,12 @@ export function createApp({
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       allowHeaders: [
         "Content-Type", "Authorization", "Idempotency-Key", "X-Request-ID",
-        "X-KOMYAKU-Source-Provider"
+        "X-KOMYAKU-Source-Provider", "X-KOMYAKU-Node-ID", "X-KOMYAKU-Document-ID", "X-KOMYAKU-File-Name"
       ],
-      exposeHeaders: ["Idempotency-Replayed", "Retry-After", "X-RateLimit-Remaining", "X-Request-ID"]
+      exposeHeaders: [
+        "Idempotency-Replayed", "Retry-After", "X-RateLimit-Remaining", "X-Request-ID",
+        "X-KOMYAKU-Inspection-Policy", "X-KOMYAKU-Image-Width", "X-KOMYAKU-Image-Height"
+      ]
     })
   );
 
@@ -71,6 +76,8 @@ export function createApp({
 
   if (authRoutes) app.route("/api/v1/auth", authRoutes);
   if (assetRoutes) app.route("/api/v1", assetRoutes);
+  if (documentAssetRoutes) app.route("/api/v1", documentAssetRoutes);
+  if (documentExportRoutes) app.route("/api/v1", documentExportRoutes);
   if (conversationImportRoutes) app.route("/api/v1", conversationImportRoutes);
   if (cloudAiHandoffRoutes) app.route("/api/v1", cloudAiHandoffRoutes);
 

@@ -25,3 +25,13 @@ export function workspaceConversationImportAuthorizer(identityRepository) {
     return identityRepository.canImportConversations({ workspaceId, userId: actorId });
   };
 }
+
+export function workspaceAssetAuthorizer(identityRepository) {
+  if (!identityRepository?.canWriteAssets) {
+    throw new Error("Identity repository Asset authorization query is required");
+  }
+  return ({ workspaceId, actorId, action }) => {
+    if (!new Set(["asset:write", "asset:unlink"]).has(action)) return false;
+    return identityRepository.canWriteAssets({ workspaceId, userId: actorId });
+  };
+}

@@ -9,13 +9,41 @@ import {
 } from "@komyaku/editor-core";
 import { CollaborativeEditor } from "./components/CollaborativeEditor.jsx";
 import { ConversationImportPanel } from "./components/ConversationImportPanel.jsx";
+import { PreviewQaRecoveryProbe } from "./components/PreviewQaRecoveryProbe.jsx";
 import { loadLocalDraft, saveLocalDraft } from "./services/local-database.js";
+import { reconcileCloudDocumentAssets } from "./services/cloud-asset-reconciliation.js";
+import { createVerifiedCloudDocumentExport } from "./services/cloud-document-export.js";
+import { verifyLocalKomyakuImport } from "./services/local-komyaku-import.js";
+import {
+  createEditorImagePreviewResolver,
+  LOCAL_EDITOR_WORKSPACE
+} from "./services/editor-workspace-preview.js";
 
 function id(number) {
   return `00000000-0000-4000-8000-${number.toString(16).padStart(12, "0")}`;
 }
 
-function createWelcomeDocument() {
+function createWelcomeDocument({ previewQa = false } = {}) {
+  const qaDiagrams = previewQa ? [
+    {
+      id: id(4), schemaVersion: 1, metadata: {}, extensions: {}, renderArtifacts: [],
+      type: "diagram", sourceType: "mermaid",
+      source: "flowchart LR\n  Draft[原稿] --> Review[確認]\n  Review --> Version[Version]",
+      altText: "Preview QA valid diagram", caption: []
+    },
+    {
+      id: id(5), schemaVersion: 1, metadata: {}, extensions: {}, renderArtifacts: [],
+      type: "diagram", sourceType: "mermaid",
+      source: "flowchart LR\n  A -->",
+      altText: "Preview QA malformed diagram", caption: []
+    },
+    {
+      id: id(6), schemaVersion: 1, metadata: {}, extensions: {}, renderArtifacts: [],
+      type: "diagram", sourceType: "mermaid",
+      source: "%%{init: {'securityLevel': 'loose'}}%%\nflowchart LR\nA-->B",
+      altText: "Preview QA forbidden authored configuration", caption: []
+    }
+  ] : [];
   return parseCanonicalDocument({
     schemaId: DOCUMENT_SCHEMA_ID,
     schemaVersion: 1,
@@ -38,7 +66,8 @@ function createWelcomeDocument() {
           text: "左右の編集欄は同じ文書です。片方を書き換えると、もう片方にも変更が届きます。",
           marks: [], metadata: {}, extensions: {}
         }]
-      }
+      },
+      ...qaDiagrams
     ]
   });
 }
@@ -67,13 +96,15 @@ function localPersistenceErrorCode(error) {
 
 export function App() {
   const { t, i18n } = useTranslation();
-  const welcomeDocument = useMemo(() => createWelcomeDocument(), []);
+  const previewQa = new URLSearchParams(window.location.search).get("previewQa") === "1";
+  const welcomeDocument = useMemo(() => createWelcomeDocument({ previewQa }), [previewQa]);
   const [replicas, setReplicas] = useState(null);
   const primarySelection = useRef(null);
   const secondarySelection = useRef(null);
   const composingEditors = useRef(new Set());
   const checkpointTimer = useRef(null);
   const checkpointSequence = useRef(0);
+  const archiveImportRef = useRef(null);
   const localRevision = useRef(0);
   const persistenceQueue = useRef(Promise.resolve());
   const persistenceBlocked = useRef(false);
@@ -82,6 +113,11 @@ export function App() {
   const [checkpointStatus, setCheckpointStatus] = useState("pending");
   const [persistenceStatus, setPersistenceStatus] = useState("loading");
   const [persistenceErrorCode, setPersistenceErrorCode] = useState(null);
+  const [editorWorkspace, setEditorWorkspace] = useState(LOCAL_EDITOR_WORKSPACE);
+  const [cloudAssetStatus, setCloudAssetStatus] = useState("idle");
+  const [documentExportStatus, setDocumentExportStatus] = useState("idle");
+  const [archiveImportStatus, setArchiveImportStatus] = useState("idle");
+  const [packagedImageQaStatus, setPackagedImageQaStatus] = useState("waiting");
 
   useEffect(() => {
     let cancelled = false;
@@ -120,6 +156,20 @@ export function App() {
             localRevision: nextRevision
           });
           localRevision.current = nextRevision;
+          if (editorWorkspace.mode === "cloud") {
+            setCloudAssetStatus("saving");
+            try {
+              await reconcileCloudDocumentAssets({
+                token: editorWorkspace.token,
+                workspaceId: editorWorkspace.workspaceId,
+                document: nextCheckpoint.document,
+                revision: nextRevision
+              });
+              setCloudAssetStatus("ready");
+            } catch {
+              setCloudAssetStatus("error");
+            }
+          }
         });
         persistenceQueue.current = persistence.catch(() => {});
         await persistence;
@@ -128,6 +178,7 @@ export function App() {
       }
       setCheckpoint({ ...nextCheckpoint, createdAt: new Date() });
       setCheckpointStatus("ready");
+      return true;
     } catch (error) {
       if (sequence === checkpointSequence.current) {
         persistenceBlocked.current = true;
@@ -135,8 +186,9 @@ export function App() {
         setPersistenceStatus("error");
         setCheckpointStatus("error");
       }
+      return false;
     }
-  }, [replicas]);
+  }, [editorWorkspace, replicas]);
 
   const scheduleCheckpoint = useCallback(() => {
     if (composingEditors.current.size > 0) return;
@@ -146,6 +198,50 @@ export function App() {
       checkpointTimer.current = null;
       void createCheckpoint();
     }, 450);
+  }, [createCheckpoint]);
+
+  const exportDocument = async () => {
+    if (editorWorkspace.mode !== "cloud" || !checkpoint?.document) return;
+    setDocumentExportStatus("saving");
+    try {
+      await createVerifiedCloudDocumentExport({
+        token: editorWorkspace.token, workspaceId: editorWorkspace.workspaceId,
+        document: checkpoint.document
+      });
+      setDocumentExportStatus("ready");
+    } catch {
+      setDocumentExportStatus("error");
+    }
+  };
+
+  const importArchive = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setArchiveImportStatus("loading");
+    try {
+      const imported = await verifyLocalKomyakuImport(new Uint8Array(await file.arrayBuffer()));
+      const existing = await loadLocalDraft(imported.document.id);
+      localRevision.current = existing?.localRevision ?? 0;
+      persistenceBlocked.current = false;
+      setReplicas(createReplicas(imported.document));
+      setArchiveImportStatus("ready");
+    } catch {
+      setArchiveImportStatus("error");
+    }
+  };
+
+  const handlePackagedImageQaStatus = useCallback((status) => {
+    if (status !== "inserted") {
+      setPackagedImageQaStatus(status);
+      return;
+    }
+    if (checkpointTimer.current) window.clearTimeout(checkpointTimer.current);
+    checkpointTimer.current = null;
+    setPackagedImageQaStatus("saving");
+    void createCheckpoint().then((saved) => {
+      setPackagedImageQaStatus(saved ? "inserted-durable" : "failed-durable-checkpoint");
+    });
   }, [createCheckpoint]);
 
   const handleCompositionChange = useCallback((editorId, isComposing) => {
@@ -186,6 +282,35 @@ export function App() {
       hour: "2-digit", minute: "2-digit", second: "2-digit"
     }).format(checkpoint.createdAt)
     : "—";
+  const previewLabels = useMemo(() => ({
+    title: t("structuredPreview.mermaidTitle"),
+    loading: t("structuredPreview.loading"),
+    unavailable: t("structuredPreview.unavailable"),
+    error: t("structuredPreview.error"),
+    imageTitle: t("structuredPreview.imageTitle"),
+    imageLoading: t("structuredPreview.imageLoading"),
+    imageError: t("structuredPreview.imageError")
+  }), [t]);
+  const resolveImagePreview = useMemo(
+    () => createEditorImagePreviewResolver(editorWorkspace),
+    [editorWorkspace]
+  );
+  const handleWorkspaceSessionChange = useCallback((nextWorkspace) => {
+    setEditorWorkspace((current) => {
+      if (
+        current.mode === nextWorkspace.mode &&
+        current.token === nextWorkspace.token &&
+        current.workspaceId === nextWorkspace.workspaceId
+      ) return current;
+      return nextWorkspace.mode === "cloud"
+        ? Object.freeze({
+          mode: "cloud",
+          token: nextWorkspace.token,
+          workspaceId: nextWorkspace.workspaceId
+        })
+        : LOCAL_EDITOR_WORKSPACE;
+    });
+  }, []);
 
   if (!replicas) {
     return (
@@ -242,8 +367,66 @@ export function App() {
             </header>
             <CollaborativeEditor
               editorId="local"
+              enableImageInsertion
+              enableImageAccessibilityEditing
+              packagedImageQa={previewQa}
+              onPackagedImageQaStatus={handlePackagedImageQaStatus}
               document={replicas.local}
               label={t("collaboration.localEditorLabel")}
+              language={i18n.resolvedLanguage}
+              previewLabels={previewLabels}
+              resolveImagePreview={resolveImagePreview}
+              workspace={editorWorkspace}
+              imageInsertionLabels={{
+                altText: t("imageInsertion.altText"),
+                altPlaceholder: t("imageInsertion.altPlaceholder"),
+                choose: t("imageInsertion.choose"),
+                saving: t("imageInsertion.saving"),
+                desktopOnly: t("imageInsertion.desktopOnly"),
+                cloudConnectionRequired: t("imageInsertion.cloudConnectionRequired"),
+                ready: t("imageInsertion.ready"),
+                error: t("imageInsertion.error"),
+                limit: t("imageInsertion.limit"),
+                fileChoose: t("imageInsertion.fileChoose"),
+                fileSaving: t("imageInsertion.fileSaving"),
+                fileReady: t("imageInsertion.fileReady"),
+                fileError: t("imageInsertion.fileError"),
+                fileLimit: t("imageInsertion.fileLimit"),
+                editTitle: t("imageInsertion.editTitle"),
+                caption: t("imageInsertion.caption"),
+                captionEmpty: t("imageInsertion.captionEmpty"),
+                captionTextSegment: t("imageInsertion.captionTextSegment"),
+                captionMathSegment: t("imageInsertion.captionMathSegment"),
+                captionLineBreak: t("imageInsertion.captionLineBreak"),
+                textFormatting: t("imageInsertion.textFormatting"),
+                latexSource: t("imageInsertion.latexSource"),
+                addText: t("imageInsertion.addText"),
+                addMath: t("imageInsertion.addMath"),
+                addLineBreak: t("imageInsertion.addLineBreak"),
+                moveUp: t("imageInsertion.moveUp"),
+                moveDown: t("imageInsertion.moveDown"),
+                removeSegment: t("imageInsertion.removeSegment"),
+                marks: {
+                  bold: t("imageInsertion.marks.bold"),
+                  italic: t("imageInsertion.marks.italic"),
+                  underline: t("imageInsertion.marks.underline"),
+                  strike: t("imageInsertion.marks.strike"),
+                  code: t("imageInsertion.marks.code")
+                },
+                saveMetadata: t("imageInsertion.saveMetadata"),
+                closeEditor: t("imageInsertion.closeEditor"),
+                metadataSaved: t("imageInsertion.metadataSaved"),
+                metadataError: t("imageInsertion.metadataError"),
+                quarantineTitle: t("imageInsertion.quarantineTitle"),
+                quarantineDescription: t("imageInsertion.quarantineDescription"),
+                quarantineOpen: t("imageInsertion.quarantineOpen"),
+                quarantineLoading: t("imageInsertion.quarantineLoading"),
+                quarantineEmpty: t("imageInsertion.quarantineEmpty"),
+                recoveryAltText: t("imageInsertion.recoveryAltText"),
+                restoreAsset: t("imageInsertion.restoreAsset"),
+                assetRestored: t("imageInsertion.assetRestored"),
+                quarantineError: t("imageInsertion.quarantineError")
+              }}
               selectionRef={primarySelection}
               onCompositionChange={handleCompositionChange}
               onDocumentChange={handleDocumentChange}
@@ -260,6 +443,9 @@ export function App() {
                 editorId="second"
                 document={replicas.second}
                 label={t("collaboration.secondEditorLabel")}
+                language={i18n.resolvedLanguage}
+                previewLabels={previewLabels}
+                resolveImagePreview={resolveImagePreview}
                 selectionRef={secondarySelection}
                 onCompositionChange={handleCompositionChange}
                 onDocumentChange={handleDocumentChange}
@@ -274,7 +460,14 @@ export function App() {
         </div>
       </section>
 
-      <ConversationImportPanel />
+      <ConversationImportPanel onWorkspaceSessionChange={handleWorkspaceSessionChange} />
+
+      {previewQa ? <PreviewQaRecoveryProbe /> : null}
+      {previewQa ? (
+        <aside className="preview-qa-probe" data-preview-qa-image={packagedImageQaStatus} role="status">
+          Preview QA image: {packagedImageQaStatus}
+        </aside>
+      ) : null}
 
       <aside className="checkpoint-strip" aria-live="polite">
         <div>
@@ -286,6 +479,28 @@ export function App() {
           <div><dt>{t("checkpoint.size")}</dt><dd>{checkpoint ? `${checkpoint.byteLength.toLocaleString(i18n.resolvedLanguage)} B` : "—"}</dd></div>
           <div><dt>{t("checkpoint.hash")}</dt><dd>{checkpoint ? checkpoint.hash.slice(0, 12) : "—"}</dd></div>
         </dl>
+        {editorWorkspace.mode === "cloud" ? (
+          <div>
+            <p className="persistence-status" role="status" data-state={cloudAssetStatus}>
+              {t(`cloudAssets.${cloudAssetStatus}`)}
+            </p>
+            <button type="button" disabled={!checkpoint || documentExportStatus === "saving"} onClick={exportDocument}>
+              {documentExportStatus === "saving" ? t("documentExport.saving") : t("documentExport.create")}
+            </button>
+            <p className="persistence-status" role="status" data-state={documentExportStatus}>
+              {t(`documentExport.${documentExportStatus}`)}
+            </p>
+          </div>
+        ) : null}
+        <div>
+          <input ref={archiveImportRef} type="file" accept=".komyaku,application/vnd.komyaku.archive+zip" hidden onChange={importArchive} />
+          <button type="button" disabled={archiveImportStatus === "loading"} onClick={() => archiveImportRef.current?.click()}>
+            {archiveImportStatus === "loading" ? t("archiveImport.loading") : t("archiveImport.choose")}
+          </button>
+          <p className="persistence-status" role="status" data-state={archiveImportStatus}>
+            {t(`archiveImport.${archiveImportStatus}`)}
+          </p>
+        </div>
       </aside>
 
       <footer className="app-footer">

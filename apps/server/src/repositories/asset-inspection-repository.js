@@ -43,12 +43,14 @@ export function createAssetInspectionRepository(sql) {
       return rows.map(inspectionCandidate);
     },
 
-    async complete({ id, workspaceId, instanceId, decision, detectedMediaType, policyVersion, inspectedAt }) {
+    async complete({ id, workspaceId, instanceId, decision, detectedMediaType, policyVersion, width, height, inspectedAt }) {
       const rows = await sql`
         UPDATE assets
         SET inspection_status = ${decision},
             detected_media_type = ${detectedMediaType},
             inspection_policy_version = ${policyVersion},
+            inspected_width = ${width},
+            inspected_height = ${height},
             inspected_at = ${inspectedAt},
             inspection_lease_owner = NULL,
             inspection_lease_expires_at = NULL
@@ -74,7 +76,9 @@ export function createAssetInspectionRepository(sql) {
             inspection_lease_expires_at = NULL,
             inspected_at = NULL,
             detected_media_type = NULL,
-            inspection_policy_version = NULL
+            inspection_policy_version = NULL,
+            inspected_width = NULL,
+            inspected_height = NULL
         WHERE id = ${id}
           AND workspace_id = ${workspaceId}
           AND inspection_status = 'inspecting'

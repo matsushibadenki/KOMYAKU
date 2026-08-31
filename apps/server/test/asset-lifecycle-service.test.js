@@ -80,7 +80,7 @@ describe("Asset lifecycle maintenance", () => {
     const good = {
       id: crypto.randomUUID(), workspaceId,
       storageKey: `workspaces/${workspaceId}/assets/sha256/cc/${hash}`,
-      contentHash: hash, byteSize: 10
+      contentHash: hash, byteSize: 10, retentionGateVerified: true
     };
     const invalid = {
       id: crypto.randomUUID(), workspaceId,

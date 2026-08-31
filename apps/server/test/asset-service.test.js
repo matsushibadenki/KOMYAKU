@@ -79,7 +79,10 @@ describe("content-addressed Asset service", () => {
   });
 
   test("releases only the logical reference and leaves physical cleanup to retention", async () => {
-    const input = { workspaceId: crypto.randomUUID(), actorId: crypto.randomUUID(), referenceId: crypto.randomUUID() };
+    const input = {
+      workspaceId: crypto.randomUUID(), actorId: crypto.randomUUID(),
+      assetId: crypto.randomUUID(), referenceId: crypto.randomUUID()
+    };
     const calls = [];
     const service = createAssetService({
       authorizeAsset: async (authorization) => { calls.push(authorization); return true; },
@@ -95,7 +98,7 @@ describe("content-addressed Asset service", () => {
     const result = await service.releaseReference(input);
     expect(calls).toEqual([
       { workspaceId: input.workspaceId, actorId: input.actorId, action: "asset:unlink" },
-      { workspaceId: input.workspaceId, referenceId: input.referenceId }
+      { workspaceId: input.workspaceId, assetId: input.assetId, referenceId: input.referenceId }
     ]);
     expect(result.activeReferenceCount).toBe(0);
   });

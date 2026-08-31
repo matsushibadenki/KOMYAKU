@@ -63,6 +63,8 @@ Reconciliation lists a bounded page under one Workspace Asset prefix. A canonica
 
 PostgreSQL `FOR UPDATE SKIP LOCKED` claims purge candidates across Workers. Asset creation uses a Workspace-and-hash advisory transaction lock, and a claim cannot reactivate a row while it is `purging`. Before every Object Storage deletion the maintenance service revalidates the Workspace prefix and complete SHA-256 key. Failure returns the item to quarantine without retaining provider error text.
 
+Physical purge additionally requires non-invalidated digest-bound verified export/archive evidence and rejects any active published-Version or legal hold. The claim rechecks that no active reference has returned. It emits an explicit retention-gate capability that the maintenance service requires before deletion. Storage-orphan deletion is disabled because an orphan lacks the logical Asset identity needed to prove preservation coverage.
+
 ## Inspection and authenticated delivery
 
 Every content-addressed Asset begins with `inspection_status = pending`. A bounded Worker claim uses an expiring PostgreSQL lease, performs a ranged Object Storage read, and records an accepted or rejected policy version. Expired leases can be reclaimed by another Worker. Provider failures return to `pending` with a retry delay and become `error` after the bounded attempt limit; provider error text is not persisted.

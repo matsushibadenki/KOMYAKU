@@ -62,7 +62,9 @@ integration("content-addressed Asset PostgreSQL repository", () => {
       WHERE workspace_id = ${workspaceId} AND released_at IS NULL
       ORDER BY created_at
     `;
-    const released = await repository.releaseAssetReference({ workspaceId, referenceId: references[0].id });
+    const released = await repository.releaseAssetReference({
+      workspaceId, assetId: claims[0].assetId, referenceId: references[0].id
+    });
     expect(released.activeReferenceCount).toBe(1);
 
     const assets = await sql`SELECT count(*)::int AS count FROM assets WHERE workspace_id = ${workspaceId}`;

@@ -6,7 +6,8 @@ function assetCandidate(row) {
     workspaceId: row.workspace_id,
     storageKey: row.storage_key,
     contentHash: row.content_hash,
-    byteSize: Number(row.byte_size)
+    byteSize: Number(row.byte_size),
+    retentionGateVerified: row.retention_gate_verified === true
   };
 }
 
@@ -105,6 +106,24 @@ export function createAssetLifecycleRepository(sql) {
           WHERE storage_mode = 'content-addressed'
             AND lifecycle_state = 'quarantined'
             AND purge_after <= ${now}
+            AND NOT EXISTS (
+              SELECT 1 FROM asset_references reference
+              WHERE reference.workspace_id = assets.workspace_id
+                AND reference.asset_id = assets.id
+                AND reference.released_at IS NULL
+            )
+            AND EXISTS (
+              SELECT 1 FROM asset_preservation_evidence evidence
+              WHERE evidence.workspace_id = assets.workspace_id
+                AND evidence.asset_id = assets.id
+                AND evidence.invalidated_at IS NULL
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM asset_retention_holds hold
+              WHERE hold.workspace_id = assets.workspace_id
+                AND hold.asset_id = assets.id
+                AND hold.released_at IS NULL
+            )
           ORDER BY purge_after, id
           FOR UPDATE SKIP LOCKED
           LIMIT ${limit}
@@ -113,7 +132,8 @@ export function createAssetLifecycleRepository(sql) {
         SET lifecycle_state = 'purging', purge_attempts = purge_attempts + 1
         FROM candidates
         WHERE asset.id = candidates.id
-        RETURNING asset.id, asset.workspace_id, asset.storage_key, asset.content_hash, asset.byte_size
+        RETURNING asset.id, asset.workspace_id, asset.storage_key, asset.content_hash, asset.byte_size,
+                  true AS retention_gate_verified
       `;
       return rows.map(assetCandidate);
     },
@@ -142,6 +162,7 @@ export function createAssetLifecycleRepository(sql) {
           SELECT id
           FROM asset_orphan_objects orphan_candidate
           WHERE lifecycle_state = 'quarantined' AND purge_after <= ${now}
+            AND false
             AND NOT EXISTS (
               SELECT 1 FROM assets asset
               WHERE asset.workspace_id = orphan_candidate.workspace_id
@@ -157,7 +178,7 @@ export function createAssetLifecycleRepository(sql) {
         FROM candidates
         WHERE orphan.id = candidates.id
         RETURNING orphan.id, orphan.workspace_id, orphan.storage_key,
-                  orphan.content_hash, orphan.byte_size
+                  orphan.content_hash, orphan.byte_size, false AS retention_gate_verified
       `;
       return rows.map(assetCandidate);
     },

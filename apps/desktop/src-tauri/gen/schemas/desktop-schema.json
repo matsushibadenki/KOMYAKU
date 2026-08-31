@@ -177,6 +177,12 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the acl_boundary_canary command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-acl-boundary-canary",
+          "markdownDescription": "Enables the acl_boundary_canary command without any pre-configured scope."
+        },
+        {
           "description": "Enables the delete_cloud_session command without any pre-configured scope.",
           "type": "string",
           "const": "allow-delete-cloud-session",
@@ -193,6 +199,12 @@
           "type": "string",
           "const": "allow-list-local-conversations",
           "markdownDescription": "Enables the list_local_conversations command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the list_quarantined_local_assets command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-list-quarantined-local-assets",
+          "markdownDescription": "Enables the list_quarantined_local_assets command without any pre-configured scope."
         },
         {
           "description": "Enables the load_cloud_session command without any pre-configured scope.",
@@ -231,10 +243,22 @@
           "markdownDescription": "Enables the store_cloud_session command without any pre-configured scope."
         },
         {
+          "description": "Enables the store_local_png_preview_atomic command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-store-local-png-preview-atomic",
+          "markdownDescription": "Enables the store_local_png_preview_atomic command without any pre-configured scope."
+        },
+        {
           "description": "Enables the store_provider_credential command without any pre-configured scope.",
           "type": "string",
           "const": "allow-store-provider-credential",
           "markdownDescription": "Enables the store_provider_credential command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the acl_boundary_canary command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-acl-boundary-canary",
+          "markdownDescription": "Denies the acl_boundary_canary command without any pre-configured scope."
         },
         {
           "description": "Denies the delete_cloud_session command without any pre-configured scope.",
@@ -253,6 +277,12 @@
           "type": "string",
           "const": "deny-list-local-conversations",
           "markdownDescription": "Denies the list_local_conversations command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the list_quarantined_local_assets command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-list-quarantined-local-assets",
+          "markdownDescription": "Denies the list_quarantined_local_assets command without any pre-configured scope."
         },
         {
           "description": "Denies the load_cloud_session command without any pre-configured scope.",
@@ -289,6 +319,12 @@
           "type": "string",
           "const": "deny-store-cloud-session",
           "markdownDescription": "Denies the store_cloud_session command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the store_local_png_preview_atomic command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-store-local-png-preview-atomic",
+          "markdownDescription": "Denies the store_local_png_preview_atomic command without any pre-configured scope."
         },
         {
           "description": "Denies the store_provider_credential command without any pre-configured scope.",
