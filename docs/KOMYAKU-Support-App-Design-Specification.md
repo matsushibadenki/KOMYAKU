@@ -457,6 +457,26 @@ confidence
 
 ---
 
+# 14.1 Compact Math Input
+
+Text入力PageとEquation編集には、常時表示のFull Virtual Keyboardではなく、必要時に開くCompact Math Paletteを提供する。Paletteは`よく使う`、`構造`、`微積分`、`ギリシャ`、`集合・論理`へ分類し、Keyを小さくせず表示数を絞って本文領域を守る。
+
+LaTeX sourceをCanonical Dataとして保持し、MathMLおよび視覚Previewは派生物とする。OS Keyboardと重複するControl、Command、Delete、Arrow等は再実装しない。Templateは固定文字offsetではなくPlaceholder Rangeを使い、Stable Equation Node ID、Yjs Transaction、Canonical Checkpointを経由する。
+
+手書き入力はStroke Canvas、Recognition Adapter、Candidate Reviewを分離する。StrokeやRasterは明示的な認識操作まで端末外へ送信せず、認識結果を自動確定しない。UniMERNet等は交換可能な候補として隔離Workerで評価し、WorkerはHTTPS APIまたはJob QueueだけでCloud側と通信してManaged PostgreSQLへ直接接続しない。
+
+詳細は`docs/adr/ADR-075-compact-math-input-and-handwriting-recognition.md`および`docs/design/compact-math-input.md`を正本とする。
+
+# 14.2 Academic Submission Export
+
+Support Appは選択したDocument VersionとBranchから、投稿用LaTeX Source Bundle、Review PDF、Bibliography、Figure、Supplementary file、Metadata、Manifest、Submission Readiness Reportを生成できる拡張点を持つ。
+
+投稿先固有のLaTeX Class、匿名化、File制限、Metadata要件はVersioned Profile Adapterとして実装する。変換結果をCanonical Documentへ上書きせず、Errorは修正候補としてEditorへ戻す。初期版では投稿サイトへの自動Login・Upload・最終Submitを行わない。
+
+詳細は`docs/adr/ADR-076-academic-submission-export-profiles.md`および`docs/design/academic-submission-export.md`を正本とする。
+
+---
+
 # 15. ファイルインポート
 
 初期対応：

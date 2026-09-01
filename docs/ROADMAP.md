@@ -96,6 +96,11 @@ Stage status: [Done] Identity engineering complete; production launch gates rema
 - [Done] Packaged Tauri Japanese IME composition, conversion, SQLite restart recovery, and exact Relative Position caret restoration pass on macOS
 - [Done] Packaged Tauri Simplified Chinese Pinyin composition, candidate conversion, Yjs replication, SQLite autosave, full quit/relaunch recovery, and exact Relative Position caret restoration pass on macOS
 - [Done] Canonical Schema migration boundary, ProseMirror adapters, and round-trip fixtures that preserve compatible metadata
+- [Next] Reusable compact Math Palette with localized command registry, placeholder-aware LaTeX templates, selection wrapping, isolated preview, keyboard/focus accessibility, and Support App/Desktop Equation integration
+- [Later] Local handwriting stroke canvas, reviewed LaTeX candidate flow, and provenance-preserving Equation insertion
+- [Later] Benchmark UniMERNet Tiny/Small and alternative mathematical-expression-recognition models in an isolated normal-VPS Worker, then add explicit-consent Cloud recognition without direct Managed PostgreSQL access
+- [Later] Academic submission export foundation with versioned destination profiles, deterministic LaTeX/BibTeX/Figure bundles, isolated reproducible PDF compilation, double-blind metadata checks, readiness reports, and user-controlled download without automatic final submission
+- [Later] Verified destination-specific adapters for current official journal/conference requirements, followed by JATS XML, DOCX, MathML, camera-ready, and supplementary research packages
 - [Later] Native table editing, full LaTeX documents, richer SVG authoring, and PDF inspection
 
 ## Stage 4 — Document Evolution and Diff

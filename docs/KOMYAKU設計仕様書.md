@@ -1099,6 +1099,26 @@ Structured text: paragraph / word / grapheme diff
 PDF binary: metadata / file hash / generated-source relation
 ```
 
+### 25.1.1 Compact Math Inputと手書き数式認識
+
+Text入力面とEquation編集には、必要時だけ開くCompact Math Paletteを提供する。Keyを小さくして圧縮せず、`よく使う`、`構造`、`微積分`、`ギリシャ`、`集合・論理`のCategoryごとに表示数を制限する。OS Keyboardと重複するControl、Command、Delete、Arrow等は再実装しない。
+
+PaletteはLaTeX SourceをCanonicalとして編集し、TemplateのPlaceholder、Selection wrapping、Stable Equation Node ID、Yjs Transaction、Canonical Checkpointを保持する。MathMLおよび視覚Previewは既存の隔離Rendererによる派生物とし、Runtime CDNや信頼済みHTMLを導入しない。
+
+手書き入力はStroke Capture、Recognition Adapter、Candidate Reviewを分離する。認識結果を自動確定せず、安全なPreviewとUser確認後にだけLaTeXをEquationへ挿入する。StrokeやRasterは明示的な認識操作まで端末外へ送信せず、既定で学習利用しない。UniMERNet等のModelは交換可能な隔離Workerで評価し、通常VPS WorkerからManaged PostgreSQLへ直接接続しない。
+
+詳細は`docs/adr/ADR-075-compact-math-input-and-handwriting-recognition.md`と`docs/design/compact-math-input.md`を正本とする。
+
+### 25.1.2 Academic Submission Export
+
+数学・物理・研究文書は、利用者が明示的に選択した一つのDocument VersionとBranchから、論文投稿用のLaTeX Source BundleまたはReview PDF Packageへ変換できるようにする。投稿サイト固有要件はVersioned Export Profileとして分離し、Canonical Documentへ埋め込まない。
+
+PackageはMain source、Bibliography、参照されたFigure／Table、選択したSupplementary file、Metadata、Manifest、SHA-256、Submission Readiness Reportを持つ。Draft、別Branch、Comment、Recovery Snapshot、AI Prompt、内部Audit、共有Tokenを暗黙に含めない。
+
+CompileはNetworkとShell escapeを拒否する隔離Workerで行い、Compiler、Template、Profile Revisionを記録する。初期段階では投稿サイトへの自動Login、自動Upload、最終Submitを行わず、利用者が生成物とReportを確認して自身で提出する。
+
+詳細は`docs/adr/ADR-076-academic-submission-export-profiles.md`と`docs/design/academic-submission-export.md`を正本とする。
+
 ## 25.2 First-class Content Node
 
 文章以外を一律の添付ファイルとして扱わず、対応する形式はCanonical Document Schemaの第一級Nodeとして扱う。
