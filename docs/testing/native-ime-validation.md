@@ -1,8 +1,8 @@
 # Native Tauri IME and Caret Validation
 
-- Updated: 2026-08-24
+- Updated: 2026-09-01
 - Platform: macOS, packaged local debug `.app`
-- Status: Japanese IME and exact caret restoration passed; Simplified Chinese IME remains environment-blocked
+- Status: Japanese IME, Simplified Chinese Pinyin IME, restart recovery, and exact caret restoration passed
 
 ## Build under test
 
@@ -55,11 +55,21 @@ IME and paragraph splitting can reuse JSON-compatible empty metadata objects acr
 
 Stable internal failure codes are shown in the local persistence status. They contain no authored content.
 
-## Simplified Chinese environment gate
+## Simplified Chinese Pinyin result
 
-The tested Mac currently enables ABC and Japanese Kotoeri input sources. No Simplified Chinese input source is installed. System input-source settings were not modified during this validation.
+The user provisioned the macOS Simplified Chinese Pinyin input source before this pass. The application did not change System Settings. The packaged WebKit/Tauri application was then tested with individual keyboard events rather than direct text injection.
 
-The browser suite already covers synthetic composition lifecycle and Simplified Chinese authored text. A native Pinyin pass remains required on a macOS/Windows/Linux test environment where a Simplified Chinese IME is already provisioned.
+1. Entered `jiantizhongwen` through individual Pinyin key events; the editor exposed the active composition as `jian ti zhong wen`.
+2. Confirmed that the persistence status changed to `IME入力中—保存を保留` while composition was active.
+3. Selected the first candidate and confirmed the committed result was exactly `简体中文` in both Yjs replicas.
+4. Confirmed Canonical validation and local SQLite autosave completed with short hash `18d4061f85db`.
+5. Quit the complete packaged application and confirmed no `KOMYAKU` process remained.
+6. Relaunched the same `.app` and confirmed `简体中文`, the validated checkpoint, and the same short hash were restored from SQLite.
+7. Placed the caret immediately after the restored Chinese phrase in the second replica, disconnected and unmounted that editor, then reconnected it.
+8. Reached the second editor by keyboard focus without clicking its content and inserted `《光标复原》`.
+9. Confirmed both replicas contained exactly `简体中文《光标复原》`, followed by a validated local checkpoint with short hash `ce1c689cf0df`.
+
+This completes the native macOS Simplified Chinese Pinyin gate. Windows and Linux remain separate platform validation targets rather than blockers for this macOS result.
 
 ## Atomic local-save regression
 

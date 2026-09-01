@@ -45,8 +45,9 @@ Stage status: [Done] Identity engineering complete; production launch gates rema
 
 ## Production Launch Gates
 
-- [Next] Repeat representative load and failure tests in the intended TLS/proxy, PostgreSQL, SMTP-provider, monitoring, and backup topology
-- [Next] Independent external security review, remediation, and retest using `docs/security/stage2-external-review-package.md`
+- [Done] XServer VPS Cloud small-start topology selected: one 4GB App VPS, 10GB Managed PostgreSQL with seven-day daily backup, external S3-compatible Asset storage, measured NFS/L4 adoption, and HTTPS-or-queue-only external Workers; see `docs/adr/ADR-074-xserver-vps-cloud-small-start.md`
+- [Next] User environment required: repeat representative load and failure tests in the intended TLS/proxy, PostgreSQL, SMTP-provider, monitoring, and backup topology
+- [Next] Independent reviewer required: external security review, remediation, and retest using `docs/security/stage2-external-review-package.md`
 
 ## Stage 3 — Structured Document MVP
 
@@ -79,7 +80,7 @@ Stage status: [Done] Identity engineering complete; production launch gates rema
 - [Done] Revision-monotonic Cloud document-to-Asset checkpoint reconciliation with Document-bound upload references, deterministic digests, accepted-reference validation, transactional stale-reference release, idempotent replay, and multi-replica PostgreSQL locking
 - [Done] Explicit local Asset quarantine management with a bounded metadata-only native list, localized responsive UI, required recovery alternative text, non-destructive reinsertion, and checkpoint-gated reactivation
 - [Done] Packaged macOS Mermaid pressure/backpressure QA covering pre-IPC source rejection, permitted 200-edge rendering, exact eight-request reservation, ninth-request busy rejection, timeout-wide fail-closed cleanup, hidden WebView recreation, and post-pressure recovery
-- [Next] Windows WebView2/Linux WebKitGTK packaged pressure passes and remaining platform-specific sensitive-command denial probes
+- [Next] Windows/Linux hosts required: WebView2/WebKitGTK packaged pressure passes and remaining platform-specific sensitive-command denial probes
 - [Later] JPEG/WebP still-image policies, animated-image policy, and isolated PDF rasterization/viewing using the gates in `docs/architecture/isolated-content-previews.md`
 - [Done] Structured editor feasibility view, validated Canonical local autosave, page/app restart recovery, and Japanese/English/Simplified Chinese UI
 - [Done] Export-gated Asset retention safety with digest-bound verified export/archive evidence, evidence invalidation, publication/legal holds, fail-closed SQL claims, defense-in-depth purge capability, audited operator controls, and disabled automatic orphan deletion
@@ -93,7 +94,7 @@ Stage status: [Done] Identity engineering complete; production launch gates rema
 - [Done] Browser two-replica feasibility view with live Yjs synchronization, disconnect/reconnect lifecycle, Relative Position selection capture/restore path, composition-safe checkpoints, accessible labels, and responsive layouts
 - [Done] Automated browser regression coverage for collaboration, composition lifecycle, restart recovery, and responsive layout
 - [Done] Packaged Tauri Japanese IME composition, conversion, SQLite restart recovery, and exact Relative Position caret restoration pass on macOS
-- [Next] Packaged Tauri Simplified Chinese Pinyin IME pass on a test host with an already provisioned Chinese input source
+- [Done] Packaged Tauri Simplified Chinese Pinyin composition, candidate conversion, Yjs replication, SQLite autosave, full quit/relaunch recovery, and exact Relative Position caret restoration pass on macOS
 - [Done] Canonical Schema migration boundary, ProseMirror adapters, and round-trip fixtures that preserve compatible metadata
 - [Later] Native table editing, full LaTeX documents, richer SVG authoring, and PDF inspection
 
@@ -179,5 +180,5 @@ Stage status: [Done] Identity engineering complete; production launch gates rema
 - [Done] Workspace-scoped deterministic UUIDv5 import identity v1 across Generic JSON, ChatGPT, Claude, structured Gemini, and Gemini My Activity, with Parser 1.1.0 and cross-Workspace collision isolation
 - [Done] Desktop opt-in Cloud synchronization using an exact-byte Workspace-scoped reparse, explicit metadata-only Cloud Provider Connection selection, Local-first persistence, and idempotent Cloud save-only retry
 - [Done] File-backed SQLite close/reopen regression for completed AI Handoff recovery, with metadata and Canonical Branch verification
-- [Next] Interactive packaged-app quit/relaunch and native credential-store QA on macOS, Windows, and Linux; use `docs/testing/ai-handoff-restart-recovery.md`
+- [Next] Interactive OS access required: packaged-app quit/relaunch and native credential-store QA on macOS, Windows, and Linux; use `docs/testing/ai-handoff-restart-recovery.md`
 - [Later] Managed AI credits and Workspace AI connections
