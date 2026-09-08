@@ -10,7 +10,7 @@ const PNG_FIXTURE = Buffer.from([
 ]);
 
 async function openCleanWorkbench(page) {
-  await page.goto("/");
+  await page.goto("/?workbench=1");
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await expect(page.locator(".ProseMirror")).toHaveCount(2);
@@ -68,6 +68,22 @@ async function installImageDraft(page) {
   await page.reload();
   await expect(page.locator(".structured-image-node")).toHaveCount(2);
 }
+
+test("uses a single-editor product workspace with session-scoped undo and redo", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await expect(page.locator(".ProseMirror")).toHaveCount(1);
+  const editor = page.locator(".ProseMirror");
+  await editor.click();
+  await editor.press("End");
+  await editor.pressSequentially(" undo-redo-marker");
+  await expect(editor).toContainText("undo-redo-marker");
+  await page.getByRole("button", { name: "元に戻す" }).click();
+  await expect(editor).not.toContainText("undo-redo-marker");
+  await page.getByRole("button", { name: "やり直す" }).click();
+  await expect(editor).toContainText("undo-redo-marker");
+});
 
 test("synchronizes independent replicas across disconnect and reconnect", async ({ page }) => {
   await openCleanWorkbench(page);

@@ -7,6 +7,8 @@
   "scripts": {
     "build": "bun -e \"import('./src/index.js')\"",
     "check": "bun -e \"import('./src/index.js')\""
+  },
+  "dependencies": {
+    "@komyaku/document-schema": "workspace:*"
   }
 }
-

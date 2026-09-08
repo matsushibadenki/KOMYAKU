@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-load-local-version-assets"
+description = "Enables the load_local_version_assets command without any pre-configured scope."
+commands.allow = ["load_local_version_assets"]
+
+[[permission]]
+identifier = "deny-load-local-version-assets"
+description = "Denies the load_local_version_assets command without any pre-configured scope."
+commands.deny = ["load_local_version_assets"]

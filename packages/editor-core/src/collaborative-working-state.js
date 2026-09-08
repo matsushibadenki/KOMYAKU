@@ -298,6 +298,20 @@ export function createCollaborativeEditorView(mount, document, {
   });
 }
 
+export function undoCollaborativeEdit(view) {
+  if (!(view instanceof EditorView) || view.isDestroyed) return false;
+  const changed = undoCommand(view.state, (transaction) => view.dispatch(transaction), view);
+  if (changed) view.focus();
+  return changed;
+}
+
+export function redoCollaborativeEdit(view) {
+  if (!(view instanceof EditorView) || view.isDestroyed) return false;
+  const changed = redoCommand(view.state, (transaction) => view.dispatch(transaction), view);
+  if (changed) view.focus();
+  return changed;
+}
+
 export function insertCollaborativeImage(view, {
   assetId,
   mediaType = "image/png",

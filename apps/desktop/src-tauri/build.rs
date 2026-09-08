@@ -1,6 +1,10 @@
 fn main() {
     const APP_COMMANDS: &[&str] = &[
         "save_local_draft_atomic",
+        "save_local_version_atomic",
+        "list_local_version_history",
+        "load_local_version_snapshot",
+        "load_local_version_assets",
         "store_local_png_preview_atomic",
         "list_quarantined_local_assets",
         "store_cloud_session",

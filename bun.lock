@@ -16,10 +16,12 @@
         "@komyaku/archive-core": "workspace:*",
         "@komyaku/conversation-importer": "workspace:*",
         "@komyaku/conversation-schema": "workspace:*",
+        "@komyaku/diff-engine": "workspace:*",
         "@komyaku/document-schema": "workspace:*",
         "@komyaku/editor-core": "workspace:*",
         "@komyaku/i18n": "workspace:*",
         "@komyaku/preview-core": "workspace:*",
+        "@komyaku/version-engine": "workspace:*",
         "@tauri-apps/api": "^2.8.0",
         "@tauri-apps/plugin-sql": "^2.3.0",
         "i18next": "^25.5.2",
@@ -93,6 +95,9 @@
     "packages/diff-engine": {
       "name": "@komyaku/diff-engine",
       "version": "0.1.0",
+      "dependencies": {
+        "@komyaku/document-schema": "workspace:*",
+      },
     },
     "packages/document-schema": {
       "name": "@komyaku/document-schema",
@@ -162,6 +167,9 @@
     "packages/version-engine": {
       "name": "@komyaku/version-engine",
       "version": "0.1.0",
+      "dependencies": {
+        "@komyaku/document-schema": "workspace:*",
+      },
     },
   },
   "packages": {

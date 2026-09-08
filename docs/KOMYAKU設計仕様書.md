@@ -1,5 +1,7 @@
 # KOMYAKU — 多言語ドキュメント・バージョン管理プラットフォーム 設計仕様書
 
+> **2026-09-05 方針更新:** 本仕様は長期構想を含む。直近の実装順序は[ROADMAPのN0–N4](ROADMAP.md)、中核の保存・版・比較・統合・持ち出し契約は[文章版Gitの評価と方針](product/document-git-strategy.md)、優先順位の変更は[ADR-077](adr/ADR-077-document-history-first-delivery.md)を正本とする。従来のStage 3全機能の完成をVersion Engine着手の条件にしない。現在のArchive v1は単一文書とAssetsのみであり、完全な履歴保存は未実装。
+
 ## 0. 文書情報
 
 プロジェクト名：**KOMYAKU / 稿脈**

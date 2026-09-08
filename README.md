@@ -37,11 +37,13 @@ The repository already contains working infrastructure, schemas, security bounda
 | Authenticated conversation import API | Implemented, gated | Idempotent raw JSON POST, membership-checked status GET, and Workspace-scoped deterministic Canonical identities |
 | AI handoff | Desktop and Cloud persistence foundation | Exact single-branch disclosure, masking, dual hashes, Local/BYOK setup, OS-secured API keys, bounded streaming, atomic local persistence, a metadata-only local library, and an authenticated idempotent Cloud completion API |
 | Public authentication endpoints | Implemented, disabled by default | SMTP delivery and rate-limited routes exist behind an explicit production feature gate |
-| Document editing UI and Version Graph | Editor feasibility implemented; graph planned | Two-replica browser workbench exists; persistence, final product workflow, and Version Graph remain incomplete |
+| Document editing UI and Version Graph | Local history workflow implemented; graph planned | Single-editor default, durable drafts, immutable versions, alternatives, compare, restore, and account-free export are implemented; the two-replica development workbench remains at `?workbench=1` |
 | Public/restricted/unlisted sharing | Designed | Database and policy model are planned; public APIs are not yet exposed |
 | Billing | Architecture only | No payment provider is connected |
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for the authoritative implementation status.
+The current delivery milestone is the **offline document-history workflow**. Reliable editing, saved versions and alternatives, readable comparison and restore, and account-free single-document export now work locally. The next work is native packaged regression coverage, undo/redo controls, a secondary branch graph, reviewed merge, and a new portable full-history Archive contract. Archive v1 remains a single-document snapshot rather than a complete history backup.
+
+See [docs/ROADMAP.md](docs/ROADMAP.md) for the authoritative implementation status and [the document-history assessment](docs/product/document-git-strategy.md) for the revised scope, evidence, and acceptance gates.
 
 ## Why KOMYAKU exists
 

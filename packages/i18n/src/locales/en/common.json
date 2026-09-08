@@ -7,6 +7,16 @@
   "settings": {
     "language": "Interface language"
   },
+  "documentWorkspace": {
+    "title": "Write the draft",
+    "description": "Your writing is autosaved on this device. Save named versions at meaningful points, compare alternatives, and restore earlier work.",
+    "editor": "Current draft",
+    "newDocument": "New document",
+    "historyControls": "Edit history",
+    "undo": "Undo",
+    "redo": "Redo",
+    "undoHint": "Applies to edits made since opening this document"
+  },
   "foundation": {
     "status": "Foundation in progress",
     "title": "Remember every change without losing the document.",
@@ -42,9 +52,12 @@
     "loading": "Loading the local draft",
     "empty": "Started a new local draft",
     "restored": "Restored the previous local draft",
+    "pending": "There are unsaved changes",
+    "saving": "Saving on this device…",
     "saved": "Autosaved on this device",
     "error": "Local saving stopped. Inspect the stored draft before continuing",
-    "errorCode": "Error code"
+    "errorCode": "Error code",
+    "retry": "Retry local save"
   },
   "structuredPreview": {
     "mermaidTitle": "Safe Mermaid diagram preview",
@@ -91,6 +104,42 @@
     "archive": "Archive",
     "restore": "Restore",
     "archiveSource": "source"
+  },
+  "versionHistory": {
+    "kicker": "LOCAL HISTORY",
+    "title": "Document versions and alternatives",
+    "description": "Save the current draft as an immutable version or start an alternative from the same version. This history is independent of autosave.",
+    "desktopOnly": "Immutable history creation and loading are available in the packaged Desktop app.",
+    "createInitial": "Create first version",
+    "mainBranch": "Main",
+    "currentBranch": "Current line",
+    "currentVersion": "Current version",
+    "versionLabel": "Version name (optional)",
+    "versionLabelPlaceholder": "For example, before editor review",
+    "saveNamed": "Save named version",
+    "branchName": "Alternative name",
+    "branchPlaceholder": "For example, shorter opening",
+    "createAlternative": "Start alternative from current version",
+    "restore": "Restore this version",
+    "restoredLabel": "Restored from an earlier version",
+    "exportTitle": "Take the local document with you",
+    "exportDescription": ".komyaku v1 is a single-document snapshot of the current saved version. Markdown and TXT use the current autosaved draft and convert unsupported structures into source or alternative text.",
+    "exportSnapshot": ".komyaku snapshot",
+    "exportMarkdown": "Markdown",
+    "exportText": "TXT",
+    "exportStatus": { "idle": "Choose an export format", "saving": "Verifying and exporting…", "ready": "Saved a verified file", "fidelity": "Saved a file with documented conversion limits", "assetsRequired": ".komyaku files with Assets will be available after historical Asset loading is implemented. Markdown and TXT remain available.", "error": "The export could not be completed" },
+    "compareTitle": "Compare saved versions",
+    "compareDescription": "Stable Node IDs separate additions, removals, moves, text, formatting, source, and Asset metadata changes.",
+    "compareFrom": "From",
+    "compareTo": "To",
+    "compareAction": "Show changes",
+    "compareStatus": { "idle": "Choose two saved versions", "loading": "Verifying and comparing versions…", "ready": "Comparison complete", "error": "The versions could not be compared" },
+    "changes": { "added": "Added", "removed": "Removed", "moved": "Moved", "changed": "Changed", "movedAndChanged": "Moved and changed" },
+    "changeSummary": "Added {{added}} · removed {{removed}} · moved {{moved}} · changed {{changed}}",
+    "beforeText": "Before",
+    "afterText": "After",
+    "reasons": { "initial": "First version", "named": "Saved version", "restore": "Restored version", "merge": "Merged version", "import": "Imported version" },
+    "status": { "idle": "History is waiting for a draft", "loading": "Loading history…", "ready": "History is up to date", "saving": "Saving an immutable version…", "error": "The history operation could not be completed" }
   },
   "imageInsertion": {
     "altText": "Image alternative text (required)",

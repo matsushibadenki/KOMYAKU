@@ -67,6 +67,97 @@ struct LocalDocumentMutationInput {
     updated_at: String,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalVersionInput {
+    id: String,
+    document_id: String,
+    schema_version: i64,
+    snapshot_encoding: String,
+    snapshot_json: String,
+    snapshot_hash: String,
+    parent_ids: Vec<String>,
+    author_id: String,
+    reason: String,
+    restored_from_version_id: Option<String>,
+    label: Option<String>,
+    created_at: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SaveLocalVersionInput {
+    operation_id: String,
+    version: LocalVersionInput,
+    branch_id: String,
+    branch_name: String,
+    expected_head_version_id: Option<String>,
+    restore_draft_revision: Option<i64>,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct SaveLocalVersionResult {
+    operation_id: String,
+    document_id: String,
+    version_id: String,
+    branch_id: String,
+    snapshot_hash: String,
+    replayed: bool,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct LocalVersionSummary {
+    id: String,
+    snapshot_hash: String,
+    author_id: String,
+    reason: String,
+    restored_from_version_id: Option<String>,
+    label: Option<String>,
+    created_at: String,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct LocalVersionBranchSummary {
+    id: String,
+    name: String,
+    head_version_id: String,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct LocalVersionHistoryResult {
+    document_id: String,
+    current_branch_id: Option<String>,
+    current_version_id: Option<String>,
+    branches: Vec<LocalVersionBranchSummary>,
+    versions: Vec<LocalVersionSummary>,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct LocalVersionSnapshotResult {
+    document_id: String,
+    version_id: String,
+    schema_version: i64,
+    snapshot_encoding: String,
+    snapshot_json: String,
+    snapshot_hash: String,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct LocalVersionAssetResult {
+    id: String,
+    media_type: String,
+    content_hash: String,
+    bytes: Vec<u8>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct LocalPngPreviewInput {
@@ -994,6 +1085,8 @@ async fn save_local_draft_transaction(
         "UPDATE local_archive_assets SET lifecycle_status = CASE
            WHEN EXISTS (SELECT 1 FROM local_archive_asset_references reference
                         WHERE reference.asset_id = local_archive_assets.asset_id)
+             OR EXISTS (SELECT 1 FROM local_version_asset_references reference
+                        WHERE reference.asset_id = local_archive_assets.asset_id)
            THEN 'active' ELSE 'quarantined' END, updated_at = ?",
     )
     .bind(&input.updated_at)
@@ -1021,9 +1114,13 @@ async fn save_local_draft_transaction(
              WHERE asset_id = ? AND lifecycle_status = 'active'
                AND NOT EXISTS (
                  SELECT 1 FROM local_document_asset_references WHERE asset_id = ?
+               )
+               AND NOT EXISTS (
+                 SELECT 1 FROM local_version_asset_references WHERE asset_id = ?
                )",
         )
         .bind(&input.updated_at)
+        .bind(&asset_id)
         .bind(&asset_id)
         .bind(&asset_id)
         .execute(&mut *transaction)
@@ -1038,6 +1135,10 @@ async fn save_local_draft_transaction(
            AND datetime(updated_at) <= datetime(?, '-1 day')
            AND NOT EXISTS (
              SELECT 1 FROM local_document_asset_references
+             WHERE asset_id = local_asset_previews.asset_id
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM local_version_asset_references
              WHERE asset_id = local_asset_previews.asset_id
            )",
     )
@@ -1284,6 +1385,380 @@ async fn mutate_local_document_transaction(
     Ok(summary)
 }
 
+fn valid_lower_uuid(value: &str) -> bool {
+    validate_provider_reference(value).is_ok()
+        && !value.bytes().any(|byte| byte.is_ascii_uppercase())
+}
+
+async fn save_local_version_transaction(
+    pool: &Pool<Sqlite>, input: &SaveLocalVersionInput,
+) -> Result<SaveLocalVersionResult, &'static str> {
+    let version = &input.version;
+    let asset_ids = collect_local_asset_ids(&version.snapshot_json)
+        .map_err(|_| "invalid_local_version")?;
+    if !valid_lower_uuid(&input.operation_id) || !valid_lower_uuid(&version.id)
+        || !valid_lower_uuid(&version.document_id) || !valid_lower_uuid(&version.author_id)
+        || !valid_lower_uuid(&input.branch_id) || version.snapshot_encoding != "canonical-json-v1"
+        || version.snapshot_json.len() > MAX_LOCAL_DRAFT_BYTES || version.snapshot_hash.len() != 64
+        || version.snapshot_hash.bytes().any(|byte| !byte.is_ascii_hexdigit() || byte.is_ascii_uppercase())
+        || version.parent_ids.len() > 2 || version.parent_ids.iter().any(|id| !valid_lower_uuid(id))
+        || version.parent_ids.iter().collect::<BTreeSet<_>>().len() != version.parent_ids.len()
+        || version.parent_ids.iter().any(|id| id == &version.id)
+        || input.branch_name.trim().is_empty() || input.branch_name.len() > 200
+        || version.label.as_ref().is_some_and(|label| label.len() > 1000)
+        || version.created_at.is_empty() || version.created_at.len() > 64
+    { return Err("invalid_local_version"); }
+    let parent_count = version.parent_ids.len();
+    let reason_valid = match version.reason.as_str() {
+        "initial" => parent_count == 0 && version.restored_from_version_id.is_none()
+            && input.restore_draft_revision.is_none(),
+        "merge" => parent_count == 2 && version.restored_from_version_id.is_none()
+            && input.restore_draft_revision.is_none(),
+        "restore" => parent_count == 1 && version.restored_from_version_id.as_deref().is_some_and(valid_lower_uuid)
+            && input.restore_draft_revision.is_some_and(|revision| revision > 0),
+        "named" | "import" => parent_count == 1 && version.restored_from_version_id.is_none()
+            && input.restore_draft_revision.is_none(),
+        _ => false,
+    };
+    if !reason_valid { return Err("invalid_local_version"); }
+    let snapshot: serde_json::Value = serde_json::from_str(&version.snapshot_json)
+        .map_err(|_| "invalid_local_version")?;
+    if snapshot.get("id").and_then(serde_json::Value::as_str) != Some(&version.document_id)
+        || snapshot.get("schemaVersion").and_then(serde_json::Value::as_i64) != Some(version.schema_version)
+    { return Err("invalid_local_version"); }
+    let actual_hash: String = Sha256::digest(version.snapshot_json.as_bytes()).iter()
+        .map(|byte| format!("{byte:02x}")).collect();
+    if actual_hash != version.snapshot_hash { return Err("local_version_hash_mismatch"); }
+    let request_bytes = serde_json::to_vec(input).map_err(|_| "invalid_local_version")?;
+    let request_hash: String = Sha256::digest(request_bytes).iter()
+        .map(|byte| format!("{byte:02x}")).collect();
+    let mut transaction = pool.begin().await.map_err(|_| "local_version_storage_failure")?;
+    let replay: Option<(String, String, String, String, String)> = sqlx::query_as(
+        "SELECT operation.request_hash, operation.document_id, operation.version_id,
+                operation.branch_id, version.snapshot_hash
+         FROM local_version_operations operation
+         JOIN local_document_versions version ON version.id = operation.version_id
+         WHERE operation.operation_id = ? LIMIT 1")
+        .bind(&input.operation_id).fetch_optional(&mut *transaction).await
+        .map_err(|_| "local_version_storage_failure")?;
+    if let Some((stored_hash, document_id, version_id, branch_id, snapshot_hash)) = replay {
+        if stored_hash != request_hash { return Err("local_version_idempotency_conflict"); }
+        return Ok(SaveLocalVersionResult { operation_id: input.operation_id.clone(), document_id,
+            version_id, branch_id, snapshot_hash, replayed: true });
+    }
+    let document_exists: Option<String> = sqlx::query_scalar(
+        "SELECT id FROM local_documents WHERE id = ? LIMIT 1")
+        .bind(&version.document_id).fetch_optional(&mut *transaction).await
+        .map_err(|_| "local_version_storage_failure")?;
+    if document_exists.is_none() { return Err("local_version_document_not_found"); }
+    for parent_id in &version.parent_ids {
+        let parent_document: Option<String> = sqlx::query_scalar(
+            "SELECT document_id FROM local_document_versions WHERE id = ? LIMIT 1")
+            .bind(parent_id).fetch_optional(&mut *transaction).await
+            .map_err(|_| "local_version_storage_failure")?;
+        if parent_document.as_deref() != Some(version.document_id.as_str()) {
+            return Err("local_version_parent_not_found");
+        }
+    }
+    for asset_id in &asset_ids {
+        let available: i64 = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM local_asset_previews WHERE asset_id = ?)
+                  OR EXISTS(SELECT 1 FROM local_archive_assets WHERE asset_id = ?)")
+            .bind(asset_id).bind(asset_id).fetch_one(&mut *transaction).await
+            .map_err(|_| "local_version_storage_failure")?;
+        if available != 1 { return Err("local_version_asset_not_found"); }
+    }
+    if let Some(restored_id) = &version.restored_from_version_id {
+        let restored_document: Option<String> = sqlx::query_scalar(
+            "SELECT document_id FROM local_document_versions WHERE id = ? LIMIT 1")
+            .bind(restored_id).fetch_optional(&mut *transaction).await
+            .map_err(|_| "local_version_storage_failure")?;
+        if restored_document.as_deref() != Some(version.document_id.as_str()) {
+            return Err("local_restored_version_not_found");
+        }
+    }
+    let current_head: Option<String> = sqlx::query_scalar(
+        "SELECT head_version_id FROM local_document_branches WHERE id = ? AND document_id = ? LIMIT 1")
+        .bind(&input.branch_id).bind(&version.document_id)
+        .fetch_optional(&mut *transaction).await.map_err(|_| "local_version_storage_failure")?;
+    match (&current_head, &input.expected_head_version_id) {
+        (Some(current), Some(expected)) if current == expected && version.parent_ids.contains(expected) => {}
+        (None, None) if version.reason == "initial" => {}
+        (None, Some(expected)) if version.parent_ids.contains(expected) => {}
+        (Some(_), _) => return Err("stale_local_branch_head"),
+        _ => return Err("invalid_local_branch_base"),
+    }
+    sqlx::query(
+        "INSERT INTO local_document_versions
+         (id, document_id, schema_version, snapshot_encoding, snapshot_json, snapshot_hash,
+          author_id, reason, restored_from_version_id, label, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(&version.id).bind(&version.document_id).bind(version.schema_version)
+        .bind(&version.snapshot_encoding).bind(&version.snapshot_json).bind(&version.snapshot_hash)
+        .bind(&version.author_id).bind(&version.reason).bind(&version.restored_from_version_id)
+        .bind(&version.label).bind(&version.created_at).execute(&mut *transaction).await
+        .map_err(|_| "local_version_conflict")?;
+    for (position, parent_id) in version.parent_ids.iter().enumerate() {
+        sqlx::query("INSERT INTO local_document_version_parents (version_id, parent_version_id, parent_order) VALUES (?, ?, ?)")
+            .bind(&version.id).bind(parent_id).bind(position as i64).execute(&mut *transaction).await
+            .map_err(|_| "local_version_storage_failure")?;
+    }
+    for asset_id in &asset_ids {
+        sqlx::query("INSERT INTO local_version_asset_references (version_id, asset_id) VALUES (?, ?)")
+            .bind(&version.id).bind(asset_id).execute(&mut *transaction).await
+            .map_err(|_| "local_version_storage_failure")?;
+    }
+    if current_head.is_some() {
+        let updated = sqlx::query(
+            "UPDATE local_document_branches SET head_version_id = ?, updated_at = ?
+             WHERE id = ? AND document_id = ? AND head_version_id = ?")
+            .bind(&version.id).bind(&version.created_at).bind(&input.branch_id)
+            .bind(&version.document_id).bind(&input.expected_head_version_id)
+            .execute(&mut *transaction).await.map_err(|_| "local_version_storage_failure")?;
+        if updated.rows_affected() != 1 { return Err("stale_local_branch_head"); }
+    } else {
+        sqlx::query(
+            "INSERT INTO local_document_branches (id, document_id, name, head_version_id, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?)")
+            .bind(&input.branch_id).bind(&version.document_id).bind(input.branch_name.trim())
+            .bind(&version.id).bind(&version.created_at).bind(&version.created_at)
+            .execute(&mut *transaction).await.map_err(|_| "local_branch_conflict")?;
+    }
+    sqlx::query("UPDATE local_documents SET current_branch_id = ?, current_version_id = ?, updated_at = ? WHERE id = ?")
+        .bind(&input.branch_id).bind(&version.id).bind(&version.created_at).bind(&version.document_id)
+        .execute(&mut *transaction).await.map_err(|_| "local_version_storage_failure")?;
+    if let Some(restore_revision) = input.restore_draft_revision {
+        let previous_asset_ids: Vec<String> = sqlx::query_scalar(
+            "SELECT asset_id FROM local_document_asset_references WHERE document_id = ?")
+            .bind(&version.document_id).fetch_all(&mut *transaction).await
+            .map_err(|_| "local_version_storage_failure")?;
+        let restored = sqlx::query(
+            "UPDATE local_drafts SET schema_version = ?, content_json = ?, local_revision = ?,
+                    is_composing = 0, updated_at = ?
+             WHERE document_id = ? AND local_revision = ?")
+            .bind(version.schema_version).bind(&version.snapshot_json).bind(restore_revision)
+            .bind(&version.created_at).bind(&version.document_id).bind(restore_revision - 1)
+            .execute(&mut *transaction).await.map_err(|_| "local_version_storage_failure")?;
+        if restored.rows_affected() != 1 { return Err("stale_local_draft_revision"); }
+        let title = snapshot.pointer("/metadata/title").and_then(serde_json::Value::as_str).unwrap_or("");
+        let language = snapshot.pointer("/attrs/language").and_then(serde_json::Value::as_str).unwrap_or("und");
+        let direction = snapshot.pointer("/attrs/direction").and_then(serde_json::Value::as_str).unwrap_or("auto");
+        let writing_mode = snapshot.pointer("/attrs/writingMode").and_then(serde_json::Value::as_str)
+            .unwrap_or("horizontal-tb");
+        sqlx::query(
+            "UPDATE local_documents SET title = ?, default_language = ?, default_direction = ?,
+                    default_writing_mode = ?, updated_at = ? WHERE id = ?")
+            .bind(title).bind(language).bind(direction).bind(writing_mode)
+            .bind(&version.created_at).bind(&version.document_id)
+            .execute(&mut *transaction).await.map_err(|_| "local_version_storage_failure")?;
+        sqlx::query("DELETE FROM local_document_asset_references WHERE document_id = ?")
+            .bind(&version.document_id).execute(&mut *transaction).await
+            .map_err(|_| "local_version_storage_failure")?;
+        for asset_id in &asset_ids {
+            sqlx::query(
+                "INSERT INTO local_document_asset_references (document_id, asset_id, updated_at)
+                 SELECT ?, asset_id, ? FROM local_asset_previews WHERE asset_id = ?")
+                .bind(&version.document_id).bind(&version.created_at).bind(asset_id)
+                .execute(&mut *transaction).await.map_err(|_| "local_version_storage_failure")?;
+            sqlx::query(
+                "INSERT INTO local_archive_asset_references (document_id, asset_id, updated_at)
+                 SELECT ?, asset_id, ? FROM local_archive_assets WHERE asset_id = ?
+                 ON CONFLICT(document_id, asset_id) DO UPDATE SET updated_at = excluded.updated_at")
+                .bind(&version.document_id).bind(&version.created_at).bind(asset_id)
+                .execute(&mut *transaction).await.map_err(|_| "local_version_storage_failure")?;
+        }
+        let asset_ids_json = serde_json::to_string(&asset_ids).map_err(|_| "invalid_local_version")?;
+        sqlx::query(
+            "DELETE FROM local_archive_asset_references
+             WHERE document_id = ? AND asset_id NOT IN (SELECT value FROM json_each(?))")
+            .bind(&version.document_id).bind(asset_ids_json).execute(&mut *transaction).await
+            .map_err(|_| "local_version_storage_failure")?;
+        sqlx::query(
+            "UPDATE local_asset_previews SET lifecycle_status = 'active', last_referenced_at = ?,
+                    quarantined_at = NULL
+             WHERE asset_id IN (SELECT asset_id FROM local_document_asset_references WHERE document_id = ?)")
+            .bind(&version.created_at).bind(&version.document_id).execute(&mut *transaction).await
+            .map_err(|_| "local_version_storage_failure")?;
+        for asset_id in previous_asset_ids {
+            sqlx::query(
+                "UPDATE local_asset_previews SET lifecycle_status = 'quarantined', quarantined_at = ?
+                 WHERE asset_id = ? AND lifecycle_status = 'active'
+                   AND NOT EXISTS (SELECT 1 FROM local_document_asset_references WHERE asset_id = ?)
+                   AND NOT EXISTS (SELECT 1 FROM local_version_asset_references WHERE asset_id = ?)")
+                .bind(&version.created_at).bind(&asset_id).bind(&asset_id).bind(&asset_id)
+                .execute(&mut *transaction).await.map_err(|_| "local_version_storage_failure")?;
+        }
+        sqlx::query(
+            "UPDATE local_archive_assets SET lifecycle_status = CASE
+               WHEN EXISTS (SELECT 1 FROM local_archive_asset_references reference
+                            WHERE reference.asset_id = local_archive_assets.asset_id)
+                 OR EXISTS (SELECT 1 FROM local_version_asset_references reference
+                            WHERE reference.asset_id = local_archive_assets.asset_id)
+               THEN 'active' ELSE 'quarantined' END, updated_at = ?")
+            .bind(&version.created_at).execute(&mut *transaction).await
+            .map_err(|_| "local_version_storage_failure")?;
+    }
+    let persisted_snapshot: (String, String) = sqlx::query_as(
+        "SELECT snapshot_json, snapshot_hash FROM local_document_versions WHERE id = ? LIMIT 1")
+        .bind(&version.id).fetch_one(&mut *transaction).await
+        .map_err(|_| "local_version_storage_failure")?;
+    let persisted_hash: String = Sha256::digest(persisted_snapshot.0.as_bytes()).iter()
+        .map(|byte| format!("{byte:02x}")).collect();
+    if persisted_snapshot.1 != version.snapshot_hash || persisted_hash != version.snapshot_hash {
+        return Err("local_version_persisted_hash_mismatch");
+    }
+    sqlx::query(
+        "INSERT INTO local_version_operations
+         (operation_id, request_hash, document_id, version_id, branch_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)")
+        .bind(&input.operation_id).bind(request_hash).bind(&version.document_id)
+        .bind(&version.id).bind(&input.branch_id).bind(&version.created_at)
+        .execute(&mut *transaction).await.map_err(|_| "local_version_storage_failure")?;
+    transaction.commit().await.map_err(|_| "local_version_storage_failure")?;
+    Ok(SaveLocalVersionResult { operation_id: input.operation_id.clone(),
+        document_id: version.document_id.clone(), version_id: version.id.clone(),
+        branch_id: input.branch_id.clone(), snapshot_hash: persisted_snapshot.1, replayed: false })
+}
+
+#[tauri::command]
+async fn save_local_version_atomic(
+    db_instances: State<'_, DbInstances>, input: SaveLocalVersionInput,
+) -> Result<SaveLocalVersionResult, String> {
+    let pool = {
+        let instances = db_instances.0.read().await;
+        match instances.get(LOCAL_DATABASE_URL) { Some(DbPool::Sqlite(pool)) => pool.clone(),
+            _ => return Err("tauri_database_unavailable".into()) }
+    };
+    save_local_version_transaction(&pool, &input).await.map_err(str::to_string)
+}
+
+async fn list_local_version_history_transaction(
+    pool: &Pool<Sqlite>, document_id: &str,
+) -> Result<LocalVersionHistoryResult, &'static str> {
+    if !valid_lower_uuid(document_id) { return Err("invalid_local_document_id"); }
+    let current: Option<(Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT current_branch_id, current_version_id FROM local_documents WHERE id = ? LIMIT 1")
+        .bind(document_id).fetch_optional(pool).await
+        .map_err(|_| "local_version_storage_failure")?;
+    let Some((current_branch_id, current_version_id)) = current else {
+        return Err("local_version_document_not_found");
+    };
+    let branches = sqlx::query_as::<_, LocalVersionBranchSummary>(
+        "SELECT id, name, head_version_id, created_at, updated_at
+         FROM local_document_branches WHERE document_id = ?
+         ORDER BY updated_at DESC, id LIMIT 200")
+        .bind(document_id).fetch_all(pool).await
+        .map_err(|_| "local_version_storage_failure")?;
+    let versions = sqlx::query_as::<_, LocalVersionSummary>(
+        "SELECT id, snapshot_hash, author_id, reason, restored_from_version_id, label, created_at
+         FROM local_document_versions WHERE document_id = ?
+         ORDER BY created_at DESC, id DESC LIMIT 500")
+        .bind(document_id).fetch_all(pool).await
+        .map_err(|_| "local_version_storage_failure")?;
+    Ok(LocalVersionHistoryResult {
+        document_id: document_id.to_string(), current_branch_id, current_version_id,
+        branches, versions,
+    })
+}
+
+async fn load_local_version_snapshot_transaction(
+    pool: &Pool<Sqlite>, document_id: &str, version_id: &str,
+) -> Result<LocalVersionSnapshotResult, &'static str> {
+    if !valid_lower_uuid(document_id) || !valid_lower_uuid(version_id) {
+        return Err("invalid_local_version_reference");
+    }
+    let snapshot = sqlx::query_as::<_, LocalVersionSnapshotResult>(
+        "SELECT document_id, id AS version_id, schema_version, snapshot_encoding,
+                snapshot_json, snapshot_hash
+         FROM local_document_versions WHERE document_id = ? AND id = ? LIMIT 1")
+        .bind(document_id).bind(version_id).fetch_optional(pool).await
+        .map_err(|_| "local_version_storage_failure")?
+        .ok_or("local_version_not_found")?;
+    let actual_hash: String = Sha256::digest(snapshot.snapshot_json.as_bytes()).iter()
+        .map(|byte| format!("{byte:02x}")).collect();
+    if snapshot.snapshot_encoding != "canonical-json-v1" || actual_hash != snapshot.snapshot_hash {
+        return Err("local_version_persisted_hash_mismatch");
+    }
+    Ok(snapshot)
+}
+
+async fn load_local_version_assets_transaction(
+    pool: &Pool<Sqlite>, document_id: &str, version_id: &str,
+) -> Result<Vec<LocalVersionAssetResult>, &'static str> {
+    if !valid_lower_uuid(document_id) || !valid_lower_uuid(version_id) {
+        return Err("invalid_local_version_reference");
+    }
+    let belongs: i64 = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM local_document_versions WHERE document_id = ? AND id = ?)")
+        .bind(document_id).bind(version_id).fetch_one(pool).await
+        .map_err(|_| "local_version_storage_failure")?;
+    if belongs != 1 { return Err("local_version_not_found"); }
+    let asset_ids: Vec<String> = sqlx::query_scalar(
+        "SELECT asset_id FROM local_version_asset_references WHERE version_id = ? ORDER BY asset_id LIMIT 5001")
+        .bind(version_id).fetch_all(pool).await.map_err(|_| "local_version_storage_failure")?;
+    if asset_ids.len() > 5000 { return Err("local_version_asset_limit"); }
+    let mut results = Vec::with_capacity(asset_ids.len());
+    let mut total_bytes = 0usize;
+    for asset_id in asset_ids {
+        let preview: Option<(Vec<u8>, String, String)> = sqlx::query_as(
+            "SELECT bytes, detected_media_type, content_hash FROM local_asset_previews WHERE asset_id = ? LIMIT 1")
+            .bind(&asset_id).fetch_optional(pool).await.map_err(|_| "local_version_storage_failure")?;
+        let (bytes, media_type, content_hash) = match preview {
+            Some(value) => value,
+            None => sqlx::query_as(
+                "SELECT bytes, media_type, content_hash FROM local_archive_assets WHERE asset_id = ? LIMIT 1")
+                .bind(&asset_id).fetch_optional(pool).await
+                .map_err(|_| "local_version_storage_failure")?
+                .ok_or("local_version_asset_not_found")?,
+        };
+        total_bytes = total_bytes.checked_add(bytes.len()).ok_or("local_version_asset_limit")?;
+        if total_bytes > 512 * 1024 * 1024 { return Err("local_version_asset_limit"); }
+        let actual_hash: String = Sha256::digest(&bytes).iter()
+            .map(|byte| format!("{byte:02x}")).collect();
+        if actual_hash != content_hash { return Err("local_version_asset_integrity_mismatch"); }
+        results.push(LocalVersionAssetResult { id: asset_id, media_type, content_hash, bytes });
+    }
+    Ok(results)
+}
+
+#[tauri::command]
+async fn list_local_version_history(
+    db_instances: State<'_, DbInstances>, document_id: String,
+) -> Result<LocalVersionHistoryResult, String> {
+    let pool = {
+        let instances = db_instances.0.read().await;
+        match instances.get(LOCAL_DATABASE_URL) { Some(DbPool::Sqlite(pool)) => pool.clone(),
+            _ => return Err("tauri_database_unavailable".into()) }
+    };
+    list_local_version_history_transaction(&pool, &document_id).await.map_err(str::to_string)
+}
+
+#[tauri::command]
+async fn load_local_version_snapshot(
+    db_instances: State<'_, DbInstances>, document_id: String, version_id: String,
+) -> Result<LocalVersionSnapshotResult, String> {
+    let pool = {
+        let instances = db_instances.0.read().await;
+        match instances.get(LOCAL_DATABASE_URL) { Some(DbPool::Sqlite(pool)) => pool.clone(),
+            _ => return Err("tauri_database_unavailable".into()) }
+    };
+    load_local_version_snapshot_transaction(&pool, &document_id, &version_id)
+        .await.map_err(str::to_string)
+}
+
+#[tauri::command]
+async fn load_local_version_assets(
+    db_instances: State<'_, DbInstances>, document_id: String, version_id: String,
+) -> Result<Vec<LocalVersionAssetResult>, String> {
+    let pool = {
+        let instances = db_instances.0.read().await;
+        match instances.get(LOCAL_DATABASE_URL) { Some(DbPool::Sqlite(pool)) => pool.clone(),
+            _ => return Err("tauri_database_unavailable".into()) }
+    };
+    load_local_version_assets_transaction(&pool, &document_id, &version_id)
+        .await.map_err(str::to_string)
+}
+
 #[tauri::command]
 async fn list_local_documents(db_instances: State<'_, DbInstances>) -> Result<Vec<LocalDocumentSummary>, String> {
     let pool = {
@@ -1396,6 +1871,12 @@ pub fn run() {
             sql: include_str!("../migrations/0006_local_document_library.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 7,
+            description: "create_local_document_versions",
+            sql: include_str!("../migrations/0007_local_document_versions.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -1406,6 +1887,10 @@ pub fn run() {
             import_local_komyaku_archive_atomic,
             list_local_documents,
             mutate_local_document_atomic,
+            save_local_version_atomic,
+            list_local_version_history,
+            load_local_version_snapshot,
+            load_local_version_assets,
             store_cloud_session,
             load_cloud_session,
             delete_cloud_session,
@@ -1487,7 +1972,31 @@ mod tests {
             .expect("apply local Archive materialization schema");
         sqlx::raw_sql(include_str!("../migrations/0006_local_document_library.sql"))
             .execute(&pool).await.expect("apply local Document library schema");
+        sqlx::raw_sql(include_str!("../migrations/0007_local_document_versions.sql"))
+            .execute(&pool).await.expect("apply local Document Version schema");
         pool
+    }
+
+    fn local_version_input(
+        operation_id: &str, version_id: &str, parent_ids: Vec<String>,
+        expected_head_version_id: Option<String>, reason: &str,
+    ) -> SaveLocalVersionInput {
+        let draft = input(1, "Versioned");
+        let snapshot_hash: String = Sha256::digest(draft.content_json.as_bytes()).iter()
+            .map(|byte| format!("{byte:02x}")).collect();
+        SaveLocalVersionInput {
+            operation_id: operation_id.into(),
+            version: LocalVersionInput {
+                id: version_id.into(), document_id: draft.document_id,
+                schema_version: 1, snapshot_encoding: "canonical-json-v1".into(),
+                snapshot_json: draft.content_json, snapshot_hash, parent_ids,
+                author_id: "00000000-0000-4000-8000-000000000090".into(),
+                reason: reason.into(), restored_from_version_id: None,
+                label: Some("保存した版".into()), created_at: "2026-09-08T00:00:00.000Z".into(),
+            },
+            branch_id: "00000000-0000-4000-8000-000000000091".into(),
+            branch_name: "本文".into(), expected_head_version_id, restore_draft_revision: None,
+        }
     }
 
     fn local_png_preview_input(asset_id: &str) -> LocalPngPreviewInput {
@@ -1588,6 +2097,125 @@ mod tests {
             .bind(&draft.document_id).fetch_one(&pool).await.expect("read renamed Canonical JSON");
         assert_eq!(serde_json::from_str::<serde_json::Value>(&content_json).unwrap()
             .pointer("/metadata/title").and_then(serde_json::Value::as_str), Some("Renamed"));
+
+        let continued = input(3, "Renamed");
+        save_local_draft_transaction(&pool, &continued)
+            .await
+            .expect("continue editing from the revision returned by rename");
+        let revision: i64 =
+            sqlx::query_scalar("SELECT local_revision FROM local_drafts WHERE document_id = ?")
+                .bind(&draft.document_id)
+                .fetch_one(&pool)
+                .await
+                .expect("read continued revision");
+        assert_eq!(revision, 3);
+    }
+
+    #[tokio::test]
+    async fn saves_versions_parents_and_branch_head_atomically_with_idempotent_replay() {
+        let pool = pool().await;
+        save_local_draft_transaction(&pool, &input(1, "Versioned")).await.expect("save draft");
+        let first_id = "00000000-0000-4000-8000-000000000092";
+        let second_id = "00000000-0000-4000-8000-000000000093";
+        let first = local_version_input(
+            "00000000-0000-4000-8000-000000000094", first_id, vec![], None, "initial");
+        let created = save_local_version_transaction(&pool, &first).await.expect("save initial Version");
+        assert!(!created.replayed);
+        let replayed = save_local_version_transaction(&pool, &first).await.expect("replay initial Version");
+        assert!(replayed.replayed);
+
+        let mut second = local_version_input(
+            "00000000-0000-4000-8000-000000000095", second_id, vec![first_id.into()],
+            Some(first_id.into()), "named");
+        let changed = input(1, "Changed after initial Version");
+        second.version.snapshot_json = changed.content_json;
+        second.version.snapshot_hash = Sha256::digest(second.version.snapshot_json.as_bytes()).iter()
+            .map(|byte| format!("{byte:02x}")).collect();
+        save_local_version_transaction(&pool, &second).await.expect("advance Branch");
+        let history = list_local_version_history_transaction(&pool, &second.version.document_id)
+            .await.expect("list Version history");
+        assert_eq!(history.current_branch_id.as_deref(), Some(second.branch_id.as_str()));
+        assert_eq!(history.current_version_id.as_deref(), Some(second_id));
+        assert_eq!(history.branches.len(), 1);
+        assert_eq!(history.versions.len(), 2);
+        assert_eq!(history.versions[0].id, second_id);
+        let loaded = load_local_version_snapshot_transaction(
+            &pool, &second.version.document_id, first_id,
+        ).await.expect("load immutable Version snapshot");
+        assert_eq!(loaded.version_id, first_id);
+        assert_eq!(loaded.snapshot_hash, first.version.snapshot_hash);
+        assert_eq!(loaded.snapshot_json, first.version.snapshot_json);
+        let state: (String, String, i64, i64) = sqlx::query_as(
+            "SELECT branch.head_version_id, document.current_version_id,
+                    (SELECT COUNT(*) FROM local_document_versions),
+                    (SELECT COUNT(*) FROM local_document_version_parents)
+             FROM local_document_branches branch
+             JOIN local_documents document ON document.id = branch.document_id LIMIT 1")
+            .fetch_one(&pool).await.expect("read Version state");
+        assert_eq!(state, (second_id.into(), second_id.into(), 2, 1));
+
+        let stale = local_version_input(
+            "00000000-0000-4000-8000-000000000096",
+            "00000000-0000-4000-8000-000000000097", vec![first_id.into()],
+            Some(first_id.into()), "named");
+        assert_eq!(save_local_version_transaction(&pool, &stale).await, Err("stale_local_branch_head"));
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM local_document_versions")
+            .fetch_one(&pool).await.expect("read Version count after stale update");
+        assert_eq!(count, 2);
+
+        let mut conflict = first;
+        conflict.version.label = Some("異なる内容".into());
+        assert_eq!(save_local_version_transaction(&pool, &conflict).await,
+            Err("local_version_idempotency_conflict"));
+
+        let restore_id = "00000000-0000-4000-8000-000000000098";
+        let mut restore = local_version_input(
+            "00000000-0000-4000-8000-000000000099", restore_id, vec![second_id.into()],
+            Some(second_id.into()), "restore");
+        restore.version.snapshot_json = conflict.version.snapshot_json.clone();
+        restore.version.snapshot_hash = conflict.version.snapshot_hash.clone();
+        restore.version.restored_from_version_id = Some(first_id.into());
+        restore.restore_draft_revision = Some(2);
+        save_local_version_transaction(&pool, &restore).await.expect("restore Version and draft");
+        let restored: (String, i64, String) = sqlx::query_as(
+            "SELECT draft.content_json, draft.local_revision, document.current_version_id
+             FROM local_drafts draft JOIN local_documents document ON document.id = draft.document_id")
+            .fetch_one(&pool).await.expect("read atomically restored draft");
+        assert_eq!(restored, (conflict.version.snapshot_json, 2, restore_id.into()));
+    }
+
+    #[tokio::test]
+    async fn immutable_version_reference_keeps_an_asset_after_the_draft_removes_it() {
+        let pool = pool().await;
+        let asset_id = "00000000-0000-4000-8000-000000000201";
+        store_local_png_preview_transaction(&pool, &local_png_preview_input(asset_id))
+            .await.expect("store Version Asset");
+        let draft = draft_with_image(1, asset_id);
+        save_local_draft_transaction(&pool, &draft).await.expect("save draft with Asset");
+        let mut version = local_version_input(
+            "00000000-0000-4000-8000-000000000202",
+            "00000000-0000-4000-8000-000000000203", vec![], None, "initial");
+        version.version.snapshot_json = draft.content_json.clone();
+        version.version.snapshot_hash = Sha256::digest(draft.content_json.as_bytes()).iter()
+            .map(|byte| format!("{byte:02x}")).collect();
+        save_local_version_transaction(&pool, &version).await.expect("save Version Asset reference");
+        let exported_assets = load_local_version_assets_transaction(
+            &pool, &version.version.document_id, &version.version.id,
+        ).await.expect("load hash-verified historical Asset");
+        assert_eq!(exported_assets.len(), 1);
+        assert_eq!(exported_assets[0].id, asset_id);
+        assert_eq!(exported_assets[0].media_type, "image/png");
+
+        let without_asset = input(2, "Image lifecycle");
+        save_local_draft_transaction(&pool, &without_asset).await.expect("remove Asset from draft");
+        let state: (String, i64, i64) = sqlx::query_as(
+            "SELECT lifecycle_status,
+                    (SELECT COUNT(*) FROM local_document_asset_references WHERE asset_id = ?),
+                    (SELECT COUNT(*) FROM local_version_asset_references WHERE asset_id = ?)
+             FROM local_asset_previews WHERE asset_id = ?")
+            .bind(asset_id).bind(asset_id).bind(asset_id).fetch_one(&pool).await
+            .expect("read retained Version Asset");
+        assert_eq!(state, ("active".into(), 0, 1));
     }
 
     fn draft_with_image(revision: i64, asset_id: &str) -> LocalDraftInput {

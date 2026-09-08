@@ -7,6 +7,16 @@
   "settings": {
     "language": "界面语言"
   },
+  "documentWorkspace": {
+    "title": "撰写文稿",
+    "description": "文章会自动保存在此设备上。可在关键节点保存命名版本、比较备选方案并恢复历史版本。",
+    "editor": "当前文稿",
+    "newDocument": "新建文档",
+    "historyControls": "编辑历史",
+    "undo": "撤销",
+    "redo": "重做",
+    "undoHint": "仅作用于打开此文档后的编辑"
+  },
   "foundation": {
     "status": "正在构建基础",
     "title": "不丢失文档，记住每一次变化。",
@@ -42,9 +52,12 @@
     "loading": "正在加载本地文稿",
     "empty": "已开始新的本地文稿",
     "restored": "已恢复上次的本地文稿",
+    "pending": "存在尚未保存的修改",
+    "saving": "正在保存到此设备…",
     "saved": "已自动保存到此设备",
     "error": "本地保存已停止，请先检查已存储的文稿",
-    "errorCode": "错误代码"
+    "errorCode": "错误代码",
+    "retry": "重试本地保存"
   },
   "structuredPreview": {
     "mermaidTitle": "安全的Mermaid图表预览",
@@ -91,6 +104,42 @@
     "archive": "归档",
     "restore": "恢复",
     "archiveSource": "来源"
+  },
+  "versionHistory": {
+    "kicker": "LOCAL HISTORY",
+    "title": "文档版本与备选方案",
+    "description": "将当前文稿保存为不可变版本，或从同一版本开始新的备选方案。此历史独立于自动保存。",
+    "desktopOnly": "不可变历史的创建与读取可在打包后的桌面版中使用。",
+    "createInitial": "创建首个版本",
+    "mainBranch": "正文",
+    "currentBranch": "当前路线",
+    "currentVersion": "当前版本",
+    "versionLabel": "版本名称（可选）",
+    "versionLabelPlaceholder": "例如：编辑审阅前",
+    "saveNamed": "保存命名版本",
+    "branchName": "备选方案名称",
+    "branchPlaceholder": "例如：更短的开头",
+    "createAlternative": "从当前版本创建备选方案",
+    "restore": "恢复此版本",
+    "restoredLabel": "从历史版本恢复",
+    "exportTitle": "导出本地文档",
+    "exportDescription": ".komyaku v1 是当前已保存版本的单文档快照。Markdown 与 TXT 使用当前自动保存的文稿，并将无法表达的结构转换为源码或替代文本。",
+    "exportSnapshot": ".komyaku 快照",
+    "exportMarkdown": "Markdown",
+    "exportText": "TXT",
+    "exportStatus": { "idle": "请选择导出格式", "saving": "正在验证并导出…", "ready": "已保存通过验证的文件", "fidelity": "已保存包含明确转换限制的文件", "assetsRequired": "包含 Asset 的 .komyaku 导出将在历史 Asset 读取实现后可用；Markdown 与 TXT 仍可使用。", "error": "无法完成导出" },
+    "compareTitle": "比较已保存版本",
+    "compareDescription": "以稳定 Node ID 为基准，分别显示新增、删除、移动、文本、格式、源码与 Asset 信息变更。",
+    "compareFrom": "比较起点",
+    "compareTo": "比较终点",
+    "compareAction": "显示差异",
+    "compareStatus": { "idle": "请选择两个已保存版本", "loading": "正在验证并比较版本…", "ready": "比较完成", "error": "无法比较这些版本" },
+    "changes": { "added": "新增", "removed": "删除", "moved": "移动", "changed": "变更", "movedAndChanged": "移动并变更" },
+    "changeSummary": "新增 {{added}}・删除 {{removed}}・移动 {{moved}}・变更 {{changed}}",
+    "beforeText": "变更前",
+    "afterText": "变更后",
+    "reasons": { "initial": "首个版本", "named": "已保存版本", "restore": "已恢复版本", "merge": "已合并版本", "import": "已导入版本" },
+    "status": { "idle": "历史正在等待文稿", "loading": "正在读取历史…", "ready": "历史已是最新", "saving": "正在保存不可变版本…", "error": "无法完成历史操作" }
   },
   "imageInsertion": {
     "altText": "图像替代文本（必填）",

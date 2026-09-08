@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-local-version-history"
+description = "Enables the list_local_version_history command without any pre-configured scope."
+commands.allow = ["list_local_version_history"]
+
+[[permission]]
+identifier = "deny-list-local-version-history"
+description = "Denies the list_local_version_history command without any pre-configured scope."
+commands.deny = ["list_local_version_history"]

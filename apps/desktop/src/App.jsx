@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { DOCUMENT_SCHEMA_ID, parseCanonicalDocument } from "@komyaku/document-schema";
+import { createEmptyDocument, DOCUMENT_SCHEMA_ID, parseCanonicalDocument } from "@komyaku/document-schema";
 import {
   createCanonicalCheckpoint,
   connectCollaborativeWorkingStates,
@@ -11,12 +11,33 @@ import { CollaborativeEditor } from "./components/CollaborativeEditor.jsx";
 import { ConversationImportPanel } from "./components/ConversationImportPanel.jsx";
 import { PreviewQaRecoveryProbe } from "./components/PreviewQaRecoveryProbe.jsx";
 import { LocalDocumentLibrary } from "./components/LocalDocumentLibrary.jsx";
+import { LocalVersionHistory } from "./components/LocalVersionHistory.jsx";
 import { loadLocalDraft, saveLocalDraft } from "./services/local-database.js";
 import { reconcileCloudDocumentAssets } from "./services/cloud-asset-reconciliation.js";
 import { createVerifiedCloudDocumentExport } from "./services/cloud-document-export.js";
 import { LocalArchiveImportConflictError, materializeLocalKomyakuImport } from "./services/local-komyaku-import.js";
 import { materializeCloudKomyakuImport } from "./services/cloud-komyaku-import.js";
 import { listLocalDocuments, mutateLocalDocument } from "./services/local-document-library.js";
+import {
+  createVerifiedLocalSnapshotExport,
+  downloadLocalExport,
+  localExportFileName,
+  renderLocalDocumentExport
+} from "./services/local-document-export.js";
+import {
+  createLocalEditSession,
+  prepareLocalEditTransition
+} from "./services/local-edit-session.js";
+import {
+  createLocalDocumentVersion,
+  compareLocalDocumentVersions,
+  getOrCreateLocalVersionAuthorId,
+  loadLocalVersionAssets,
+  loadLocalVersionSnapshot,
+  listLocalVersionHistory,
+  localVersionHistoryAvailable,
+  restoreLocalDocumentVersion
+} from "./services/local-version-history.js";
 import {
   createEditorImagePreviewResolver,
   LOCAL_EDITOR_WORKSPACE
@@ -99,7 +120,9 @@ function localPersistenceErrorCode(error) {
 
 export function App() {
   const { t, i18n } = useTranslation();
-  const previewQa = new URLSearchParams(window.location.search).get("previewQa") === "1";
+  const query = new URLSearchParams(window.location.search);
+  const previewQa = query.get("previewQa") === "1";
+  const developmentWorkbench = previewQa || query.get("workbench") === "1";
   const welcomeDocument = useMemo(() => createWelcomeDocument({ previewQa }), [previewQa]);
   const [replicas, setReplicas] = useState(null);
   const primarySelection = useRef(null);
@@ -108,9 +131,8 @@ export function App() {
   const checkpointTimer = useRef(null);
   const checkpointSequence = useRef(0);
   const archiveImportRef = useRef(null);
-  const localRevision = useRef(0);
-  const persistenceQueue = useRef(Promise.resolve());
-  const persistenceBlocked = useRef(false);
+  const replicasRef = useRef(null);
+  const editSession = useRef(null);
   const [secondaryConnected, setSecondaryConnected] = useState(true);
   const [checkpoint, setCheckpoint] = useState(null);
   const [checkpointStatus, setCheckpointStatus] = useState("pending");
@@ -122,10 +144,45 @@ export function App() {
   const [archiveImportStatus, setArchiveImportStatus] = useState("idle");
   const [packagedImageQaStatus, setPackagedImageQaStatus] = useState("waiting");
   const [localDocuments, setLocalDocuments] = useState([]);
+  const [versionHistory, setVersionHistory] = useState(null);
+  const [versionStatus, setVersionStatus] = useState("idle");
+  const [localExportStatus, setLocalExportStatus] = useState("idle");
+  const [versionComparison, setVersionComparison] = useState(null);
+  const [comparisonStatus, setComparisonStatus] = useState("idle");
   const [archiveImportConflict, setArchiveImportConflict] = useState(null);
 
   const refreshLocalDocuments = useCallback(async () => {
     try { setLocalDocuments(await listLocalDocuments()); } catch { setLocalDocuments([]); }
+  }, []);
+
+  const refreshVersionHistory = useCallback(async (documentId) => {
+    setVersionStatus("loading");
+    try {
+      const history = await listLocalVersionHistory(documentId);
+      setVersionHistory(history);
+      setVersionStatus("ready");
+      return history;
+    } catch {
+      setVersionHistory(null);
+      setVersionStatus("error");
+      return null;
+    }
+  }, []);
+
+  const replaceWorkingDocument = useCallback((document, localRevision) => {
+    if (checkpointTimer.current) window.clearTimeout(checkpointTimer.current);
+    checkpointTimer.current = null;
+    const nextReplicas = createReplicas(document);
+    replicasRef.current = nextReplicas;
+    editSession.current = createLocalEditSession({ documentId: document.id, localRevision });
+    setReplicas(nextReplicas);
+    setCheckpoint(null);
+    setCheckpointStatus("pending");
+    setPersistenceErrorCode(null);
+    setVersionHistory(null);
+    setVersionStatus("idle");
+    setVersionComparison(null);
+    setComparisonStatus("idle");
   }, []);
 
   useEffect(() => {
@@ -133,92 +190,121 @@ export function App() {
     void loadLocalDraft(welcomeDocument.id)
       .then((draft) => {
         if (cancelled) return;
-        localRevision.current = draft?.localRevision ?? 0;
-        setReplicas(createReplicas(draft?.content ?? welcomeDocument));
+        replaceWorkingDocument(draft?.content ?? welcomeDocument, draft?.localRevision ?? 0);
         setPersistenceStatus(draft ? "restored" : "empty");
       })
       .catch((error) => {
         if (cancelled) return;
-        persistenceBlocked.current = true;
+        replaceWorkingDocument(welcomeDocument, 0);
+        editSession.current.block(error);
         setPersistenceErrorCode(localPersistenceErrorCode(error));
-        setReplicas(createReplicas(welcomeDocument));
         setPersistenceStatus("error");
       });
     return () => { cancelled = true; };
-  }, [welcomeDocument]);
+  }, [replaceWorkingDocument, welcomeDocument]);
 
   useEffect(() => { void refreshLocalDocuments(); }, [refreshLocalDocuments]);
 
-  const createCheckpoint = useCallback(async () => {
-    if (!replicas) return;
+  useEffect(() => {
+    const documentId = checkpoint?.durable ? checkpoint.document.id : null;
+    if (editorWorkspace.mode === "local" && documentId) void refreshVersionHistory(documentId);
+  }, [checkpoint?.document?.id, checkpoint?.durable, editorWorkspace.mode, refreshVersionHistory]);
+
+  const createCheckpoint = useCallback(async ({ retry = false } = {}) => {
+    const sourceReplicas = replicasRef.current;
+    const session = editSession.current;
+    if (!sourceReplicas || !session) return null;
     const sequence = ++checkpointSequence.current;
     setCheckpointStatus("saving");
     try {
-      const nextCheckpoint = await createCanonicalCheckpoint(replicas.local);
-      if (sequence !== checkpointSequence.current) return;
-      if (!persistenceBlocked.current) {
-        const persistence = persistenceQueue.current.then(async () => {
-          const nextRevision = localRevision.current + 1;
-          await saveLocalDraft({
-            documentId: nextCheckpoint.document.id,
-            schemaVersion: nextCheckpoint.document.schemaVersion,
-            content: nextCheckpoint.document,
-            contentJson: nextCheckpoint.json,
-            localRevision: nextRevision
-          });
-          localRevision.current = nextRevision;
-          if (editorWorkspace.mode === "cloud") {
-            setCloudAssetStatus("saving");
-            try {
-              await reconcileCloudDocumentAssets({
-                token: editorWorkspace.token,
-                workspaceId: editorWorkspace.workspaceId,
-                document: nextCheckpoint.document,
-                revision: nextRevision
-              });
-              setCloudAssetStatus("ready");
-            } catch {
-              setCloudAssetStatus("error");
-            }
-          }
-        });
-        persistenceQueue.current = persistence.catch(() => {});
-        await persistence;
-        if (sequence !== checkpointSequence.current) return;
-        setPersistenceStatus("saved");
+      const nextCheckpoint = await createCanonicalCheckpoint(sourceReplicas.local);
+      if (editSession.current === session) {
+        setCheckpoint({ ...nextCheckpoint, createdAt: new Date(), durable: false, revision: null });
+        setPersistenceStatus("saving");
       }
-      setCheckpoint({ ...nextCheckpoint, createdAt: new Date() });
-      setCheckpointStatus("ready");
-      void refreshLocalDocuments();
-      return true;
+      const saved = await session.enqueue(async (nextRevision) => {
+        await saveLocalDraft({
+          documentId: nextCheckpoint.document.id,
+          schemaVersion: nextCheckpoint.document.schemaVersion,
+          content: nextCheckpoint.document,
+          contentJson: nextCheckpoint.json,
+          localRevision: nextRevision
+        });
+        if (editorWorkspace.mode === "cloud") {
+          setCloudAssetStatus("saving");
+          try {
+            await reconcileCloudDocumentAssets({
+              token: editorWorkspace.token,
+              workspaceId: editorWorkspace.workspaceId,
+              document: nextCheckpoint.document,
+              revision: nextRevision
+            });
+            setCloudAssetStatus("ready");
+          } catch {
+            setCloudAssetStatus("error");
+          }
+        }
+        return nextRevision;
+      }, { retry });
+      const durableCheckpoint = {
+        ...nextCheckpoint,
+        createdAt: new Date(),
+        durable: true,
+        revision: saved.revision
+      };
+      if (editSession.current === session && sequence === checkpointSequence.current) {
+        setCheckpoint(durableCheckpoint);
+        setPersistenceStatus("saved");
+        setPersistenceErrorCode(null);
+        setCheckpointStatus("ready");
+        void refreshLocalDocuments();
+      }
+      return durableCheckpoint;
     } catch (error) {
-      if (sequence === checkpointSequence.current) {
-        persistenceBlocked.current = true;
+      if (editSession.current === session && sequence === checkpointSequence.current) {
         setPersistenceErrorCode(localPersistenceErrorCode(error));
         setPersistenceStatus("error");
         setCheckpointStatus("error");
       }
-      return false;
+      return null;
     }
-  }, [editorWorkspace, refreshLocalDocuments, replicas]);
+  }, [editorWorkspace, refreshLocalDocuments]);
 
   const scheduleCheckpoint = useCallback(() => {
     if (composingEditors.current.size > 0) return;
     if (checkpointTimer.current) window.clearTimeout(checkpointTimer.current);
     setCheckpointStatus("pending");
+    setPersistenceStatus("pending");
     checkpointTimer.current = window.setTimeout(() => {
       checkpointTimer.current = null;
       void createCheckpoint();
     }, 450);
   }, [createCheckpoint]);
 
+  const prepareForDocumentTransition = useCallback(async () => {
+    const prepared = await prepareLocalEditTransition({
+      isComposing: composingEditors.current.size > 0,
+      cancelScheduledSave: () => {
+        if (checkpointTimer.current) window.clearTimeout(checkpointTimer.current);
+        checkpointTimer.current = null;
+      },
+      save: () => createCheckpoint()
+    });
+    if (prepared.reason === "composition_active") {
+      setCheckpointStatus("composing");
+    }
+    return prepared.ok;
+  }, [createCheckpoint]);
+
   const exportDocument = async () => {
-    if (editorWorkspace.mode !== "cloud" || !checkpoint?.document) return;
+    if (editorWorkspace.mode !== "cloud") return;
     setDocumentExportStatus("saving");
     try {
+      const savedCheckpoint = await createCheckpoint();
+      if (!savedCheckpoint) throw new Error("durable_checkpoint_required");
       await createVerifiedCloudDocumentExport({
         token: editorWorkspace.token, workspaceId: editorWorkspace.workspaceId,
-        document: checkpoint.document
+        document: savedCheckpoint.document
       });
       setDocumentExportStatus("ready");
     } catch {
@@ -233,6 +319,7 @@ export function App() {
     setArchiveImportStatus("loading");
     setArchiveImportConflict(null);
     try {
+      if (!await prepareForDocumentTransition()) throw new Error("local_save_required");
       const bytes = new Uint8Array(await file.arrayBuffer());
       const imported = editorWorkspace.mode === "cloud"
         ? await materializeCloudKomyakuImport({
@@ -240,9 +327,7 @@ export function App() {
         })
         : await materializeLocalKomyakuImport(bytes);
       const existing = await loadLocalDraft(imported.document.id);
-      localRevision.current = existing?.localRevision ?? 0;
-      persistenceBlocked.current = false;
-      setReplicas(createReplicas(imported.document));
+      replaceWorkingDocument(imported.document, existing?.localRevision ?? 0);
       setArchiveImportStatus("ready");
       void refreshLocalDocuments();
     } catch (error) {
@@ -258,12 +343,12 @@ export function App() {
     if (!conflict) return;
     setArchiveImportStatus("loading");
     try {
-      if (choice === "open") await openLocalDocument(conflict.documentId);
+      if (choice === "open") {
+        if (!await openLocalDocument(conflict.documentId)) throw new Error("local_save_required");
+      }
       else {
         const imported = await materializeLocalKomyakuImport(conflict.bytes, { copy: true });
-        localRevision.current = 1;
-        persistenceBlocked.current = false;
-        setReplicas(createReplicas(imported.document));
+        replaceWorkingDocument(imported.document, 1);
       }
       setArchiveImportConflict(null);
       setArchiveImportStatus("ready");
@@ -273,22 +358,51 @@ export function App() {
 
   const openLocalDocument = async (documentId) => {
     try {
+      if (documentId === editSession.current?.documentId) return true;
+      if (!await prepareForDocumentTransition()) return false;
       const draft = await loadLocalDraft(documentId);
       if (!draft) return;
-      localRevision.current = draft.localRevision;
-      persistenceBlocked.current = false;
-      setReplicas(createReplicas(draft.content));
-    } catch { setPersistenceStatus("error"); }
+      replaceWorkingDocument(draft.content, draft.localRevision);
+      setPersistenceStatus("restored");
+      return true;
+    } catch (error) {
+      setPersistenceErrorCode(localPersistenceErrorCode(error));
+      setPersistenceStatus("error");
+      return false;
+    }
   };
 
   const renameLocalDocument = async (documentId, title) => {
-    try { await mutateLocalDocument({ documentId, title: String(title) }); await refreshLocalDocuments(); }
-    catch { setPersistenceStatus("error"); }
+    try {
+      const active = documentId === editSession.current?.documentId;
+      if (active && !await prepareForDocumentTransition()) return false;
+      await mutateLocalDocument({ documentId, title: String(title) });
+      if (active) {
+        const draft = await loadLocalDraft(documentId);
+        if (!draft) throw new Error("local_document_not_found");
+        replaceWorkingDocument(draft.content, draft.localRevision);
+        setPersistenceStatus("saved");
+      }
+      await refreshLocalDocuments();
+      return true;
+    } catch (error) {
+      setPersistenceErrorCode(localPersistenceErrorCode(error));
+      setPersistenceStatus("error");
+      return false;
+    }
   };
 
   const archiveLocalDocument = async (documentId, archived) => {
-    try { await mutateLocalDocument({ documentId, archived }); await refreshLocalDocuments(); }
-    catch { setPersistenceStatus("error"); }
+    try {
+      if (documentId === editSession.current?.documentId && !await prepareForDocumentTransition()) return false;
+      await mutateLocalDocument({ documentId, archived });
+      await refreshLocalDocuments();
+      return true;
+    } catch (error) {
+      setPersistenceErrorCode(localPersistenceErrorCode(error));
+      setPersistenceStatus("error");
+      return false;
+    }
   };
 
   const handlePackagedImageQaStatus = useCallback((status) => {
@@ -299,8 +413,8 @@ export function App() {
     if (checkpointTimer.current) window.clearTimeout(checkpointTimer.current);
     checkpointTimer.current = null;
     setPackagedImageQaStatus("saving");
-    void createCheckpoint().then((saved) => {
-      setPackagedImageQaStatus(saved ? "inserted-durable" : "failed-durable-checkpoint");
+    void createCheckpoint().then((savedCheckpoint) => {
+      setPackagedImageQaStatus(savedCheckpoint ? "inserted-durable" : "failed-durable-checkpoint");
     });
   }, [createCheckpoint]);
 
@@ -318,13 +432,110 @@ export function App() {
 
   const handleDocumentChange = useCallback(() => scheduleCheckpoint(), [scheduleCheckpoint]);
 
+  const createVersion = useCallback(async ({ kind, label = null, branchName = null }) => {
+    if (editorWorkspace.mode !== "local" || !localVersionHistoryAvailable()) return false;
+    setVersionStatus("saving");
+    try {
+      const savedCheckpoint = await createCheckpoint();
+      if (!savedCheckpoint) throw new Error("durable_checkpoint_required");
+      const history = await listLocalVersionHistory(savedCheckpoint.document.id);
+      await createLocalDocumentVersion({
+        document: savedCheckpoint.document, history,
+        authorId: getOrCreateLocalVersionAuthorId(), kind, label, branchName
+      });
+      await refreshVersionHistory(savedCheckpoint.document.id);
+      return true;
+    } catch {
+      setVersionStatus("error");
+      return false;
+    }
+  }, [createCheckpoint, editorWorkspace.mode, refreshVersionHistory]);
+
+  const restoreVersion = useCallback(async (targetVersionId) => {
+    if (editorWorkspace.mode !== "local" || !localVersionHistoryAvailable()) return false;
+    setVersionStatus("saving");
+    try {
+      const savedCheckpoint = await createCheckpoint();
+      if (!savedCheckpoint?.durable || !Number.isSafeInteger(savedCheckpoint.revision)) {
+        throw new Error("durable_checkpoint_required");
+      }
+      const history = await listLocalVersionHistory(savedCheckpoint.document.id);
+      const restored = await restoreLocalDocumentVersion({
+        documentId: savedCheckpoint.document.id, targetVersionId, history,
+        authorId: getOrCreateLocalVersionAuthorId(), localRevision: savedCheckpoint.revision,
+        label: t("versionHistory.restoredLabel")
+      });
+      replaceWorkingDocument(restored.document, restored.localRevision);
+      setPersistenceStatus("restored");
+      await refreshVersionHistory(restored.document.id);
+      return true;
+    } catch {
+      setVersionStatus("error");
+      return false;
+    }
+  }, [createCheckpoint, editorWorkspace.mode, refreshVersionHistory, replaceWorkingDocument, t]);
+
+  const exportLocalDocument = useCallback(async (format) => {
+    setLocalExportStatus("saving");
+    try {
+      const savedCheckpoint = await createCheckpoint();
+      if (!savedCheckpoint?.durable) throw new Error("durable_checkpoint_required");
+      let exported;
+      let exportedDocument = savedCheckpoint.document;
+      if (format === "komyaku") {
+        const history = await listLocalVersionHistory(savedCheckpoint.document.id);
+        if (!history.currentVersionId) throw new Error("local_version_not_found");
+        const [snapshot, assets] = await Promise.all([
+          loadLocalVersionSnapshot({ documentId: history.documentId, versionId: history.currentVersionId }),
+          loadLocalVersionAssets({ documentId: history.documentId, versionId: history.currentVersionId })
+        ]);
+        exportedDocument = snapshot.document;
+        exported = await createVerifiedLocalSnapshotExport(exportedDocument, { assets });
+      } else exported = renderLocalDocumentExport(exportedDocument, format);
+      downloadLocalExport({ ...exported, fileName: localExportFileName(
+        exportedDocument.metadata.title, exported.extension
+      ) });
+      setLocalExportStatus(exported.warnings?.length ? "fidelity" : "ready");
+      return true;
+    } catch (error) {
+      setLocalExportStatus(error?.message === "local_snapshot_assets_required" ? "assetsRequired" : "error");
+      return false;
+    }
+  }, [createCheckpoint]);
+
+  const compareVersions = useCallback(async (beforeVersionId, afterVersionId) => {
+    const documentId = checkpoint?.document?.id;
+    if (!documentId || !localVersionHistoryAvailable()) return false;
+    setComparisonStatus("loading");
+    try {
+      setVersionComparison(await compareLocalDocumentVersions({
+        documentId, beforeVersionId, afterVersionId, locale: i18n.resolvedLanguage
+      }));
+      setComparisonStatus("ready");
+      return true;
+    } catch {
+      setVersionComparison(null);
+      setComparisonStatus("error");
+      return false;
+    }
+  }, [checkpoint?.document?.id, i18n.resolvedLanguage]);
+
+  const createNewLocalDocument = useCallback(async () => {
+    if (!await prepareForDocumentTransition()) return false;
+    const locale = i18n.resolvedLanguage === "zh-Hans" ? "zh-Hans" : i18n.resolvedLanguage;
+    replaceWorkingDocument(createEmptyDocument({ language: locale, metadata: { title: "" } }), 0);
+    setPersistenceStatus("empty");
+    return true;
+  }, [i18n.resolvedLanguage, prepareForDocumentTransition, replaceWorkingDocument]);
+
   useEffect(() => {
     if (!replicas) return undefined;
+    replicasRef.current = replicas;
     void createCheckpoint();
     return () => {
       if (checkpointTimer.current) window.clearTimeout(checkpointTimer.current);
     };
-  }, [createCheckpoint]);
+  }, [createCheckpoint, replicas]);
 
   useEffect(() => {
     if (!replicas || !secondaryConnected) return undefined;
@@ -404,10 +615,12 @@ export function App() {
       <section className="workbench" aria-labelledby="workbench-title">
         <div className="workbench-heading">
           <div>
-            <h2 id="workbench-title">{t("collaboration.title")}</h2>
-            <p>{t("collaboration.description")}</p>
+            <h2 id="workbench-title">{developmentWorkbench
+              ? t("collaboration.title") : t("documentWorkspace.title")}</h2>
+            <p>{developmentWorkbench
+              ? t("collaboration.description") : t("documentWorkspace.description")}</p>
           </div>
-          <button
+          {developmentWorkbench ? <button
             type="button"
             className="connection-button"
             data-state={secondaryConnected ? "success" : "default"}
@@ -416,13 +629,14 @@ export function App() {
           >
             <span className="connection-mark" aria-hidden="true" />
             {secondaryConnected ? t("collaboration.disconnect") : t("collaboration.reconnect")}
-          </button>
+          </button> : <button type="button" className="connection-button"
+            onClick={() => void createNewLocalDocument()}>{t("documentWorkspace.newDocument")}</button>}
         </div>
 
-        <div className="editor-grid">
+        <div className="editor-grid" data-layout={developmentWorkbench ? "replicas" : "single"}>
           <article className="editor-panel">
             <header className="editor-panel-heading">
-              <h3>{t("collaboration.localEditor")}</h3>
+              <h3>{developmentWorkbench ? t("collaboration.localEditor") : t("documentWorkspace.editor")}</h3>
               <span>{t("collaboration.connected")}</span>
             </header>
             <CollaborativeEditor
@@ -437,6 +651,11 @@ export function App() {
               previewLabels={previewLabels}
               resolveImagePreview={resolveImagePreview}
               workspace={editorWorkspace}
+              showHistoryControls={!developmentWorkbench}
+              historyLabels={{
+                label: t("documentWorkspace.historyControls"), undo: t("documentWorkspace.undo"),
+                redo: t("documentWorkspace.redo"), hint: t("documentWorkspace.undoHint")
+              }}
               imageInsertionLabels={{
                 altText: t("imageInsertion.altText"),
                 altPlaceholder: t("imageInsertion.altPlaceholder"),
@@ -493,7 +712,7 @@ export function App() {
             />
           </article>
 
-          <article className="editor-panel" data-state={secondaryConnected ? "connected" : "disconnected"}>
+          {developmentWorkbench ? <article className="editor-panel" data-state={secondaryConnected ? "connected" : "disconnected"}>
             <header className="editor-panel-heading">
               <h3>{t("collaboration.secondEditor")}</h3>
               <span>{secondaryConnected ? t("collaboration.connected") : t("collaboration.disconnected")}</span>
@@ -516,26 +735,86 @@ export function App() {
                 <span>{t("collaboration.offlineDetail")}</span>
               </div>
             )}
-          </article>
+          </article> : null}
         </div>
       </section>
 
       {editorWorkspace.mode === "local" ? (
-        <LocalDocumentLibrary
-          documents={localDocuments}
-          activeDocumentId={checkpoint?.document?.id ?? null}
-          onOpen={openLocalDocument}
-          onRename={renameLocalDocument}
-          onArchive={archiveLocalDocument}
-          labels={{
-            title: t("documentLibrary.title"), description: t("documentLibrary.description"),
-            count: t("documentLibrary.count"), empty: t("documentLibrary.empty"),
-            untitled: t("documentLibrary.untitled"), renameLabel: t("documentLibrary.renameLabel"),
-            rename: t("documentLibrary.rename"), open: t("documentLibrary.open"),
-            opened: t("documentLibrary.opened"), archive: t("documentLibrary.archive"),
-            restore: t("documentLibrary.restore"), archiveSource: t("documentLibrary.archiveSource")
-          }}
-        />
+        <>
+          <LocalDocumentLibrary
+            documents={localDocuments}
+            activeDocumentId={checkpoint?.document?.id ?? null}
+            onOpen={openLocalDocument}
+            onRename={renameLocalDocument}
+            onArchive={archiveLocalDocument}
+            labels={{
+              title: t("documentLibrary.title"), description: t("documentLibrary.description"),
+              count: t("documentLibrary.count"), empty: t("documentLibrary.empty"),
+              untitled: t("documentLibrary.untitled"), renameLabel: t("documentLibrary.renameLabel"),
+              rename: t("documentLibrary.rename"), open: t("documentLibrary.open"),
+              opened: t("documentLibrary.opened"), archive: t("documentLibrary.archive"),
+              restore: t("documentLibrary.restore"), archiveSource: t("documentLibrary.archiveSource")
+            }}
+          />
+          <LocalVersionHistory
+            history={versionHistory}
+            available={localVersionHistoryAvailable()}
+            status={versionStatus}
+            locale={i18n.resolvedLanguage}
+            onCreateInitial={() => createVersion({ kind: "initial", branchName: t("versionHistory.mainBranch") })}
+            onSaveNamed={(label) => createVersion({ kind: "named", label })}
+            onCreateAlternative={(branchName, label) => createVersion({ kind: "alternative", branchName, label })}
+            onRestore={restoreVersion}
+            onExport={exportLocalDocument}
+            exportStatus={localExportStatus}
+            onCompare={compareVersions}
+            comparison={versionComparison}
+            comparisonStatus={comparisonStatus}
+            labels={{
+              kicker: t("versionHistory.kicker"), title: t("versionHistory.title"),
+              description: t("versionHistory.description"), desktopOnly: t("versionHistory.desktopOnly"),
+              createInitial: t("versionHistory.createInitial"), currentBranch: t("versionHistory.currentBranch"),
+              currentVersion: t("versionHistory.currentVersion"), versionLabel: t("versionHistory.versionLabel"),
+              versionLabelPlaceholder: t("versionHistory.versionLabelPlaceholder"), saveNamed: t("versionHistory.saveNamed"),
+              branchName: t("versionHistory.branchName"), branchPlaceholder: t("versionHistory.branchPlaceholder"),
+              createAlternative: t("versionHistory.createAlternative"),
+              restore: t("versionHistory.restore"),
+              exportTitle: t("versionHistory.exportTitle"), exportDescription: t("versionHistory.exportDescription"),
+              exportSnapshot: t("versionHistory.exportSnapshot"), exportMarkdown: t("versionHistory.exportMarkdown"),
+              exportText: t("versionHistory.exportText"),
+              exportStatus: {
+                idle: t("versionHistory.exportStatus.idle"), saving: t("versionHistory.exportStatus.saving"),
+                ready: t("versionHistory.exportStatus.ready"), fidelity: t("versionHistory.exportStatus.fidelity"),
+                assetsRequired: t("versionHistory.exportStatus.assetsRequired"),
+                error: t("versionHistory.exportStatus.error")
+              },
+              compareTitle: t("versionHistory.compareTitle"), compareDescription: t("versionHistory.compareDescription"),
+              compareFrom: t("versionHistory.compareFrom"), compareTo: t("versionHistory.compareTo"),
+              compareAction: t("versionHistory.compareAction"),
+              compareStatus: {
+                idle: t("versionHistory.compareStatus.idle"), loading: t("versionHistory.compareStatus.loading"),
+                ready: t("versionHistory.compareStatus.ready"), error: t("versionHistory.compareStatus.error")
+              },
+              changeLabels: {
+                added: t("versionHistory.changes.added"), removed: t("versionHistory.changes.removed"),
+                moved: t("versionHistory.changes.moved"), changed: t("versionHistory.changes.changed"),
+                "moved-and-changed": t("versionHistory.changes.movedAndChanged")
+              },
+              changeSummary: (summary) => t("versionHistory.changeSummary", summary), beforeText: t("versionHistory.beforeText"),
+              afterText: t("versionHistory.afterText"),
+              reasons: {
+                initial: t("versionHistory.reasons.initial"), named: t("versionHistory.reasons.named"),
+                restore: t("versionHistory.reasons.restore"), merge: t("versionHistory.reasons.merge"),
+                import: t("versionHistory.reasons.import")
+              },
+              status: {
+                idle: t("versionHistory.status.idle"), loading: t("versionHistory.status.loading"),
+                ready: t("versionHistory.status.ready"), saving: t("versionHistory.status.saving"),
+                error: t("versionHistory.status.error")
+              }
+            }}
+          />
+        </>
       ) : null}
 
       <ConversationImportPanel onWorkspaceSessionChange={handleWorkspaceSessionChange} />
@@ -562,7 +841,7 @@ export function App() {
             <p className="persistence-status" role="status" data-state={cloudAssetStatus}>
               {t(`cloudAssets.${cloudAssetStatus}`)}
             </p>
-            <button type="button" disabled={!checkpoint || documentExportStatus === "saving"} onClick={exportDocument}>
+            <button type="button" disabled={!checkpoint?.durable || documentExportStatus === "saving"} onClick={exportDocument}>
               {documentExportStatus === "saving" ? t("documentExport.saving") : t("documentExport.create")}
             </button>
             <p className="persistence-status" role="status" data-state={documentExportStatus}>
@@ -593,6 +872,11 @@ export function App() {
           {t(`recovery.${persistenceStatus}`)}
           {persistenceErrorCode ? ` ${t("recovery.errorCode")}: ${persistenceErrorCode}` : ""}
         </p>
+        {persistenceStatus === "error" ? (
+          <button type="button" onClick={() => void createCheckpoint({ retry: true })}>
+            {t("recovery.retry")}
+          </button>
+        ) : null}
       </footer>
     </main>
   );

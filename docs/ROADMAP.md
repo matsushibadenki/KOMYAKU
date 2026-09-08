@@ -1,5 +1,72 @@
 # KOMYAKU Roadmap
 
+## Active delivery plan — 2026-09-05 revision
+
+The execution order below overrides the historical Stage numbering and older feature priorities. See [product assessment and contracts](product/document-git-strategy.md) and [ADR-077](adr/ADR-077-document-history-first-delivery.md). Existing Done entries describe their stated foundation scope, not completion of the document-versioning product.
+
+- [Done] means implemented in the current codebase; for QA items, only the recorded tested scope is complete.
+- [Next] means high-priority unfinished work in the local history milestone; execute in N0 → N1 → N2 → N3 order, not all at once.
+- [Later] means planned, but not the closest next step. Cloud/platform release prerequisites still block those releases when reached.
+
+### N0 — Reliable editing before history
+
+- [Done] Introduce document-scoped edit sessions with serialized monotonic revisions, failed-write blocking, explicit retry, and isolation from a subsequently active Document.
+- [Done] Cancel pending autosave and require a successful durable checkpoint before Document open, active rename/archive, Archive import, or import-conflict navigation; prevent those transitions during IME composition.
+- [Done] Reload the atomically renamed active Canonical Document and its returned revision before editing continues; cover rename → next revision in the native SQLite test.
+- [Done] Distinguish validated in-memory checkpoints from durable checkpoints, expose pending/saving/error/retry states in en/ja/zh-Hans, and make Cloud export checkpoint the current content before exporting the exact saved document.
+- [Next] Add packaged-app regressions for rename followed by editing, switching/importing during pending autosave, composition during navigation, failed persistence retry, and export during dirty state on the supported native hosts.
+
+Exit: packaged macOS and automated regressions preserve text/title/revision through the scenarios above and restart. Failed writes never display saved success. Other platforms require their own native passes before release.
+
+### N1 — Local history engine and independent export
+
+- [Done] Implement the pure Version/parent/Branch domain foundation with deterministic Canonical snapshot encoding, authored-Unicode preservation, DAG and restore validation, and expected-head Branch advancement in `version-engine`.
+- [Done] Persist Versions, ordered parent Edges, Branch heads, current Document pointers, and idempotency fingerprints in one native SQLite transaction with expected-head compare-and-swap and persisted snapshot-hash readback.
+- [Done] Expose the persistence operation only to the main Tauri window through a validated Desktop adapter and generated command capability.
+- [Done] Implement initial version, named-version save, and create/switch alternative operations in the packaged Desktop app. The local history panel reads bounded metadata, and exact Snapshot reads recheck SHA-256 before parsing Canonical content.
+- [Done] Implement restore-as-new-version so the restored immutable Version, Branch head, working draft, revision, Document metadata, and Asset-reference lifecycle change in one native transaction. Branch drafts, recovery snapshots, and immutable Versions remain distinct.
+- [Done] Protect historical Asset references transactionally for both local preview and imported Archive Assets; removing an Asset from the current draft cannot quarantine bytes still referenced by an immutable Version.
+- [Done] Add account-free TXT/Markdown export with explicit fidelity warnings and `.komyaku` v1 single-document Snapshot export. Exact Version Snapshot and Asset bytes are reread from native storage, SHA-256 verified, written, and verified again before download. Keep v1 labeled as a single-document export, not a full-history backup.
+
+Exit: create A → B, branch from A to C, restore A as child of B, restart and inspect all parents/content/Assets. Crash/retry and two stale head updates neither corrupt the graph nor silently discard an alternative. Local snapshot export works with networking disabled.
+
+### N2 — The first usable document-history workflow
+
+- [Done] Add the first translated local history workflow with history list, named alternatives, restore, two-Version selection, comparison, and account-free export in the existing workbench.
+- [Done] Replace the default two-replica demo with a single-editor workspace and safe new-document action; retain the two-replica workbench at `?workbench=1` and in Preview QA. Existing durable saved-state feedback remains visible.
+- [Done] Add visible undo/redo controls backed by the existing local Yjs undo plugin. Replacing the working document recreates the editor view, keeping undo history scoped to the opened/restored Document session.
+- [Done] Implement stable-Node-ID structure comparison with grapheme-safe text replacement spans, explicit additions/removals/moves/format changes, source comparison for Math/Mermaid, and identity/hash metadata comparison for Assets. Exact Snapshots are verified before comparison.
+- [Next] Complete keyboard interaction QA and add a small branch graph only as a secondary view. The translated comparison controls already collapse to one column on narrow screens.
+- [Next] Run the target-user task trial and the 100k-grapheme/1,000-version/20-branch performance fixture described in the assessment; record actual evidence and bottlenecks.
+
+Exit: target users can save, branch, compare and restore without learning Git terms; initial trial target is 4 of 5 unassisted completions and zero observed data loss. This is a usability gate, not market validation.
+
+### N3 — Reviewed integration and portable history
+
+- [Next] Implement 3-way base/ours/theirs comparison with explicit delete/edit, move, text and metadata conflicts. Preview user-selected/manual results before a two-parent merge; fail clearly on unsupported ambiguous merge bases.
+- [Next] Publish a new major history Archive contract and reader/writer with complete Version/Snapshot/parent/Branch/Asset closure, hash validation, resource bounds, collision policy, and deterministic fixtures. Continue reading v1 without claiming old readers understand the new major.
+- [Next] Export locally, restore into an empty profile without account/network, compare all Version bytes and relationships, and prove historical-only Assets survive. Reject corrupted/missing objects and invalid graphs without partial adoption.
+- [Next] Complete a two-week opt-in pilot of recurring history use and full restart/export recovery. Record whether users actually revisit, compare, adopt, or restore alternatives.
+
+Exit: public local Alpha requires N0–N3 plus native QA for each distributed platform. Private N2 trials must disclose missing full-history export/merge. Do not expand scope solely because infrastructure tests pass.
+
+### N4 — Cloud and asynchronous review after validation
+
+- [Later] Version upload/download, resumable durable queue, head compare-and-swap, idempotent retries, and conflict alternatives that preserve both devices' histories.
+- [Later] Version-bound review proposals/comments and author-approved adoption before production real-time collaboration.
+- [Later] Re-run Cloud production gates below, including independent review, backup restoration and deployment-topology validation, before public Cloud release.
+- [Later] Add billing, managed AI, math recognition, academic exports, additional media, and external storage providers only against observed demand.
+
+### 日本語の実行方針
+
+文書・添付保全の基盤は活かし、保存整合性 → ローカルの版と別案 → 比較・復元の画面 → 確認付き統合と履歴持ち出し → Cloudの順に進める。Math Paletteを含む新規周辺機能は後段。詳細な判断根拠は上記の評価文書を参照する。
+
+### 简体中文执行方针
+
+保留文档和附件保护基础，按可靠保存 → 本地版本与备选方案 → 比较与恢复界面 → 人工确认合并及完整历史导出 → Cloud的顺序推进。数学面板等扩展功能后移。下方原有阶段保留作为实现清单，不代表当前执行顺序。
+
+## Historical implementation inventory
+
 ## Stage 1 — Foundation
 
 Stage status: [Done] Foundation complete
@@ -46,8 +113,8 @@ Stage status: [Done] Identity engineering complete; production launch gates rema
 ## Production Launch Gates
 
 - [Done] XServer VPS Cloud small-start topology selected: one 4GB App VPS, 10GB Managed PostgreSQL with seven-day daily backup, external S3-compatible Asset storage, measured NFS/L4 adoption, and HTTPS-or-queue-only external Workers; see `docs/adr/ADR-074-xserver-vps-cloud-small-start.md`
-- [Next] User environment required: repeat representative load and failure tests in the intended TLS/proxy, PostgreSQL, SMTP-provider, monitoring, and backup topology
-- [Next] Independent reviewer required: external security review, remediation, and retest using `docs/security/stage2-external-review-package.md`
+- [Later] User environment required: repeat representative load and failure tests in the intended TLS/proxy, PostgreSQL, SMTP-provider, monitoring, and backup topology
+- [Later] Independent reviewer required: external security review, remediation, and retest using `docs/security/stage2-external-review-package.md`
 
 ## Stage 3 — Structured Document MVP
 
@@ -80,7 +147,7 @@ Stage status: [Done] Identity engineering complete; production launch gates rema
 - [Done] Revision-monotonic Cloud document-to-Asset checkpoint reconciliation with Document-bound upload references, deterministic digests, accepted-reference validation, transactional stale-reference release, idempotent replay, and multi-replica PostgreSQL locking
 - [Done] Explicit local Asset quarantine management with a bounded metadata-only native list, localized responsive UI, required recovery alternative text, non-destructive reinsertion, and checkpoint-gated reactivation
 - [Done] Packaged macOS Mermaid pressure/backpressure QA covering pre-IPC source rejection, permitted 200-edge rendering, exact eight-request reservation, ninth-request busy rejection, timeout-wide fail-closed cleanup, hidden WebView recreation, and post-pressure recovery
-- [Next] Windows/Linux hosts required: WebView2/WebKitGTK packaged pressure passes and remaining platform-specific sensitive-command denial probes
+- [Later] Windows/Linux hosts required: WebView2/WebKitGTK packaged pressure passes and remaining platform-specific sensitive-command denial probes
 - [Later] JPEG/WebP still-image policies, animated-image policy, and isolated PDF rasterization/viewing using the gates in `docs/architecture/isolated-content-previews.md`
 - [Done] Structured editor feasibility view, validated Canonical local autosave, page/app restart recovery, and Japanese/English/Simplified Chinese UI
 - [Done] Export-gated Asset retention safety with digest-bound verified export/archive evidence, evidence invalidation, publication/legal holds, fail-closed SQL claims, defense-in-depth purge capability, audited operator controls, and disabled automatic orphan deletion
@@ -96,25 +163,26 @@ Stage status: [Done] Identity engineering complete; production launch gates rema
 - [Done] Packaged Tauri Japanese IME composition, conversion, SQLite restart recovery, and exact Relative Position caret restoration pass on macOS
 - [Done] Packaged Tauri Simplified Chinese Pinyin composition, candidate conversion, Yjs replication, SQLite autosave, full quit/relaunch recovery, and exact Relative Position caret restoration pass on macOS
 - [Done] Canonical Schema migration boundary, ProseMirror adapters, and round-trip fixtures that preserve compatible metadata
-- [Next] Reusable compact Math Palette with localized command registry, placeholder-aware LaTeX templates, selection wrapping, isolated preview, keyboard/focus accessibility, and Support App/Desktop Equation integration
+- [Later] Reusable compact Math Palette with localized command registry, placeholder-aware LaTeX templates, selection wrapping, isolated preview, keyboard/focus accessibility, and Support App/Desktop Equation integration
 - [Later] Local handwriting stroke canvas, reviewed LaTeX candidate flow, and provenance-preserving Equation insertion
 - [Later] Benchmark UniMERNet Tiny/Small and alternative mathematical-expression-recognition models in an isolated normal-VPS Worker, then add explicit-consent Cloud recognition without direct Managed PostgreSQL access
 - [Later] Academic submission export foundation with versioned destination profiles, deterministic LaTeX/BibTeX/Figure bundles, isolated reproducible PDF compilation, double-blind metadata checks, readiness reports, and user-controlled download without automatic final submission
 - [Later] Verified destination-specific adapters for current official journal/conference requirements, followed by JATS XML, DOCX, MathML, camera-ready, and supplementary research packages
 - [Later] Native table editing, full LaTeX documents, richer SVG authoring, and PDF inspection
 
-## Stage 4 — Document Evolution and Diff
+## Stage 4 — Document Evolution and Diff (now prioritized by N1–N3)
 
-- [Later] Immutable Document Version DAG and object snapshots
+- [Next] Immutable Document Version DAG and object snapshots
 - [Later] Node lineage derived from stable Node IDs, with optional content hashes and materialized Node revision projections
 - [Later] Change-kind metadata: TEXT, MATH, DIAGRAM, IMAGE, TABLE, CODE, ASSET, and STRUCTURE
 - [Later] Version Graph with icon/shape labels that do not rely on color alone
 - [Later] Diff dispatcher with Text, Math source, Diagram, Image, Table, Code, and Binary Asset engines
-- [Later] Grapheme-safe Text/LaTeX/Mermaid Diff and binary added/replaced/deleted/hash/size comparison
-- [Later] Recovery snapshots, offline sync queue, and conflict branches
+- [Next] Grapheme-safe Text/LaTeX/Mermaid Diff and binary added/replaced/deleted/hash/size comparison
+- [Next] Local recovery snapshots and explicit alternative branches; see N0–N2
+- [Later] Cloud offline sync queue execution and multi-device conflict branches; see N4
 - [Done] Publish the open `.komyaku` Archive v1 specification, manifest schema, deterministic minimal fixture, security limits, and compatibility policy alongside its first writer/reader
-- [Later] Extend `.komyaku` with immutable Version DAG, branches, merges, and corresponding conformance fixtures without breaking v1 readers
-- [Later] Backup, open Archive export/import, and automated restore verification
+- [Next] Specify and implement a new major history Archive with immutable Version DAG, branches, merges, and conformance fixtures; retain v1 import support and explicit unsupported-major rejection in old readers (N3)
+- [Next] Account-free local export and empty-environment restoration of complete history and Assets (N1/N3)
 
 ## Collaborative Editing and Local-first Sync
 
@@ -124,7 +192,7 @@ Stage status: [Done] Identity engineering complete; production launch gates rema
 - [Later] Durable local working-state persistence and offline update queue with bounded recovery and compaction
 - [Later] Authenticated Provider adapters with Workspace/Document authorization, state-vector differential sync, idempotent update persistence, quotas, and update-size/rate limits
 - [Done] Origin-aware local UndoManager foundation that excludes remote, AI, import, migration, and system-normalization transactions by default
-- [Later] Connect selective undo/redo to the editor UI with translated labels and accessibility announcements
+- [Next] Connect selective undo/redo to the editor UI with translated labels and accessibility announcements
 - [Later] Relative Position cursors and selections plus durable comment anchors using stable Node IDs and quoted/context fallback
 - [Later] Ephemeral privacy-minimized Awareness with TTL; exclude Presence from Versions, archives, backups, search, and analytics
 - [Later] Multi-replica room routing, shared persistence, compaction workers, and collaboration load/failure tests without relying on sticky sessions for correctness
@@ -185,5 +253,5 @@ Stage status: [Done] Identity engineering complete; production launch gates rema
 - [Done] Workspace-scoped deterministic UUIDv5 import identity v1 across Generic JSON, ChatGPT, Claude, structured Gemini, and Gemini My Activity, with Parser 1.1.0 and cross-Workspace collision isolation
 - [Done] Desktop opt-in Cloud synchronization using an exact-byte Workspace-scoped reparse, explicit metadata-only Cloud Provider Connection selection, Local-first persistence, and idempotent Cloud save-only retry
 - [Done] File-backed SQLite close/reopen regression for completed AI Handoff recovery, with metadata and Canonical Branch verification
-- [Next] Interactive OS access required: packaged-app quit/relaunch and native credential-store QA on macOS, Windows, and Linux; use `docs/testing/ai-handoff-restart-recovery.md`
+- [Later] Interactive OS access required: packaged-app quit/relaunch and native credential-store QA on macOS, Windows, and Linux; use `docs/testing/ai-handoff-restart-recovery.md`
 - [Later] Managed AI credits and Workspace AI connections

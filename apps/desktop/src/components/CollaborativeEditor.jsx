@@ -5,6 +5,8 @@ import {
   insertCollaborativeFile,
   insertCollaborativeImage,
   restoreCollaborativeSelection,
+  redoCollaborativeEdit,
+  undoCollaborativeEdit,
   updateCollaborativeImageAccessibility
 } from "@komyaku/editor-core";
 import { createStructuredPreviewNodeViews } from "./StructuredPreviewNodeView.jsx";
@@ -35,7 +37,9 @@ export function CollaborativeEditor({
   onPackagedImageQaStatus = ignorePackagedImageQaStatus,
   selectionRef,
   onCompositionChange,
-  onDocumentChange
+  onDocumentChange,
+  showHistoryControls = false,
+  historyLabels
 }) {
   const mountRef = useRef(null);
   const viewRef = useRef(null);
@@ -208,6 +212,13 @@ export function CollaborativeEditor({
     : localImageInsertionAvailable());
   return (
     <>
+      {showHistoryControls ? (
+        <div className="editor-history-controls" aria-label={historyLabels.label}>
+          <button type="button" onClick={() => undoCollaborativeEdit(viewRef.current)}>{historyLabels.undo}</button>
+          <button type="button" onClick={() => redoCollaborativeEdit(viewRef.current)}>{historyLabels.redo}</button>
+          <span>{historyLabels.hint}</span>
+        </div>
+      ) : null}
       {enableImageInsertion ? (
         <div className="image-insertion" data-state={insertionStatus}>
           <label>

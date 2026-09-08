@@ -7,6 +7,16 @@
   "settings": {
     "language": "表示言語"
   },
+  "documentWorkspace": {
+    "title": "原稿を書く",
+    "description": "文章はこの端末へ自動保存されます。節目では名前付き版を残し、別案の比較や過去版の復元ができます。",
+    "editor": "現在の原稿",
+    "newDocument": "新しい文書",
+    "historyControls": "編集履歴",
+    "undo": "元に戻す",
+    "redo": "やり直す",
+    "undoHint": "この文書を開いてからの編集に作用します"
+  },
   "foundation": {
     "status": "基盤構築中",
     "title": "文書の変化を、失わずに記憶する。",
@@ -42,9 +52,12 @@
     "loading": "ローカル原稿を読み込んでいます",
     "empty": "新しいローカル原稿を開始しました",
     "restored": "前回のローカル原稿を復旧しました",
+    "pending": "未保存の変更があります",
+    "saving": "この端末へ保存中…",
     "saved": "この端末に自動保存済み",
     "error": "ローカル保存を停止しました。保存データを確認してください",
-    "errorCode": "エラーコード"
+    "errorCode": "エラーコード",
+    "retry": "ローカル保存を再試行"
   },
   "structuredPreview": {
     "mermaidTitle": "Mermaid図の安全なプレビュー",
@@ -91,6 +104,42 @@
     "archive": "Archive",
     "restore": "復元",
     "archiveSource": "取込元"
+  },
+  "versionHistory": {
+    "kicker": "LOCAL HISTORY",
+    "title": "文書の版と別案",
+    "description": "現在の原稿を不変の版として保存し、同じ版から別案を始められます。自動保存とは独立した履歴です。",
+    "desktopOnly": "不変履歴の作成と読込はPackaged Desktop版で利用できます。",
+    "createInitial": "最初の版を作成",
+    "mainBranch": "本文",
+    "currentBranch": "現在の流れ",
+    "currentVersion": "現在の版",
+    "versionLabel": "版の名前（任意）",
+    "versionLabelPlaceholder": "例：編集者確認前",
+    "saveNamed": "名前付き版を保存",
+    "branchName": "別案の名前",
+    "branchPlaceholder": "例：短い導入案",
+    "createAlternative": "現在の版から別案を作成",
+    "restore": "この版を復元",
+    "restoredLabel": "過去版から復元",
+    "exportTitle": "ローカル文書を持ち出す",
+    "exportDescription": ".komyaku v1は現在の保存版を含む単一文書Snapshotです。MarkdownとTXTは現在の自動保存原稿を使い、表現できない構造をSourceまたは代替テキストへ変換します。",
+    "exportSnapshot": ".komyaku Snapshot",
+    "exportMarkdown": "Markdown",
+    "exportText": "TXT",
+    "exportStatus": { "idle": "Export形式を選択できます", "saving": "検証してExport中…", "ready": "検証済みファイルを保存しました", "fidelity": "変換制限を含むファイルを保存しました", "assetsRequired": "Assetを含む.komyaku Exportは履歴Asset読込の実装後に利用できます。MarkdownまたはTXTは利用できます。", "error": "Exportを完了できませんでした" },
+    "compareTitle": "保存版を比較",
+    "compareDescription": "Stable Node IDを基準に、追加・削除・移動・文章・書式・Source・Asset情報の変更を分けて表示します。",
+    "compareFrom": "比較元",
+    "compareTo": "比較先",
+    "compareAction": "差分を表示",
+    "compareStatus": { "idle": "2つの保存版を選択してください", "loading": "保存版を検証して比較中…", "ready": "比較が完了しました", "error": "保存版を比較できませんでした" },
+    "changes": { "added": "追加", "removed": "削除", "moved": "移動", "changed": "変更", "movedAndChanged": "移動と変更" },
+    "changeSummary": "追加 {{added}}・削除 {{removed}}・移動 {{moved}}・変更 {{changed}}",
+    "beforeText": "変更前",
+    "afterText": "変更後",
+    "reasons": { "initial": "最初の版", "named": "保存した版", "restore": "復元した版", "merge": "統合した版", "import": "取り込んだ版" },
+    "status": { "idle": "履歴の準備待ち", "loading": "履歴を読込中…", "ready": "履歴は最新です", "saving": "不変の版を保存中…", "error": "履歴操作を完了できませんでした" }
   },
   "imageInsertion": {
     "altText": "画像の代替テキスト（必須）",

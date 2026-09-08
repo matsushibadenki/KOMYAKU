@@ -213,6 +213,12 @@
           "markdownDescription": "Enables the list_local_documents command without any pre-configured scope."
         },
         {
+          "description": "Enables the list_local_version_history command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-list-local-version-history",
+          "markdownDescription": "Enables the list_local_version_history command without any pre-configured scope."
+        },
+        {
           "description": "Enables the list_quarantined_local_assets command without any pre-configured scope.",
           "type": "string",
           "const": "allow-list-quarantined-local-assets",
@@ -229,6 +235,18 @@
           "type": "string",
           "const": "allow-load-local-conversation",
           "markdownDescription": "Enables the load_local_conversation command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the load_local_version_assets command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-load-local-version-assets",
+          "markdownDescription": "Enables the load_local_version_assets command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the load_local_version_snapshot command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-load-local-version-snapshot",
+          "markdownDescription": "Enables the load_local_version_snapshot command without any pre-configured scope."
         },
         {
           "description": "Enables the load_provider_credential command without any pre-configured scope.",
@@ -253,6 +271,12 @@
           "type": "string",
           "const": "allow-save-local-draft-atomic",
           "markdownDescription": "Enables the save_local_draft_atomic command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the save_local_version_atomic command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-save-local-version-atomic",
+          "markdownDescription": "Enables the save_local_version_atomic command without any pre-configured scope."
         },
         {
           "description": "Enables the store_cloud_session command without any pre-configured scope.",
@@ -309,6 +333,12 @@
           "markdownDescription": "Denies the list_local_documents command without any pre-configured scope."
         },
         {
+          "description": "Denies the list_local_version_history command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-list-local-version-history",
+          "markdownDescription": "Denies the list_local_version_history command without any pre-configured scope."
+        },
+        {
           "description": "Denies the list_quarantined_local_assets command without any pre-configured scope.",
           "type": "string",
           "const": "deny-list-quarantined-local-assets",
@@ -325,6 +355,18 @@
           "type": "string",
           "const": "deny-load-local-conversation",
           "markdownDescription": "Denies the load_local_conversation command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the load_local_version_assets command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-load-local-version-assets",
+          "markdownDescription": "Denies the load_local_version_assets command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the load_local_version_snapshot command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-load-local-version-snapshot",
+          "markdownDescription": "Denies the load_local_version_snapshot command without any pre-configured scope."
         },
         {
           "description": "Denies the load_provider_credential command without any pre-configured scope.",
@@ -349,6 +391,12 @@
           "type": "string",
           "const": "deny-save-local-draft-atomic",
           "markdownDescription": "Denies the save_local_draft_atomic command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the save_local_version_atomic command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-save-local-version-atomic",
+          "markdownDescription": "Denies the save_local_version_atomic command without any pre-configured scope."
         },
         {
           "description": "Denies the store_cloud_session command without any pre-configured scope.",
