@@ -1,5 +1,7 @@
+import { releaseCloudReference } from "./cloud-reference-release.js";
 import { createNodeId } from "@komyaku/document-schema";
 import { cloudApiClient } from "./cloud-api.js";
+import { retainPreparedAsset } from "./prepared-asset.js";
 
 const MAX_PNG_BYTES = 256 * 1024;
 
@@ -46,18 +48,20 @@ export async function prepareCloudPngInsertion({
         ? "cloud_png_rejected" : inspection.inspectionStatus === "error"
           ? "cloud_png_inspection_error" : "cloud_png_inspection_timeout");
     }
-    return Object.freeze({
+    return retainPreparedAsset(Object.freeze({
       nodeId,
       assetId: uploaded.assetId,
       mediaType: "image/png",
       altText: altText.trim(),
       width: inspection.width,
       height: inspection.height
-    });
+    }), () => releaseCloudReference({ apiClient,
+      token, workspaceId, assetId: uploaded.assetId, referenceId: uploaded.referenceId
+    }));
   } catch (error) {
     if (uploaded?.referenceId) {
       try {
-        await apiClient.releaseAssetReference({
+        await releaseCloudReference({ apiClient,
           token, workspaceId, assetId: uploaded.assetId, referenceId: uploaded.referenceId
         });
       } catch { /* Server reconciliation remains the final safety net. */ }

@@ -2067,6 +2067,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn archive_write_failures_roll_back_every_stage_and_allow_exact_retry() {
+        for table in ["local_drafts", "local_archive_asset_references", "local_archive_imports"] {
+            let pool = pool().await;
+            let original = input(1, "Keep existing document / 既存 / 保留");
+            save_local_draft_transaction(&pool, &original).await.unwrap();
+            let archive = local_archive_input(
+                "00000000-0000-4000-8000-000000000088",
+                "00000000-0000-4000-8000-000000000077",
+            );
+            // Fail progressively later writes, including the final replay receipt.
+            sqlx::raw_sql(&format!(
+                "CREATE TRIGGER fail_archive_write BEFORE INSERT ON {table}
+                 BEGIN SELECT RAISE(ABORT, 'injected archive failure'); END;"
+            )).execute(&pool).await.unwrap();
+            assert_eq!(import_local_archive_transaction(&pool, &archive).await,
+                Err("local_archive_storage_failure"), "failure at {table}");
+            let state: (i64, i64, i64, i64, i64) = sqlx::query_as(
+                "SELECT (SELECT COUNT(*) FROM local_documents),
+                        (SELECT COUNT(*) FROM local_drafts),
+                        (SELECT COUNT(*) FROM local_archive_assets),
+                        (SELECT COUNT(*) FROM local_archive_asset_references),
+                        (SELECT COUNT(*) FROM local_archive_imports)")
+                .fetch_one(&pool).await.unwrap();
+            assert_eq!(state, (1, 1, 0, 0, 0), "rollback at {table}");
+            let preserved: (String, i64) = sqlx::query_as(
+                "SELECT content_json, local_revision FROM local_drafts WHERE document_id = ?")
+                .bind(&original.document_id).fetch_one(&pool).await.unwrap();
+            assert_eq!(preserved, (original.content_json.clone(), 1));
+
+            sqlx::raw_sql("DROP TRIGGER fail_archive_write").execute(&pool).await.unwrap();
+            let retried = import_local_archive_transaction(&pool, &archive).await.unwrap();
+            assert!(!retried.replayed, "failed attempt must not leave a receipt");
+            let stored: Vec<u8> = sqlx::query_scalar(
+                "SELECT bytes FROM local_archive_assets WHERE asset_id = ?")
+                .bind(&archive.assets[0].asset_id).fetch_one(&pool).await.unwrap();
+            assert_eq!(stored, archive.assets[0].bytes);
+            let replay = import_local_archive_transaction(&pool, &archive).await.unwrap();
+            assert!(replay.replayed);
+            assert_eq!(replay.content_json, retried.content_json);
+            pool.close().await;
+        }
+    }
+
+    #[tokio::test]
     async fn rejected_local_archive_leaves_no_document_or_asset() {
         let pool = pool().await;
         let mut input = local_archive_input(
@@ -2401,6 +2445,50 @@ mod tests {
         .await
         .expect("read lifecycle after rollback");
         assert_eq!(state, "active");
+    }
+
+    #[tokio::test]
+    async fn abandoned_png_preserves_exact_bytes_through_grace_restart_and_recovery() {
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let path = std::env::temp_dir().join(format!("komyaku-abandoned-asset-{}-{nonce}.db", std::process::id()));
+        let url = format!("sqlite://{}?mode=rwc", path.display());
+        let first = SqlitePoolOptions::new().max_connections(1).connect(&url).await.unwrap();
+        migrate_test_pool(&first).await;
+        let asset_id = "00000000-0000-4000-8000-000000000210";
+        let png = local_png_preview_input(asset_id);
+        store_local_png_preview_transaction(&first, &png).await.unwrap();
+        // Upload succeeded, but no editor transaction ever referenced the PNG.
+        let mut checkpoint = input(1, "Unrelated draft");
+        checkpoint.updated_at = "2026-08-30T23:59:59.000Z".into();
+        save_local_draft_transaction(&first, &checkpoint).await.unwrap();
+        let state: (String, Vec<u8>) = sqlx::query_as(
+            "SELECT lifecycle_status, bytes FROM local_asset_previews WHERE asset_id = ?"
+        ).bind(asset_id).fetch_one(&first).await.unwrap();
+        assert_eq!(state, ("pending".into(), png.bytes.clone()));
+        checkpoint.local_revision = 2;
+        checkpoint.updated_at = "2026-08-31T00:00:00.000Z".into();
+        save_local_draft_transaction(&first, &checkpoint).await.unwrap();
+        first.close().await;
+
+        let reopened = SqlitePoolOptions::new().max_connections(1).connect(&url).await.unwrap();
+        let state: (String, Vec<u8>, i64) = sqlx::query_as(
+            "SELECT lifecycle_status, bytes, (SELECT COUNT(*) FROM local_document_asset_references WHERE asset_id = ?) FROM local_asset_previews WHERE asset_id = ?"
+        ).bind(asset_id).bind(asset_id).fetch_one(&reopened).await.unwrap();
+        assert_eq!(state, ("quarantined".into(), png.bytes.clone(), 0));
+        let listed = list_quarantined_local_assets_transaction(&reopened).await.unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].asset_id, asset_id);
+        // Recover through the same durable checkpoint path used by reinsertion.
+        let mut restored = draft_with_image(3, asset_id);
+        restored.updated_at = "2026-08-31T00:01:00.000Z".into();
+        save_local_draft_transaction(&reopened, &restored).await.unwrap();
+        let state: (String, Vec<u8>, i64) = sqlx::query_as(
+            "SELECT lifecycle_status, bytes, (SELECT COUNT(*) FROM local_document_asset_references WHERE asset_id = ?) FROM local_asset_previews WHERE asset_id = ?"
+        ).bind(asset_id).bind(asset_id).fetch_one(&reopened).await.unwrap();
+        assert_eq!(state, ("active".into(), png.bytes, 1));
+        assert!(list_quarantined_local_assets_transaction(&reopened).await.unwrap().is_empty());
+        reopened.close().await;
+        std::fs::remove_file(path).unwrap();
     }
 
     #[tokio::test]

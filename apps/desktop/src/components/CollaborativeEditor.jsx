@@ -11,6 +11,7 @@ import {
 } from "@komyaku/editor-core";
 import { createStructuredPreviewNodeViews } from "./StructuredPreviewNodeView.jsx";
 import { RichCaptionEditor } from "./RichCaptionEditor.jsx";
+import { runEditorInsertion } from "../services/editor-insertion.js";
 import { localImageInsertionAvailable, storeLocalPngForInsertion } from "../services/local-image-insertion.js";
 import { prepareCloudPngInsertion } from "../services/cloud-image-insertion.js";
 import { prepareCloudFileInsertion } from "../services/cloud-file-insertion.js";
@@ -21,6 +22,8 @@ import {
 } from "../services/local-asset-quarantine.js";
 
 const ignorePackagedImageQaStatus = () => {};
+const defaultInsertionGuard = () => () => true;
+const DEFAULT_WORKSPACE = Object.freeze({ mode: "local" });
 
 export function CollaborativeEditor({
   editorId,
@@ -29,7 +32,7 @@ export function CollaborativeEditor({
   language,
   previewLabels,
   resolveImagePreview,
-  workspace = { mode: "local" },
+  workspace = DEFAULT_WORKSPACE,
   imageInsertionLabels,
   enableImageInsertion = false,
   enableImageAccessibilityEditing = false,
@@ -39,6 +42,7 @@ export function CollaborativeEditor({
   onCompositionChange,
   onDocumentChange,
   showHistoryControls = false,
+  captureInsertionGuard = defaultInsertionGuard,
   historyLabels
 }) {
   const mountRef = useRef(null);
@@ -53,6 +57,13 @@ export function CollaborativeEditor({
   const [selectedImage, setSelectedImage] = useState(null);
   const [accessibilityStatus, setAccessibilityStatus] = useState("idle");
   const [quarantine, setQuarantine] = useState({ status: "idle", assets: [], selectedId: null, altText: "" });
+
+  useEffect(() => {
+    setInsertionStatus("idle");
+    setFileInsertionStatus("idle");
+    setAltText("");
+    setSelectedImage(null);
+  }, [document, workspace]);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -142,20 +153,25 @@ export function CollaborativeEditor({
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file || !viewRef.current) return;
+    const view = viewRef.current;
+    const isCurrent = captureInsertionGuard();
     setInsertionStatus("saving");
     try {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const stored = workspace.mode === "cloud"
-        ? await prepareCloudPngInsertion({
-            token: workspace.token, workspaceId: workspace.workspaceId,
-            documentId: document.getMap("komyaku:document-metadata").get("documentId"), bytes, altText
-          })
-        : await storeLocalPngForInsertion({ bytes, altText });
-      insertCollaborativeImage(viewRef.current, stored);
+      await runEditorInsertion({ view, getCurrentView: () => viewRef.current, isCurrent,
+        prepare: async (assertCurrent) => {
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          assertCurrent();
+          return workspace.mode === "cloud"
+            ? await prepareCloudPngInsertion({
+                token: workspace.token, workspaceId: workspace.workspaceId,
+                documentId: document.getMap("komyaku:document-metadata").get("documentId"), bytes, altText
+              })
+            : await storeLocalPngForInsertion({ bytes, altText });
+        }, insert: insertCollaborativeImage });
       setAltText("");
       setInsertionStatus("ready");
     } catch {
-      setInsertionStatus("error");
+      if (viewRef.current === view) setInsertionStatus("error");
     }
   };
 
@@ -163,20 +179,26 @@ export function CollaborativeEditor({
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file || !viewRef.current || workspace.mode !== "cloud") return;
+    const view = viewRef.current;
+    const isCurrent = captureInsertionGuard();
     setFileInsertionStatus("saving");
     try {
-      const stored = await prepareCloudFileInsertion({
-        token: workspace.token,
-        workspaceId: workspace.workspaceId,
-        documentId: document.getMap("komyaku:document-metadata").get("documentId"),
-        bytes: new Uint8Array(await file.arrayBuffer()),
-        fileName: file.name,
-        mediaType: file.type || "text/plain"
-      });
-      insertCollaborativeFile(viewRef.current, stored);
+      await runEditorInsertion({ view, getCurrentView: () => viewRef.current, isCurrent,
+        prepare: async (assertCurrent) => {
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          assertCurrent();
+          return prepareCloudFileInsertion({
+            token: workspace.token,
+            workspaceId: workspace.workspaceId,
+            documentId: document.getMap("komyaku:document-metadata").get("documentId"),
+            bytes,
+            fileName: file.name,
+            mediaType: file.type || "text/plain"
+          });
+        }, insert: insertCollaborativeFile });
       setFileInsertionStatus("ready");
     } catch {
-      setFileInsertionStatus("error");
+      if (viewRef.current === view) setFileInsertionStatus("error");
     }
   };
 

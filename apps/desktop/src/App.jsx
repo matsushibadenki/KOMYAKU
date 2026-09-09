@@ -323,6 +323,13 @@ export function App() {
     return mutationGate.current.run(operation);
   }, []);
 
+  const captureInsertionGuard = useCallback(() => {
+    const session = editSession.current;
+    const mutation = mutationGeneration.current;
+    return () => editSession.current === session && mutationGeneration.current === mutation
+      && !mutationGate.current.busy && composingEditors.current.size === 0;
+  }, []);
+
   const exportDocument = async () => {
     if (editorWorkspace.mode !== "cloud") return;
     setDocumentExportStatus("saving");
@@ -693,6 +700,7 @@ export function App() {
               <span>{t("collaboration.connected")}</span>
             </header>
             <CollaborativeEditor
+              captureInsertionGuard={captureInsertionGuard}
               editorId="local"
               enableImageInsertion
               enableImageAccessibilityEditing
@@ -772,6 +780,7 @@ export function App() {
             </header>
             {secondaryConnected ? (
               <CollaborativeEditor
+                captureInsertionGuard={captureInsertionGuard}
                 editorId="second"
                 document={replicas.second}
                 label={t("collaboration.secondEditorLabel")}

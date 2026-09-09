@@ -1,5 +1,7 @@
+import { releaseCloudReference } from "./cloud-reference-release.js";
 import { createNodeId } from "@komyaku/document-schema";
 import { cloudApiClient } from "./cloud-api.js";
+import { retainPreparedAsset } from "./prepared-asset.js";
 
 const MAX_FILE_BYTES = 1024 * 1024;
 const supportedMediaTypes = new Set([
@@ -34,13 +36,15 @@ export async function prepareCloudFileInsertion({
       || inspection.policyVersion !== "baseline-signature-v1") {
       throw new Error("cloud_file_not_accepted");
     }
-    return Object.freeze({
+    return retainPreparedAsset(Object.freeze({
       nodeId, assetId: uploaded.assetId, mediaType, fileName: fileName.trim(), title, description
-    });
+    }), () => releaseCloudReference({ apiClient,
+      token, workspaceId, assetId: uploaded.assetId, referenceId: uploaded.referenceId
+    }));
   } catch (error) {
     if (uploaded?.referenceId) {
       try {
-        await apiClient.releaseAssetReference({
+        await releaseCloudReference({ apiClient,
           token, workspaceId, assetId: uploaded.assetId, referenceId: uploaded.referenceId
         });
       } catch { /* A later Cloud reference reconciliation pass remains the safety net. */ }
