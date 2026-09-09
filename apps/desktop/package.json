@@ -9,6 +9,8 @@
     "check": "vite build",
     "test:e2e": "playwright test",
     "test:preview:package": "tauri build --debug --bundles app --config src-tauri/tauri.preview-qa.conf.json",
+    "test:history:package": "tauri build --debug --bundles app --config src-tauri/tauri.history-qa.conf.json",
+    "test:editing:package": "tauri build --debug --bundles app --config src-tauri/tauri.editing-qa.conf.json",
     "tauri": "tauri"
   },
   "dependencies": {

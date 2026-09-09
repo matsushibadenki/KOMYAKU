@@ -15,7 +15,10 @@ const MermaidRendererHost = isMermaidRenderer
     })))
   : null;
 
-ReactDOM.createRoot(document.getElementById("root")).render(
+if (new URLSearchParams(window.location.search).get("mode") === "history-qa") {
+  void import("./services/packaged-history-qa.js").then(({ mountPackagedHistoryQa }) =>
+    mountPackagedHistoryQa(document.getElementById("root")));
+} else ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <I18nextProvider i18n={i18n}>
       {isMermaidRenderer

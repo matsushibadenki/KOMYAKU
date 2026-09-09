@@ -1,0 +1,11 @@
+{
+  "productName": "KOMYAKU Editing QA",
+  "identifier": "app.komyaku.desktop.editing-qa",
+  "app": {
+    "windows": [{
+      "label": "main", "title": "KOMYAKU Editing QA",
+      "url": "/", "width": 1200, "height": 900,
+      "minWidth": 320, "minHeight": 568, "resizable": true
+    }]
+  }
+}

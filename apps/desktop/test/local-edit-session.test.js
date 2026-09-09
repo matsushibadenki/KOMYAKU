@@ -5,6 +5,20 @@ import {
 } from "../src/services/local-edit-session.js";
 
 describe("local document edit session", () => {
+  test("does not permit navigation when the edit changes during a durable save", async () => {
+    let release;
+    let current = true;
+    const gate = new Promise((resolve) => { release = resolve; });
+    const transition = prepareLocalEditTransition({
+      isComposing: false, cancelScheduledSave: () => {},
+      save: async () => { await gate; return { durable: true }; },
+      isCurrent: () => current
+    });
+    current = false;
+    release();
+    expect(await transition).toEqual({ ok: false, reason: "edit_changed" });
+  });
+
   test("serializes saves and assigns monotonic revisions inside one document session", async () => {
     const session = createLocalEditSession({ documentId: "document-a", localRevision: 4 });
     const revisions = [];

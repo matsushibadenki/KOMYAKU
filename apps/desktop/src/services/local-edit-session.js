@@ -69,14 +69,17 @@ export function createLocalEditSession({ documentId, localRevision = 0 }) {
 export async function prepareLocalEditTransition({
   isComposing,
   cancelScheduledSave,
-  save
+  save,
+  isCurrent = () => true
 }) {
   if (isComposing) return Object.freeze({ ok: false, reason: "composition_active" });
-  if (typeof cancelScheduledSave !== "function" || typeof save !== "function") {
+  if (typeof cancelScheduledSave !== "function" || typeof save !== "function"
+    || typeof isCurrent !== "function") {
     throw new LocalEditSessionError("invalid_local_transition");
   }
   cancelScheduledSave();
   const checkpoint = await save();
+  if (!isCurrent()) return Object.freeze({ ok: false, reason: "edit_changed" });
   return checkpoint?.durable === true
     ? Object.freeze({ ok: true, checkpoint })
     : Object.freeze({ ok: false, reason: "durable_save_required" });

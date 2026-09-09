@@ -130,6 +130,7 @@ export function App() {
   const composingEditors = useRef(new Set());
   const checkpointTimer = useRef(null);
   const checkpointSequence = useRef(0);
+  const editGeneration = useRef(0);
   const archiveImportRef = useRef(null);
   const replicasRef = useRef(null);
   const editSession = useRef(null);
@@ -217,12 +218,14 @@ export function App() {
     const sequence = ++checkpointSequence.current;
     setCheckpointStatus("saving");
     try {
-      const nextCheckpoint = await createCanonicalCheckpoint(sourceReplicas.local);
-      if (editSession.current === session) {
-        setCheckpoint({ ...nextCheckpoint, createdAt: new Date(), durable: false, revision: null });
-        setPersistenceStatus("saving");
-      }
       const saved = await session.enqueue(async (nextRevision) => {
+        // Queue preparation as well as persistence: hash completion order must
+        // never let an older snapshot receive a newer revision.
+        const nextCheckpoint = await createCanonicalCheckpoint(sourceReplicas.local);
+        if (editSession.current === session && sequence === checkpointSequence.current) {
+          setCheckpoint({ ...nextCheckpoint, createdAt: new Date(), durable: false, revision: null });
+          setPersistenceStatus("saving");
+        }
         await saveLocalDraft({
           documentId: nextCheckpoint.document.id,
           schemaVersion: nextCheckpoint.document.schemaVersion,
@@ -244,10 +247,10 @@ export function App() {
             setCloudAssetStatus("error");
           }
         }
-        return nextRevision;
+        return nextCheckpoint;
       }, { retry });
       const durableCheckpoint = {
-        ...nextCheckpoint,
+        ...saved.result,
         createdAt: new Date(),
         durable: true,
         revision: saved.revision
@@ -282,13 +285,17 @@ export function App() {
   }, [createCheckpoint]);
 
   const prepareForDocumentTransition = useCallback(async () => {
+    const session = editSession.current;
+    const generation = editGeneration.current;
     const prepared = await prepareLocalEditTransition({
       isComposing: composingEditors.current.size > 0,
       cancelScheduledSave: () => {
         if (checkpointTimer.current) window.clearTimeout(checkpointTimer.current);
         checkpointTimer.current = null;
       },
-      save: () => createCheckpoint()
+      save: () => createCheckpoint(),
+      isCurrent: () => editSession.current === session
+        && editGeneration.current === generation && composingEditors.current.size === 0
     });
     if (prepared.reason === "composition_active") {
       setCheckpointStatus("composing");
@@ -420,17 +427,25 @@ export function App() {
 
   const handleCompositionChange = useCallback((editorId, isComposing) => {
     if (isComposing) {
+      editGeneration.current += 1;
+      checkpointSequence.current += 1;
       composingEditors.current.add(editorId);
       if (checkpointTimer.current) window.clearTimeout(checkpointTimer.current);
       checkpointTimer.current = null;
       setCheckpointStatus("composing");
+      setPersistenceStatus((status) => status === "error" ? "error" : "pending");
       return;
     }
     composingEditors.current.delete(editorId);
     scheduleCheckpoint();
   }, [scheduleCheckpoint]);
 
-  const handleDocumentChange = useCallback(() => scheduleCheckpoint(), [scheduleCheckpoint]);
+  const handleDocumentChange = useCallback(() => {
+    editGeneration.current += 1;
+    // A checkpoint captured before this edit cannot announce the draft as saved.
+    checkpointSequence.current += 1;
+    scheduleCheckpoint();
+  }, [scheduleCheckpoint]);
 
   const createVersion = useCallback(async ({ kind, label = null, branchName = null }) => {
     if (editorWorkspace.mode !== "local" || !localVersionHistoryAvailable()) return false;

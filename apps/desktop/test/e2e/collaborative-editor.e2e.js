@@ -134,6 +134,81 @@ test("failed persistence blocks navigation until explicit retry and survives rel
   await expect(page.locator(".ProseMirror").first()).toContainText("retry-preserves-日本語-简体中文");
 });
 
+test("navigation waits for an older in-flight hash and preserves the newer edit", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await expect(page.locator(".app-footer .persistence-status")).toHaveAttribute("data-state", "saved");
+  await page.evaluate(() => {
+    const original = crypto.subtle.digest.bind(crypto.subtle);
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    window.releaseCheckpointHash = release;
+    window.checkpointHashWaiting = false;
+    crypto.subtle.digest = async (...args) => {
+      crypto.subtle.digest = original;
+      window.checkpointHashWaiting = true;
+      await gate;
+      return original(...args);
+    };
+  });
+  const editor = page.locator(".ProseMirror");
+  await editor.click();
+  await editor.press("End");
+  await editor.pressSequentially(" older-hash-marker");
+  await expect.poll(() => page.evaluate(() => window.checkpointHashWaiting)).toBe(true);
+  await editor.pressSequentially(" newer-edit-marker");
+  await page.getByRole("button", { name: "新しい文書" }).click();
+  // A later checkpoint cannot permit navigation while the earlier one is still held.
+  await page.waitForTimeout(600);
+  await expect(editor).toContainText("newer-edit-marker");
+  await page.evaluate(() => window.releaseCheckpointHash());
+  await expect(editor).not.toContainText("newer-edit-marker");
+  await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), DRAFT_KEY))
+    .toContain("newer-edit-marker");
+  await page.reload();
+  await expect(editor).toContainText("newer-edit-marker");
+});
+
+for (const composing of [false, true]) {
+  test(`cancels navigation when ${composing ? "composition starts" : "text changes"} during its checkpoint`, async ({ page }) => {
+    await page.goto("/");
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await expect(page.locator(".app-footer .persistence-status")).toHaveAttribute("data-state", "saved");
+    await page.evaluate(() => {
+      const original = crypto.subtle.digest.bind(crypto.subtle);
+      const gate = new Promise((resolve) => { window.releaseTransitionHash = resolve; });
+      window.transitionHashWaiting = false;
+      crypto.subtle.digest = async (...args) => {
+        crypto.subtle.digest = original;
+        window.transitionHashWaiting = true;
+        await gate;
+        return original(...args);
+      };
+    });
+    await page.getByRole("button", { name: "新しい文書" }).click();
+    await expect.poll(() => page.evaluate(() => window.transitionHashWaiting)).toBe(true);
+    const editor = page.locator(".ProseMirror");
+    await editor.click();
+    await editor.press("End");
+    if (composing) await editor.dispatchEvent("compositionstart", { data: "入力中" });
+    await editor.pressSequentially(" edit-during-transition");
+    await page.evaluate(() => window.releaseTransitionHash());
+    // Allow the released checkpoint and any navigation continuation to finish.
+    await page.waitForTimeout(600);
+    await expect(editor).toContainText("edit-during-transition");
+    if (composing) {
+      await expect(page.getByText("IME入力中—保存を保留")).toBeVisible();
+      await expect(page.locator(".app-footer .persistence-status")).not.toHaveAttribute("data-state", "saved");
+      await editor.dispatchEvent("compositionend", { data: "入力完了" });
+    }
+    await expect(page.locator(".app-footer .persistence-status")).toHaveAttribute("data-state", "saved");
+    await page.reload();
+    await expect(editor).toContainText("edit-during-transition");
+  });
+}
+
 test("new document checkpoints pending edits and is blocked during composition", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(() => localStorage.clear());
