@@ -43,8 +43,8 @@ export function createLocalEditSession({ documentId, localRevision = 0 }) {
         }
         if (retry) blockedError = null;
 
-        const nextRevision = revision + 1;
         try {
+          const nextRevision = assertRevision(revision + 1);
           const result = await save(nextRevision);
           revision = nextRevision;
           blockedError = null;
@@ -77,7 +77,7 @@ export async function prepareLocalEditTransition({
   }
   cancelScheduledSave();
   const checkpoint = await save();
-  return checkpoint
+  return checkpoint?.durable === true
     ? Object.freeze({ ok: true, checkpoint })
     : Object.freeze({ ok: false, reason: "durable_save_required" });
 }

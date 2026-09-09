@@ -103,6 +103,55 @@ test("synchronizes independent replicas across disconnect and reconnect", async 
   await expect(page.locator(".ProseMirror").nth(1)).toContainText(marker.trim());
 });
 
+test("failed persistence blocks navigation until explicit retry and survives reload", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await expect(page.locator(".app-footer .persistence-status")).toHaveAttribute("data-state", "saved");
+  const before = await page.evaluate((key) => localStorage.getItem(key), DRAFT_KEY);
+  await page.evaluate(() => {
+    const original = Storage.prototype.setItem;
+    window.restoreDraftWrites = () => { Storage.prototype.setItem = original; };
+    Storage.prototype.setItem = function (key, value) {
+      if (key.startsWith("komyaku:local-draft:")) throw new DOMException("Test storage full", "QuotaExceededError");
+      return original.call(this, key, value);
+    };
+  });
+  const editor = page.locator(".ProseMirror").first();
+  await editor.click();
+  await editor.press("End");
+  await editor.pressSequentially(" retry-preserves-日本語-简体中文");
+  await expect(page.locator(".app-footer .persistence-status")).toHaveAttribute("data-state", "error");
+  expect(await page.evaluate((key) => localStorage.getItem(key), DRAFT_KEY)).toBe(before);
+  await page.evaluate(() => window.restoreDraftWrites());
+  // Restoring storage availability must not implicitly clear the blocked session.
+  await page.getByRole("button", { name: "新しい文書" }).click();
+  await expect(editor).toContainText("retry-preserves-日本語-简体中文");
+  await expect(page.locator(".app-footer .persistence-status")).toHaveAttribute("data-state", "error");
+  await page.getByRole("button", { name: "ローカル保存を再試行" }).click();
+  await expect(page.locator(".app-footer .persistence-status")).toHaveAttribute("data-state", "saved");
+  await page.reload();
+  await expect(page.locator(".ProseMirror").first()).toContainText("retry-preserves-日本語-简体中文");
+});
+
+test("new document checkpoints pending edits and is blocked during composition", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  const editor = page.locator(".ProseMirror");
+  await expect(page.locator(".app-footer .persistence-status")).toHaveAttribute("data-state", "saved");
+  await editor.dispatchEvent("compositionstart", { data: "入力中" });
+  await page.getByRole("button", { name: "新しい文書" }).click();
+  await expect(page.getByText("IME入力中—保存を保留")).toBeVisible();
+  await editor.dispatchEvent("compositionend", { data: "入力完了" });
+  await editor.click();
+  await editor.press("End");
+  await editor.pressSequentially(" pending-navigation-marker");
+  await page.getByRole("button", { name: "新しい文書" }).click();
+  await expect(editor).not.toContainText("pending-navigation-marker");
+  expect(await page.evaluate((key) => localStorage.getItem(key), DRAFT_KEY)).toContain("pending-navigation-marker");
+});
+
 test("pauses checkpointing during composition and resumes after compositionend", async ({ page }) => {
   await openCleanWorkbench(page);
   const local = page.locator(".ProseMirror").first();

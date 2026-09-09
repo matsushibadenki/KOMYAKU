@@ -14,6 +14,7 @@ The execution order below overrides the historical Stage numbering and older fea
 - [Done] Cancel pending autosave and require a successful durable checkpoint before Document open, active rename/archive, Archive import, or import-conflict navigation; prevent those transitions during IME composition.
 - [Done] Reload the atomically renamed active Canonical Document and its returned revision before editing continues; cover rename → next revision in the native SQLite test.
 - [Done] Distinguish validated in-memory checkpoints from durable checkpoints, expose pending/saving/error/retry states in en/ja/zh-Hans, and make Cloud export checkpoint the current content before exporting the exact saved document.
+- [Done] Require an explicitly durable checkpoint at the document-transition boundary and reject unsafe revision increments before writing. Automated service regressions cover non-durable receipts, failure/retry, and revision overflow; browser regressions cover persistence failure → blocked navigation → explicit retry → reload, plus IME-blocked new-document navigation and pending-edit preservation (2026-09-09, macOS Chrome; browser storage only).
 - [Next] Add packaged-app regressions for rename followed by editing, switching/importing during pending autosave, composition during navigation, failed persistence retry, and export during dirty state on the supported native hosts.
 
 Exit: packaged macOS and automated regressions preserve text/title/revision through the scenarios above and restart. Failed writes never display saved success. Other platforms require their own native passes before release.
@@ -58,6 +59,8 @@ Exit: public local Alpha requires N0–N3 plus native QA for each distributed pl
 - [Later] Add billing, managed AI, math recognition, academic exports, additional media, and external storage providers only against observed demand.
 
 ### 日本語の実行方針
+
+- [Later] KOMYAKU本体完成後、独立サンプルアプリStory Graphを `samples/story-graph/` で開発する。[専用Roadmap](../samples/story-graph/ROADMAP.md)と[設計原案](Story-Graph設計仕様書.md)を参照。本体の現在の完成条件には追加しない。
 
 文書・添付保全の基盤は活かし、保存整合性 → ローカルの版と別案 → 比較・復元の画面 → 確認付き統合と履歴持ち出し → Cloudの順に進める。Math Paletteを含む新規周辺機能は後段。詳細な判断根拠は上記の評価文書を参照する。
 

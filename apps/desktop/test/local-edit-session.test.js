@@ -88,4 +88,48 @@ describe("local document edit session", () => {
     expect(prepared).toEqual({ ok: false, reason: "composition_active" });
     expect(events).toEqual([]);
   });
+
+  test.each([{}, { durable: false }, { durable: "true" }, { revision: 3 }])(
+    "rejects a checkpoint without explicit durable persistence: %j", async (checkpoint) => {
+      const prepared = await prepareLocalEditTransition({
+        isComposing: false,
+        cancelScheduledSave: () => undefined,
+        save: async () => checkpoint
+      });
+      expect(prepared).toEqual({ ok: false, reason: "durable_save_required" });
+    }
+  );
+
+  test("a failed transition does not allow another queued write until retry", async () => {
+    const session = createLocalEditSession({ documentId: "document-a", localRevision: 7 });
+    const writes = [];
+    const save = (retry = false) => session.enqueue(async (revision) => {
+      writes.push(revision);
+      if (!retry) throw new Error("disk unavailable");
+      return { durable: true };
+    }, { retry });
+    await expect(prepareLocalEditTransition({
+      isComposing: false,
+      cancelScheduledSave: () => undefined,
+      save: () => save()
+    })).rejects.toThrow("disk unavailable");
+    await expect(save()).rejects.toMatchObject({ code: "local_persistence_blocked" });
+    expect(session.revision).toBe(7);
+    await save(true);
+    expect(session.revision).toBe(8);
+    expect(writes).toEqual([8, 8]);
+  });
+
+  test("fails closed before writing an unsafe revision, including on retry", async () => {
+    const session = createLocalEditSession({
+      documentId: "document-a", localRevision: Number.MAX_SAFE_INTEGER
+    });
+    let writes = 0;
+    const save = async () => { writes += 1; };
+    await expect(session.enqueue(save)).rejects.toMatchObject({ code: "invalid_local_revision" });
+    expect(session.blocked).toBe(true);
+    await expect(session.enqueue(save, { retry: true })).rejects.toMatchObject({ code: "invalid_local_revision" });
+    expect(session.revision).toBe(Number.MAX_SAFE_INTEGER);
+    expect(writes).toBe(0);
+  });
 });
