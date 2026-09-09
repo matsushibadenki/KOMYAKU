@@ -28,6 +28,8 @@ integration("content-addressed Asset PostgreSQL repository", () => {
     await sql.begin(async (tx) => {
       await tx`DELETE FROM asset_orphan_objects WHERE workspace_id = ${workspaceId}`;
       await tx`DELETE FROM asset_references WHERE workspace_id = ${workspaceId}`;
+      await tx`DELETE FROM asset_retention_holds WHERE workspace_id = ${workspaceId}`;
+      await tx`DELETE FROM asset_preservation_evidence WHERE workspace_id = ${workspaceId}`;
       await tx`DELETE FROM assets WHERE workspace_id = ${workspaceId}`;
       await tx`DELETE FROM workspace_members WHERE workspace_id = ${workspaceId}`;
       await tx`DELETE FROM workspaces WHERE id = ${workspaceId}`;
@@ -71,7 +73,7 @@ integration("content-addressed Asset PostgreSQL repository", () => {
     expect(assets[0].count).toBe(1);
   });
 
-  test("quarantines, claims, and completes reference-zero and orphan purges", async () => {
+  test("requires preservation evidence and released holds before purge, and retains orphans", async () => {
     const repository = createAssetLifecycleRepository(sql);
     const assetId = crypto.randomUUID();
     const hash = "d".repeat(64);
@@ -92,6 +94,20 @@ integration("content-addressed Asset PostgreSQL repository", () => {
       limit: 10
     });
     expect(quarantined.map(({ id }) => id)).toContain(assetId);
+    const claim = () => repository.claimDueAssetPurges({ now: "2026-09-20T00:00:00.000Z", limit: 10 });
+    expect((await claim()).map(({ id }) => id)).not.toContain(assetId);
+    await sql`INSERT INTO asset_preservation_evidence
+      (id, workspace_id, asset_id, evidence_type, artifact_id, artifact_digest, verified_by, verified_at)
+      VALUES (${crypto.randomUUID()}, ${workspaceId}, ${assetId}, 'verified_export',
+        ${crypto.randomUUID()}, ${"a".repeat(64)}, 'integration-fixture', '2026-09-19T00:00:00Z')`;
+    const holdId = crypto.randomUUID();
+    await sql`INSERT INTO asset_retention_holds
+      (id, workspace_id, asset_id, hold_type, scope_id, reason, placed_by, placed_at)
+      VALUES (${holdId}, ${workspaceId}, ${assetId}, 'published_version', ${crypto.randomUUID()},
+        'fixture', 'integration-fixture', '2026-09-19T00:00:00Z')`;
+    expect((await claim()).map(({ id }) => id)).not.toContain(assetId);
+    await sql`UPDATE asset_retention_holds SET released_by = 'integration-fixture',
+      released_at = '2026-09-20T00:00:00Z' WHERE id = ${holdId}`;
     const dueAssets = await repository.claimDueAssetPurges({
       now: "2026-09-20T00:00:00.000Z", limit: 10
     });
@@ -112,10 +128,10 @@ integration("content-addressed Asset PostgreSQL repository", () => {
     const dueOrphans = await repository.claimDueOrphanPurges({
       now: "2026-09-20T00:00:00.000Z", limit: 10
     });
-    expect(dueOrphans).toHaveLength(1);
-    expect(await repository.completeOrphanPurge({
-      id: dueOrphans[0].id, workspaceId, purgedAt: "2026-09-20T00:00:01.000Z"
-    })).toBe(true);
+    expect(dueOrphans).toHaveLength(0);
+    const retained = await sql`SELECT lifecycle_state FROM asset_orphan_objects
+      WHERE workspace_id = ${workspaceId} AND storage_key = ${orphanKey}`;
+    expect(retained[0].lifecycle_state).toBe('quarantined');
   });
 
   test("leases inspection and exposes only an accepted Asset to a verified member", async () => {

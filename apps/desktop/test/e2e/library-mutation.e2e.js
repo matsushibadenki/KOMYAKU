@@ -6,7 +6,16 @@ async function openLibrary(page) {
       const document = { documentId: '00000000-0000-4000-8000-000000000001',
         title: 'QA document', defaultLanguage: 'ja', localRevision: 1, archivedAt: null };
       window.libraryMutations = [];
-      export const listLocalDocuments = async () => [structuredClone(document)];
+      export const listLocalDocuments = async () => {
+        const snapshot = [structuredClone(document)];
+        if (window.holdNextLibraryRead) {
+          window.holdNextLibraryRead = false;
+          await new Promise((resolve, reject) => {
+            window.resumeOldLibraryRead = () => window.rejectOldLibraryRead ? reject(new Error('old list failed')) : resolve();
+          });
+        }
+        return snapshot;
+      };
       export const mutateLocalDocument = async input => {
         window.libraryMutations.push(input);
         if (window.holdLibraryMutation) await new Promise((resolve, reject) => {
@@ -56,3 +65,46 @@ test('composition prevents archiving until it ends', async ({ page }) => {
   await page.getByRole('button', { name: 'Archive', exact: true }).click();
   await expect(page.locator('.document-library-list li')).toHaveAttribute('data-archived', 'true');
 });
+
+for (const rejected of [false, true]) {
+  test(`late library ${rejected ? 'failure' : 'success'} does not undo Archive feedback`, async ({ page }) => {
+    await openLibrary(page);
+    await page.evaluate(rejected => {
+      window.holdNextLibraryRead = true;
+      window.rejectOldLibraryRead = rejected;
+    }, rejected);
+    await page.locator('.ProseMirror').click();
+    await page.keyboard.press('End');
+    await page.keyboard.insertText(' list-refresh-marker');
+    await expect.poll(() => page.evaluate(() => typeof window.resumeOldLibraryRead)).toBe('function');
+    await page.getByRole('button', { name: 'Archive', exact: true }).click();
+    await expect(page.locator('.document-library-list li')).toHaveAttribute('data-archived', 'true');
+    await page.evaluate(async () => {
+      window.resumeOldLibraryRead();
+      await new Promise(resolve => setTimeout(resolve, 50));
+    });
+    await expect(page.locator('.document-library-list li')).toHaveCount(1);
+    await expect(page.locator('.document-library-list li')).toHaveAttribute('data-archived', 'true');
+  });
+}
+
+for (const failed of [false, true]) {
+  test(`keyboard Archive ${failed ? 'failure' : 'success'} returns focus to its control`, async ({ page }) => {
+    await openLibrary(page);
+    await page.evaluate(failed => { window.holdLibraryMutation = true; window.failLibraryMutation = failed; }, failed);
+    const archive = page.getByRole('button', { name: 'Archive', exact: true });
+    for (let steps = 0; steps < 40 && !await archive.evaluate(element => element === document.activeElement); steps++) {
+      await page.keyboard.press('Tab');
+    }
+    await expect(archive).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect.poll(() => page.evaluate(() => typeof window.resumeLibraryMutation)).toBe('function');
+    await expect(page.locator('main')).toHaveAttribute('inert', '');
+    await page.evaluate(() => window.resumeLibraryMutation());
+    await expect(page.locator('main')).not.toHaveAttribute('inert', '');
+    const action = page.locator('.document-library-list .library-actions button').last();
+    await expect(action).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(page.getByRole('button', { name: '名前を変更', exact: true })).toBeFocused();
+  });
+}

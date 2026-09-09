@@ -33,7 +33,7 @@ export function LocalVersionHistory({ history, available, status, onCreateInitia
       <div className="version-history-heading">
         <div>
           <p className="section-kicker">{labels.kicker}</p>
-          <h2 id="version-history-title">{labels.title}</h2>
+          <h2 id="version-history-title" tabIndex={-1}>{labels.title}</h2>
           <p>{labels.description}</p>
         </div>
         <p className="persistence-status" role="status" data-state={status}>

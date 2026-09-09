@@ -1,6 +1,6 @@
 # Remaining `[Next]` External Validation
 
-The implementation-completable `[Next]` work is complete. The remaining gates require infrastructure, operating-system input methods, native credential stores, or an evaluator independent from the implementation agent. They must not be marked `[Done]` from unit tests or simulated evidence.
+This document describes external Cloud/platform gates; it is not a declaration that all product implementation or validation is complete. The active N0–N3 roadmap still includes local product work and native interaction checks. See [the 2026-09-09 verification matrix](verification-2026-09-09.md) for the latest consolidated evidence and remaining scope. External gates require infrastructure, operating-system input methods, native credential stores, or an evaluator independent from the implementation agent. They must not be marked `[Done]` from unit tests or simulated evidence.
 
 ## 1. Intended production topology
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { createEmptyDocument, DOCUMENT_SCHEMA_ID, parseCanonicalDocument } from "@komyaku/document-schema";
 import {
@@ -135,11 +135,32 @@ export function App() {
   const editGeneration = useRef(0);
   const mutationGeneration = useRef(0);
   const [mutationBusy, setMutationBusy] = useState(false);
+  const mutationFocus = useRef(null);
   const mutationGate = useRef(null);
   if (!mutationGate.current) mutationGate.current = createLocalMutationGate((busy) => {
-    if (busy) mutationGeneration.current += 1;
+    if (busy) {
+      mutationGeneration.current += 1;
+      const focused = document.activeElement;
+      mutationFocus.current = focused?.closest("main") ? {
+        target: focused, fallback: focused.closest("section")?.querySelector('h2[tabindex="-1"]')
+      } : null;
+    }
     setMutationBusy(busy);
   });
+  useLayoutEffect(() => {
+    if (mutationBusy) return;
+    const savedFocus = mutationFocus.current;
+    mutationFocus.current = null;
+    // Restore only after React removes inert, and never steal focus from a
+    // control the user selected outside the locked workspace.
+    const frame = requestAnimationFrame(() => {
+      const target = savedFocus?.target?.isConnected ? savedFocus.target : savedFocus?.fallback;
+      const active = document.activeElement;
+      if (target?.isConnected && (active === document.body || active === document.documentElement
+        || active?.closest("main"))) target.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [mutationBusy]);
   const archiveImportRef = useRef(null);
   const replicasRef = useRef(null);
   const editSession = useRef(null);
@@ -162,9 +183,16 @@ export function App() {
   const [archiveImportConflict, setArchiveImportConflict] = useState(null);
   const historyReadSequence = useRef(0);
   const comparisonReadSequence = useRef(0);
+  const libraryReadSequence = useRef(0);
 
   const refreshLocalDocuments = useCallback(async () => {
-    try { setLocalDocuments(await listLocalDocuments()); } catch { setLocalDocuments([]); }
+    const sequence = ++libraryReadSequence.current;
+    try {
+      const documents = await listLocalDocuments();
+      if (sequence === libraryReadSequence.current) setLocalDocuments(documents);
+    } catch {
+      if (sequence === libraryReadSequence.current) setLocalDocuments([]);
+    }
   }, []);
 
   const refreshVersionHistory = useCallback(async (documentId) => {

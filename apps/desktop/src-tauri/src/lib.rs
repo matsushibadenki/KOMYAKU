@@ -1917,6 +1917,78 @@ mod tests {
     use sqlx::sqlite::SqlitePoolOptions;
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    #[tokio::test]
+    #[ignore = "explicit 100k-character / 1000-Version / 20-Branch performance fixture"]
+    async fn history_performance_fixture() {
+        let path = std::env::temp_dir().join(format!("komyaku-perf-{}.db", SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()));
+        let url = format!("sqlite://{}?mode=rwc", path.display());
+        let db = SqlitePoolOptions::new().max_connections(1).connect(&url).await.unwrap();
+        migrate_test_pool(&db).await;
+        let mut draft = input(1, "Performance fixture");
+        let mut value: serde_json::Value = serde_json::from_str(&draft.content_json).unwrap();
+        value["schemaId"] = serde_json::json!("https://komyaku.example/schemas/document/v1");
+        value["type"] = serde_json::json!("document");
+        value["extensions"] = serde_json::json!({});
+        value["content"] = serde_json::json!([{
+            "id": "00000000-0000-4000-8000-000000000002", "type": "paragraph", "schemaVersion": 1,
+            "attrs": {"lang": "ja", "dir": "auto"}, "metadata": {}, "extensions": {}, "renderArtifacts": [],
+            "content": [{"type": "text", "text": "a".repeat(100_000), "marks": [], "metadata": {}, "extensions": {}}]
+        }]);
+        draft.content_json = value.to_string();
+        save_local_draft_transaction(&db, &draft).await.unwrap();
+        let mut heads = vec![String::new(); 20];
+        let mut timings = Vec::new();
+        for index in 0..1000 {
+            let branch = index % 20;
+            let parent = if index == 0 { None } else if heads[branch].is_empty() {
+                Some(heads[0].clone())
+            } else { Some(heads[branch].clone()) };
+            let id = format!("00000000-0000-4000-8000-{:012}", index + 1000);
+            let mut request = local_version_input(
+                &format!("00000000-0000-4000-8000-{:012}", index + 10000), &id,
+                parent.clone().into_iter().collect(), parent, if index == 0 { "initial" } else { "named" });
+            request.branch_id = format!("00000000-0000-4000-8000-{:012}", branch + 20000);
+            request.branch_name = format!("Alternative {branch}");
+            value["metadata"]["title"] = serde_json::json!(format!("Version {index}"));
+            request.version.snapshot_json = value.to_string();
+            request.version.snapshot_hash = Sha256::digest(request.version.snapshot_json.as_bytes()).iter()
+                .map(|byte| format!("{byte:02x}")).collect();
+            let started = std::time::Instant::now();
+            save_local_version_transaction(&db, &request).await.unwrap();
+            timings.push(started.elapsed().as_secs_f64() * 1000.0);
+            heads[branch] = id;
+        }
+        let persisted_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM local_document_versions")
+            .fetch_one(&db).await.unwrap();
+        assert_eq!(persisted_count, 1000);
+        timings.sort_by(f64::total_cmp);
+        let mut reads = Vec::new();
+        for _ in 0..20 {
+            let started = std::time::Instant::now();
+            let history = list_local_version_history_transaction(&db, &draft.document_id).await.unwrap();
+            assert_eq!(history.versions.len(), 500);
+            assert_eq!(history.branches.len(), 20);
+            reads.push(started.elapsed().as_secs_f64() * 1000.0);
+        }
+        reads.sort_by(f64::total_cmp);
+        db.close().await;
+        let started = std::time::Instant::now();
+        let reopened = SqlitePoolOptions::new().max_connections(1).connect(&url).await.unwrap();
+        let history = list_local_version_history_transaction(&reopened, &draft.document_id).await.unwrap();
+        assert_eq!(history.versions.len(), 500);
+        let reopen_ms = started.elapsed().as_secs_f64() * 1000.0;
+        for id in heads {
+            let snapshot = load_local_version_snapshot_transaction(&reopened, &draft.document_id, &id).await.unwrap();
+            let parsed: serde_json::Value = serde_json::from_str(&snapshot.snapshot_json).unwrap();
+            assert_eq!(parsed["content"][0]["content"][0]["text"].as_str().unwrap().len(), 100_000);
+        }
+        reopened.close().await;
+        println!("PERF_RESULT {}", serde_json::json!({"versions": 1000, "branches": 20, "graphemes": 100000,
+            "listed_versions": 500, "save_p50_ms": timings[499], "save_p95_ms": timings[949], "list_p50_ms": reads[9],
+            "list_p95_ms": reads[18], "reopen_and_list_ms": reopen_ms, "database_bytes": std::fs::metadata(&path).unwrap().len()}));
+        std::fs::remove_file(path).unwrap();
+    }
+
     fn input(revision: i64, title: &str) -> LocalDraftInput {
         let document_id = "00000000-0000-4000-8000-000000000001";
         LocalDraftInput {
