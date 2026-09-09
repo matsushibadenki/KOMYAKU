@@ -1948,33 +1948,37 @@ mod tests {
             .connect("sqlite::memory:")
             .await
             .expect("create in-memory database");
+        migrate_test_pool(&pool).await;
+        pool
+    }
+
+    async fn migrate_test_pool(pool: &Pool<Sqlite>) {
         sqlx::raw_sql(include_str!("../migrations/0001_local_foundation.sql"))
-            .execute(&pool)
+            .execute(pool)
             .await
             .expect("apply local schema");
         sqlx::raw_sql(include_str!("../migrations/0002_local_ai_handoffs.sql"))
-            .execute(&pool)
+            .execute(pool)
             .await
             .expect("apply local AI schema");
         sqlx::raw_sql(include_str!("../migrations/0003_local_asset_previews.sql"))
-            .execute(&pool)
+            .execute(pool)
             .await
             .expect("apply local asset preview schema");
         sqlx::raw_sql(include_str!(
             "../migrations/0004_local_asset_reference_lifecycle.sql"
         ))
-        .execute(&pool)
+        .execute(pool)
         .await
         .expect("apply local asset reference lifecycle schema");
         sqlx::raw_sql(include_str!("../migrations/0005_local_archive_materialization.sql"))
-            .execute(&pool)
+            .execute(pool)
             .await
             .expect("apply local Archive materialization schema");
         sqlx::raw_sql(include_str!("../migrations/0006_local_document_library.sql"))
-            .execute(&pool).await.expect("apply local Document library schema");
+            .execute(pool).await.expect("apply local Document library schema");
         sqlx::raw_sql(include_str!("../migrations/0007_local_document_versions.sql"))
-            .execute(&pool).await.expect("apply local Document Version schema");
-        pool
+            .execute(pool).await.expect("apply local Document Version schema");
     }
 
     fn local_version_input(
@@ -2506,6 +2510,94 @@ mod tests {
         .await
         .expect("read saved document and draft");
         assert_eq!(row, ("Initial".into(), 1));
+    }
+
+    #[tokio::test]
+    async fn renamed_document_edits_survive_file_database_reopen() {
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "komyaku-document-restart-{}-{nonce}.db", std::process::id()
+        ));
+        let url = format!("sqlite://{}?mode=rwc", path.display());
+        let first = SqlitePoolOptions::new().max_connections(1).connect(&url).await.unwrap();
+        migrate_test_pool(&first).await;
+        let original = input(1, "Original");
+        save_local_draft_transaction(&first, &original).await.unwrap();
+        let renamed = mutate_local_document_transaction(&first, &LocalDocumentMutationInput {
+            document_id: original.document_id.clone(), title: Some("改題 / Renamed / 新标题".into()),
+            archived: None, updated_at: "2026-09-09T00:00:00.000Z".into(),
+        }).await.unwrap();
+        assert_eq!(renamed.local_revision, 2);
+        // A delayed pre-rename checkpoint must not undo the atomic rename.
+        assert_eq!(save_local_draft_transaction(&first, &input(2, "Original")).await,
+            Err(LocalDraftSaveError::StaleRevision));
+        let mut edited = input(renamed.local_revision + 1, &renamed.title);
+        let mut content: serde_json::Value = serde_json::from_str(&edited.content_json).unwrap();
+        content["content"] = serde_json::json!([{
+            "type": "paragraph", "content": [{ "type": "text", "text": "日本語 / 中文 / e\u{301} / 👩‍👩‍👧‍👦" }]
+        }]);
+        edited.content_json = content.to_string();
+        save_local_draft_transaction(&first, &edited).await.unwrap();
+        first.close().await;
+
+        let reopened = SqlitePoolOptions::new().max_connections(1).connect(&url).await.unwrap();
+        let saved: (String, String, i64) = sqlx::query_as(
+            "SELECT d.title, r.content_json, r.local_revision FROM local_documents d JOIN local_drafts r ON r.document_id = d.id WHERE d.id = ?"
+        ).bind(&edited.document_id).fetch_one(&reopened).await.unwrap();
+        assert_eq!(saved, (edited.title.clone(), edited.content_json.clone(), 3));
+        let mut after_restart = edited;
+        after_restart.local_revision = 4;
+        save_local_draft_transaction(&reopened, &after_restart).await.unwrap();
+        reopened.close().await;
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[tokio::test]
+    async fn failed_draft_write_rolls_back_metadata_and_retries_same_revision() {
+        let pool = pool().await;
+        let original = input(1, "Before failure");
+        save_local_draft_transaction(&pool, &original).await.unwrap();
+        // Fail after the document metadata UPDATE, inside the same transaction.
+        sqlx::raw_sql("CREATE TRIGGER fail_draft_write BEFORE UPDATE ON local_drafts BEGIN SELECT RAISE(ABORT, 'injected write failure'); END;")
+            .execute(&pool).await.unwrap();
+        let next = input(2, "After retry / 再試行 / 重试");
+        assert_eq!(save_local_draft_transaction(&pool, &next).await,
+            Err(LocalDraftSaveError::StorageFailure));
+        let saved: (String, String, i64) = sqlx::query_as(
+            "SELECT d.title, r.content_json, r.local_revision FROM local_documents d JOIN local_drafts r ON r.document_id = d.id"
+        ).fetch_one(&pool).await.unwrap();
+        assert_eq!(saved, (original.title, original.content_json, 1));
+        sqlx::raw_sql("DROP TRIGGER fail_draft_write").execute(&pool).await.unwrap();
+        save_local_draft_transaction(&pool, &next).await.expect("retry revision 2 without a gap");
+        let saved: (String, String, i64) = sqlx::query_as(
+            "SELECT d.title, r.content_json, r.local_revision FROM local_documents d JOIN local_drafts r ON r.document_id = d.id"
+        ).fetch_one(&pool).await.unwrap();
+        assert_eq!(saved, (next.title, next.content_json, 2));
+    }
+
+    #[tokio::test]
+    async fn failed_rename_rolls_back_canonical_title_and_revision() {
+        let pool = pool().await;
+        let original = input(1, "Original title");
+        save_local_draft_transaction(&pool, &original).await.unwrap();
+        // Rename writes the Canonical draft first; fail its second table update.
+        sqlx::raw_sql("CREATE TRIGGER fail_rename BEFORE UPDATE ON local_documents BEGIN SELECT RAISE(ABORT, 'injected rename failure'); END;")
+            .execute(&pool).await.unwrap();
+        let mutation = LocalDocumentMutationInput {
+            document_id: original.document_id.clone(), title: Some("Renamed title".into()),
+            archived: Some(true), updated_at: "2026-09-09T00:00:00.000Z".into(),
+        };
+        assert!(matches!(mutate_local_document_transaction(&pool, &mutation).await,
+            Err("local_document_library_failure")));
+        let saved: (String, String, i64, Option<String>) = sqlx::query_as(
+            "SELECT d.title, r.content_json, r.local_revision, d.archived_at FROM local_documents d JOIN local_drafts r ON r.document_id = d.id"
+        ).fetch_one(&pool).await.unwrap();
+        assert_eq!(saved, (original.title, original.content_json, 1, None));
+        sqlx::raw_sql("DROP TRIGGER fail_rename").execute(&pool).await.unwrap();
+        let retried = mutate_local_document_transaction(&pool, &mutation).await.unwrap();
+        assert_eq!(retried.title, "Renamed title");
+        assert_eq!(retried.local_revision, 2);
+        assert!(retried.archived_at.is_some());
     }
 
     #[tokio::test]

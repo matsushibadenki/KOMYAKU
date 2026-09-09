@@ -73,3 +73,7 @@ exports/
 # web-componentsのエイリアス
 references
 references/*
+
+# 非公開の資料やデータ、設定など
+docs-private
+docs-private/*
