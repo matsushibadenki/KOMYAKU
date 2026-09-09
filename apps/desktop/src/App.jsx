@@ -160,19 +160,27 @@ export function App() {
   const [versionComparison, setVersionComparison] = useState(null);
   const [comparisonStatus, setComparisonStatus] = useState("idle");
   const [archiveImportConflict, setArchiveImportConflict] = useState(null);
+  const historyReadSequence = useRef(0);
+  const comparisonReadSequence = useRef(0);
 
   const refreshLocalDocuments = useCallback(async () => {
     try { setLocalDocuments(await listLocalDocuments()); } catch { setLocalDocuments([]); }
   }, []);
 
   const refreshVersionHistory = useCallback(async (documentId) => {
+    const session = editSession.current;
+    if (session?.documentId !== documentId) return null;
+    const sequence = ++historyReadSequence.current;
+    const isCurrent = () => editSession.current === session && sequence === historyReadSequence.current;
     setVersionStatus("loading");
     try {
       const history = await listLocalVersionHistory(documentId);
+      if (!isCurrent()) return null;
       setVersionHistory(history);
       setVersionStatus("ready");
       return history;
     } catch {
+      if (!isCurrent()) return null;
       setVersionHistory(null);
       setVersionStatus("error");
       return null;
@@ -436,7 +444,7 @@ export function App() {
     }
   });
 
-  const archiveLocalDocument = async (documentId, archived) => {
+  const archiveLocalDocument = (documentId, archived) => runDocumentMutation(async () => {
     try {
       if (documentId === editSession.current?.documentId && !await prepareForDocumentTransition()) return false;
       await mutateLocalDocument({ documentId, archived });
@@ -447,7 +455,7 @@ export function App() {
       setPersistenceStatus("error");
       return false;
     }
-  };
+  });
 
   const handlePackagedImageQaStatus = useCallback((status) => {
     if (status !== "inserted") {
@@ -484,13 +492,15 @@ export function App() {
     scheduleCheckpoint();
   }, [scheduleCheckpoint]);
 
-  const createVersion = useCallback(async ({ kind, label = null, branchName = null }) => {
+  const createVersion = useCallback(({ kind, label = null, branchName = null }) => runDocumentMutation(async () => {
     if (editorWorkspace.mode !== "local" || !localVersionHistoryAvailable()) return false;
     setVersionStatus("saving");
     try {
-      const savedCheckpoint = await createCheckpoint();
-      if (!savedCheckpoint) throw new Error("durable_checkpoint_required");
+      const prepared = await prepareForDocumentTransition();
+      if (!prepared) throw new Error("durable_checkpoint_required");
+      const savedCheckpoint = prepared.checkpoint;
       const history = await listLocalVersionHistory(savedCheckpoint.document.id);
+      if (!prepared.isCurrent()) throw new Error("local_edit_changed");
       await createLocalDocumentVersion({
         document: savedCheckpoint.document, history,
         authorId: getOrCreateLocalVersionAuthorId(), kind, label, branchName
@@ -501,7 +511,7 @@ export function App() {
       setVersionStatus("error");
       return false;
     }
-  }, [createCheckpoint, editorWorkspace.mode, refreshVersionHistory]);
+  }), [runDocumentMutation, prepareForDocumentTransition, editorWorkspace.mode, refreshVersionHistory]);
 
   const restoreVersion = useCallback((targetVersionId) => runDocumentMutation(async () => {
     if (editorWorkspace.mode !== "local" || !localVersionHistoryAvailable()) return false;
@@ -564,14 +574,21 @@ export function App() {
   const compareVersions = useCallback(async (beforeVersionId, afterVersionId) => {
     const documentId = checkpoint?.document?.id;
     if (!documentId || !localVersionHistoryAvailable()) return false;
+    const session = editSession.current;
+    if (session?.documentId !== documentId) return false;
+    const sequence = ++comparisonReadSequence.current;
+    const isCurrent = () => editSession.current === session && sequence === comparisonReadSequence.current;
     setComparisonStatus("loading");
     try {
-      setVersionComparison(await compareLocalDocumentVersions({
+      const comparison = await compareLocalDocumentVersions({
         documentId, beforeVersionId, afterVersionId, locale: i18n.resolvedLanguage
-      }));
+      });
+      if (!isCurrent()) return false;
+      setVersionComparison(comparison);
       setComparisonStatus("ready");
       return true;
     } catch {
+      if (!isCurrent()) return false;
       setVersionComparison(null);
       setComparisonStatus("error");
       return false;

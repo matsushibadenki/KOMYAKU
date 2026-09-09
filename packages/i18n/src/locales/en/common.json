@@ -44,7 +44,7 @@
     "saving": "Validating",
     "ready": "Validated",
     "composing": "IME active—checkpoint paused",
-    "error": "Document validation failed",
+    "error": "Document validation or saving failed",
     "time": "Time",
     "size": "Size",
     "hash": "SHA-256"

@@ -36,7 +36,30 @@ Some clicks first scrolled offscreen controls into view, then required another c
 - [Done] Full graceful quit/relaunch preserves the observed two documents and title.
 - [Next] Deterministic pending-autosave navigation/import and dirty export, with proof that the operation begins before autosave completes.
 - [Next] Actual Japanese and Simplified Chinese IME composition during navigation.
-- [Next] Failed native persistence → blocked navigation → explicit UI retry, including stale displayed saved status checks.
+- [Done] Failed native persistence → blocked new-document navigation → explicit UI retry → graceful restart; see the additional pass below.
 - [Later] Windows/Linux native passes before distribution, plus narrow-window and keyboard-only coverage for these operations.
 
 This pass makes no claim about arbitrary crash/power-loss recovery, attachment bytes, History DAG closure, archive import, or last-active-document selection at startup. The title and markers use direct text input; multilingual marker entry is not IME conversion evidence.
+
+## Native save failure and retry — 2026-09-09
+
+The ordinary macOS Editing QA app was rebuilt with `bun run test:editing:package`. Native computer-use accessibility actions exercised the UI at `tauri://localhost/`; no browser persistence mock was used. Browser plugin was unavailable; this native pass used CUA rather than Playwright. Console logs were not captured. Accessibility and screenshots confirmed meaningful content, no visible framework overlay, and readable failure/retry feedback at the configured 1200×900 window size; other widths were not tested.
+
+A temporary Bun SQLite script opened only `~/Library/Application Support/app.komyaku.desktop.editing-qa/komyaku.db`. The following trigger injected an actual SQL transaction failure for the existing QA document only:
+
+```sql
+CREATE TRIGGER editing_qa_fail_draft BEFORE UPDATE ON local_drafts
+WHEN NEW.document_id = '00000000-0000-4000-8000-000000000001'
+BEGIN SELECT RAISE(ABORT, 'editing QA injected failure'); END;
+```
+
+The script and trigger were test instrumentation, not product capabilities. The trigger was removed with `DROP TRIGGER IF EXISTS editing_qa_fail_draft` before each UI retry; schema readback confirmed no trigger remained. Reproduce only in this separate QA profile and always remove the trigger, including after a failed test.
+
+1. Initial pass: append `N0-FAILURE-RETRY-20260909`, click **新しい文書**, observe the same editor and two library entries plus `local_persistence_blocked/local_draft_storage_failure` and **ローカル保存を再試行**. SQLite retained revision 19 and the previously saved content without the new marker. No saved-success feedback remained.
+2. Remove the trigger and click the retry control. The UI reaches **この端末に自動保存済み** at revision 20. Quit and confirm `isRunning: false`.
+3. This exposed misleading shared checkpoint copy: SQL write failure was labelled document validation failure. Update en/ja/zh-Hans to acknowledge validation **or saving** failure and rebuild.
+4. Repeat on the final artifact: starting at revision 21, arm the same trigger, append `N0-RETRY-FINAL`, and click **新しい文書**. The editor retains both markers and the library still has two entries. The corrected Japanese checkpoint message appears; saved-success feedback is absent. Database readback before disarming still has revision 21 and lacks the final marker.
+5. Remove the trigger, retry through the real control, and observe saved state at revision 22, 1,042 bytes, displayed SHA-256 prefix `1c6f46c1bb08`.
+6. Quit, confirm the app is not running, and relaunch the same final artifact. Both markers, title and displayed hash prefix survive; the startup checkpoint advances to revision 23. This is not a read-only startup or full-hash byte comparison claim.
+
+The failure is an injected SQLite abort, not an actual full disk, permission loss, or interrupted process. IME, pending-save timing, library-open/import/restore failure paths, and English/Chinese rendered layouts remain separate QA scope. The native screenshot shows the Japanese failure line without awkward wrapping and the retry button below the detailed error. The QA app was closed after verification.

@@ -2233,6 +2233,65 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn failed_restore_preserves_draft_history_and_image_then_retries() {
+        for failure in ["BEFORE UPDATE ON local_drafts", "BEFORE INSERT ON local_version_operations"] {
+            let pool = pool().await;
+            let original = input(1, "Versioned");
+            save_local_draft_transaction(&pool, &original).await.unwrap();
+            let first_id = "00000000-0000-4000-8000-000000000301";
+            let first = local_version_input(
+                "00000000-0000-4000-8000-000000000302", first_id, vec![], None, "initial");
+            save_local_version_transaction(&pool, &first).await.unwrap();
+            let asset_id = "00000000-0000-4000-8000-000000000303";
+            let preview = local_png_preview_input(asset_id);
+            store_local_png_preview_transaction(&pool, &preview).await.unwrap();
+            let current = draft_with_image(2, asset_id);
+            save_local_draft_transaction(&pool, &current).await.unwrap();
+            let mut restore = local_version_input(
+                "00000000-0000-4000-8000-000000000304",
+                "00000000-0000-4000-8000-000000000305", vec![first_id.into()],
+                Some(first_id.into()), "restore");
+            restore.version.restored_from_version_id = Some(first_id.into());
+            restore.restore_draft_revision = Some(3);
+            sqlx::raw_sql(&format!("CREATE TRIGGER fail_restore {failure}
+                BEGIN SELECT RAISE(ABORT, 'injected restore failure'); END;"))
+                .execute(&pool).await.unwrap();
+            assert_eq!(save_local_version_transaction(&pool, &restore).await,
+                Err("local_version_storage_failure"));
+            let draft: (String, i64) = sqlx::query_as(
+                "SELECT content_json, local_revision FROM local_drafts")
+                .fetch_one(&pool).await.unwrap();
+            assert_eq!(draft, (current.content_json.clone(), 2));
+            let graph: (String, String, i64, i64, i64) = sqlx::query_as(
+                "SELECT d.current_version_id, b.head_version_id,
+                 (SELECT COUNT(*) FROM local_document_versions),
+                 (SELECT COUNT(*) FROM local_document_version_parents),
+                 (SELECT COUNT(*) FROM local_version_operations)
+                 FROM local_documents d JOIN local_document_branches b ON b.id = d.current_branch_id")
+                .fetch_one(&pool).await.unwrap();
+            assert_eq!(graph, (first_id.into(), first_id.into(), 1, 0, 1));
+            let image: (String, Vec<u8>, i64) = sqlx::query_as(
+                "SELECT lifecycle_status, bytes,
+                 (SELECT COUNT(*) FROM local_document_asset_references) FROM local_asset_previews")
+                .fetch_one(&pool).await.unwrap();
+            assert_eq!(image, ("active".into(), preview.bytes.clone(), 1));
+            sqlx::raw_sql("DROP TRIGGER fail_restore").execute(&pool).await.unwrap();
+            assert!(!save_local_version_transaction(&pool, &restore).await.unwrap().replayed);
+            assert!(save_local_version_transaction(&pool, &restore).await.unwrap().replayed);
+            let restored: (String, i64) = sqlx::query_as(
+                "SELECT content_json, local_revision FROM local_drafts")
+                .fetch_one(&pool).await.unwrap();
+            assert_eq!(restored, (first.version.snapshot_json, 3));
+            let image: (String, Vec<u8>, i64) = sqlx::query_as(
+                "SELECT lifecycle_status, bytes,
+                 (SELECT COUNT(*) FROM local_document_asset_references) FROM local_asset_previews")
+                .fetch_one(&pool).await.unwrap();
+            assert_eq!(image, ("quarantined".into(), preview.bytes, 0));
+            pool.close().await;
+        }
+    }
+
+    #[tokio::test]
     async fn immutable_version_reference_keeps_an_asset_after_the_draft_removes_it() {
         let pool = pool().await;
         let asset_id = "00000000-0000-4000-8000-000000000201";
