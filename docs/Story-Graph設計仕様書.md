@@ -4,6 +4,8 @@
 
 ## ノード型文章構築・物語設計システム 設計仕様書
 
+![KOMYAKU Story Graph: text editor for KOMYAKU](images/Story-Graph-images.png)
+
 ### 0. 概要
 
 KOMYAKUに、Blender / ComfyUIのNode Editorに近い操作感を持つ「Story Graph」を追加する。
@@ -62,16 +64,16 @@ KOMYAKUに、Blender / ComfyUIのNode Editorに近い操作感を持つ「Story 
 
 Story Graphは小説だけではなく、
 
-* 論文
-* 脚本
-* 記事
-* 技術仕様書
-* プレゼン原稿
-* 教材
-* 報告書
-* 契約書
-* ゲームシナリオ
-* AIプロンプト設計
+- 論文
+- 脚本
+- 記事
+- 技術仕様書
+- プレゼン原稿
+- 教材
+- 報告書
+- 契約書
+- ゲームシナリオ
+- AIプロンプト設計
 
 などにも利用可能な汎用「文章構造グラフ」とする。
 
