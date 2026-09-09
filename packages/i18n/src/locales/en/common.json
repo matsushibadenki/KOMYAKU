@@ -8,6 +8,7 @@
     "language": "Interface language"
   },
   "documentWorkspace": {
+    "applyingChange": "Applying the document change… Please wait.",
     "title": "Write the draft",
     "description": "Your writing is autosaved on this device. Save named versions at meaningful points, compare alternatives, and restore earlier work.",
     "editor": "Current draft",
@@ -127,7 +128,7 @@
     "exportSnapshot": ".komyaku snapshot",
     "exportMarkdown": "Markdown",
     "exportText": "TXT",
-    "exportStatus": { "idle": "Choose an export format", "saving": "Verifying and exporting…", "ready": "Saved a verified file", "fidelity": "Saved a file with documented conversion limits", "assetsRequired": ".komyaku files with Assets will be available after historical Asset loading is implemented. Markdown and TXT remain available.", "error": "The export could not be completed" },
+    "exportStatus": { "idle": "Choose an export format", "saving": "Verifying and exporting…", "ready": "Started downloading the verified file", "fidelity": "Started downloading a file with conversion limits", "assetsRequired": ".komyaku files with Assets will be available after historical Asset loading is implemented. Markdown and TXT remain available.", "error": "The export could not be completed" },
     "compareTitle": "Compare saved versions",
     "compareDescription": "Stable Node IDs separate additions, removals, moves, text, formatting, source, and Asset metadata changes.",
     "compareFrom": "From",

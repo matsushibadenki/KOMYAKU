@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createCanonicalNode, createEmptyDocument } from "@komyaku/document-schema";
 import {
   createVerifiedLocalSnapshotExport,
+  downloadLocalExport,
   localExportFileName,
   renderLocalDocumentExport
 } from "../src/services/local-document-export.js";
@@ -20,6 +21,16 @@ function fixture() {
 }
 
 describe("account-free local Document export", () => {
+  test("download request failures release the blob URL and propagate to the caller", () => {
+    const events = [];
+    const failure = new Error("download_request_failed");
+    expect(() => downloadLocalExport({ bytes: new Uint8Array([1]), mediaType: "text/plain", fileName: "qa.txt" }, {
+      documentRef: { createElement: () => ({ click: () => { events.push("click"); throw failure; } }) },
+      urlApi: { createObjectURL: () => "blob:qa", revokeObjectURL: (url) => events.push(url) }
+    })).toThrow("download_request_failed");
+    expect(events).toEqual(["click", "blob:qa"]);
+  });
+
   test("exports authored text with explicit fidelity warnings", () => {
     const markdown = renderLocalDocumentExport(fixture(), "md");
     expect(markdown.text).toContain("# 見出し");

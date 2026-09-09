@@ -8,6 +8,7 @@
     "language": "表示言語"
   },
   "documentWorkspace": {
+    "applyingChange": "文書の変更を反映しています。しばらくお待ちください。",
     "title": "原稿を書く",
     "description": "文章はこの端末へ自動保存されます。節目では名前付き版を残し、別案の比較や過去版の復元ができます。",
     "editor": "現在の原稿",
@@ -127,7 +128,7 @@
     "exportSnapshot": ".komyaku Snapshot",
     "exportMarkdown": "Markdown",
     "exportText": "TXT",
-    "exportStatus": { "idle": "Export形式を選択できます", "saving": "検証してExport中…", "ready": "検証済みファイルを保存しました", "fidelity": "変換制限を含むファイルを保存しました", "assetsRequired": "Assetを含む.komyaku Exportは履歴Asset読込の実装後に利用できます。MarkdownまたはTXTは利用できます。", "error": "Exportを完了できませんでした" },
+    "exportStatus": { "idle": "Export形式を選択できます", "saving": "検証してExport中…", "ready": "検証済みファイルのダウンロードを開始しました", "fidelity": "変換制限を含むファイルのダウンロードを開始しました", "assetsRequired": "Assetを含む.komyaku Exportは履歴Asset読込の実装後に利用できます。MarkdownまたはTXTは利用できます。", "error": "Exportを完了できませんでした" },
     "compareTitle": "保存版を比較",
     "compareDescription": "Stable Node IDを基準に、追加・削除・移動・文章・書式・Source・Asset情報の変更を分けて表示します。",
     "compareFrom": "比較元",

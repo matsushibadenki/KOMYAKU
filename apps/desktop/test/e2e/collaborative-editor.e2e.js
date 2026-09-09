@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { inspectConversationExport } from "../../src/services/conversation-import-preview.js";
+import { createKomyakuArchive } from "@komyaku/archive-core";
+import { createEmptyDocument } from "@komyaku/document-schema";
 
 const DRAFT_KEY = "komyaku:local-draft:00000000-0000-4000-8000-000000000001";
 const PNG_FIXTURE = Buffer.from([
@@ -169,6 +171,57 @@ test("navigation waits for an older in-flight hash and preserves the newer edit"
   await page.reload();
   await expect(editor).toContainText("newer-edit-marker");
 });
+
+for (const phase of ["file read", "archive verification"]) {
+test(`preserves typing during ${phase}`, async ({ page }) => {
+  const bytes = await createKomyakuArchive({
+    document: createEmptyDocument({ metadata: { title: "Import fixture" } }), assets: [],
+    createdAt: "2026-09-09T00:00:00.000Z"
+  });
+  await page.goto("/");
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await expect(page.locator(".app-footer .persistence-status")).toHaveAttribute("data-state", "saved");
+  await page.evaluate((phase) => {
+    const original = File.prototype.arrayBuffer;
+    const gate = new Promise((resolve) => { window.releaseArchiveRead = resolve; });
+    window.archiveReadWaiting = false;
+    if (phase === "file read") {
+      File.prototype.arrayBuffer = async function () {
+        window.archiveReadWaiting = true;
+        await gate;
+        return original.call(this);
+      };
+    } else {
+      const digest = crypto.subtle.digest.bind(crypto.subtle);
+      let calls = 0;
+      crypto.subtle.digest = async (...args) => {
+        calls += 1;
+        // First digest is the pre-import checkpoint; second belongs to the reader.
+        if (calls === 2) {
+          window.archiveReadWaiting = true;
+          await gate;
+        }
+        return digest(...args);
+      };
+    }
+  }, phase);
+  await page.locator('input[type="file"][accept^=".komyaku"]').setInputFiles({
+    name: "fixture.komyaku", mimeType: "application/vnd.komyaku.archive+zip", buffer: Buffer.from(bytes)
+  });
+  await expect.poll(() => page.evaluate(() => window.archiveReadWaiting)).toBe(true);
+  const editor = page.locator(".ProseMirror");
+  await editor.click();
+  await editor.press("End");
+  await editor.pressSequentially(" keep-edit-during-import");
+  await page.evaluate(() => window.releaseArchiveRead());
+  await expect(page.locator('.checkpoint-strip .persistence-status')).toHaveAttribute("data-state", "error");
+  await expect(editor).toContainText("keep-edit-during-import");
+  await expect(page.locator(".app-footer .persistence-status")).toHaveAttribute("data-state", "saved");
+  await page.reload();
+  await expect(editor).toContainText("keep-edit-during-import");
+});
+}
 
 for (const composing of [false, true]) {
   test(`cancels navigation when ${composing ? "composition starts" : "text changes"} during its checkpoint`, async ({ page }) => {

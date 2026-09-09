@@ -1202,3 +1202,15 @@ select:disabled,
   min-height: 180px;
   border: 0;
 }
+/* Keep progress available to assistive technology outside the inert workspace. */
+.mutation-status {
+  position: fixed;
+  inset: 16px 16px auto;
+  z-index: 1000;
+  margin: 0;
+  padding: 12px 16px;
+  background: #fff;
+  color: #25231d;
+  border: 1px solid #c7c4ba;
+  border-radius: 8px;
+}

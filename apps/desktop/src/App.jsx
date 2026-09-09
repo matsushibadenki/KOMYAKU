@@ -12,6 +12,8 @@ import { ConversationImportPanel } from "./components/ConversationImportPanel.js
 import { PreviewQaRecoveryProbe } from "./components/PreviewQaRecoveryProbe.jsx";
 import { LocalDocumentLibrary } from "./components/LocalDocumentLibrary.jsx";
 import { LocalVersionHistory } from "./components/LocalVersionHistory.jsx";
+import { runCheckpointedExport } from "./services/checkpointed-export.js";
+import { createLocalMutationGate } from "./services/local-mutation-gate.js";
 import { loadLocalDraft, saveLocalDraft } from "./services/local-database.js";
 import { reconcileCloudDocumentAssets } from "./services/cloud-asset-reconciliation.js";
 import { createVerifiedCloudDocumentExport } from "./services/cloud-document-export.js";
@@ -131,6 +133,13 @@ export function App() {
   const checkpointTimer = useRef(null);
   const checkpointSequence = useRef(0);
   const editGeneration = useRef(0);
+  const mutationGeneration = useRef(0);
+  const [mutationBusy, setMutationBusy] = useState(false);
+  const mutationGate = useRef(null);
+  if (!mutationGate.current) mutationGate.current = createLocalMutationGate((busy) => {
+    if (busy) mutationGeneration.current += 1;
+    setMutationBusy(busy);
+  });
   const archiveImportRef = useRef(null);
   const replicasRef = useRef(null);
   const editSession = useRef(null);
@@ -287,6 +296,10 @@ export function App() {
   const prepareForDocumentTransition = useCallback(async () => {
     const session = editSession.current;
     const generation = editGeneration.current;
+    const mutation = mutationGeneration.current;
+    const isCurrent = () => editSession.current === session
+      && editGeneration.current === generation && composingEditors.current.size === 0
+      && mutationGeneration.current === mutation;
     const prepared = await prepareLocalEditTransition({
       isComposing: composingEditors.current.size > 0,
       cancelScheduledSave: () => {
@@ -294,24 +307,32 @@ export function App() {
         checkpointTimer.current = null;
       },
       save: () => createCheckpoint(),
-      isCurrent: () => editSession.current === session
-        && editGeneration.current === generation && composingEditors.current.size === 0
+      isCurrent
     });
     if (prepared.reason === "composition_active") {
       setCheckpointStatus("composing");
     }
-    return prepared.ok;
+    return prepared.ok ? { checkpoint: prepared.checkpoint, isCurrent } : null;
   }, [createCheckpoint]);
+
+  const runDocumentMutation = useCallback((operation) => {
+    if (composingEditors.current.size > 0) {
+      setCheckpointStatus("composing");
+      return Promise.resolve(false);
+    }
+    return mutationGate.current.run(operation);
+  }, []);
 
   const exportDocument = async () => {
     if (editorWorkspace.mode !== "cloud") return;
     setDocumentExportStatus("saving");
     try {
-      const savedCheckpoint = await createCheckpoint();
-      if (!savedCheckpoint) throw new Error("durable_checkpoint_required");
-      await createVerifiedCloudDocumentExport({
-        token: editorWorkspace.token, workspaceId: editorWorkspace.workspaceId,
-        document: savedCheckpoint.document
+      await runCheckpointedExport({
+        prepare: prepareForDocumentTransition,
+        build: async (checkpoint) => checkpoint.document,
+        deliver: (document) => createVerifiedCloudDocumentExport({
+          token: editorWorkspace.token, workspaceId: editorWorkspace.workspaceId, document
+        })
       });
       setDocumentExportStatus("ready");
     } catch {
@@ -326,14 +347,18 @@ export function App() {
     setArchiveImportStatus("loading");
     setArchiveImportConflict(null);
     try {
-      if (!await prepareForDocumentTransition()) throw new Error("local_save_required");
+      const canAdopt = await prepareForDocumentTransition();
+      if (!canAdopt) throw new Error("local_save_required");
       const bytes = new Uint8Array(await file.arrayBuffer());
+      if (!canAdopt.isCurrent()) throw new Error("local_edit_changed");
       const imported = editorWorkspace.mode === "cloud"
         ? await materializeCloudKomyakuImport({
           token: editorWorkspace.token, workspaceId: editorWorkspace.workspaceId, bytes
         })
         : await materializeLocalKomyakuImport(bytes);
       const existing = await loadLocalDraft(imported.document.id);
+      void refreshLocalDocuments();
+      if (!canAdopt.isCurrent()) throw new Error("local_edit_changed");
       replaceWorkingDocument(imported.document, existing?.localRevision ?? 0);
       setArchiveImportStatus("ready");
       void refreshLocalDocuments();
@@ -354,7 +379,11 @@ export function App() {
         if (!await openLocalDocument(conflict.documentId)) throw new Error("local_save_required");
       }
       else {
+        const canAdopt = await prepareForDocumentTransition();
+        if (!canAdopt) throw new Error("local_save_required");
         const imported = await materializeLocalKomyakuImport(conflict.bytes, { copy: true });
+        void refreshLocalDocuments();
+        if (!canAdopt.isCurrent()) throw new Error("local_edit_changed");
         replaceWorkingDocument(imported.document, 1);
       }
       setArchiveImportConflict(null);
@@ -366,9 +395,10 @@ export function App() {
   const openLocalDocument = async (documentId) => {
     try {
       if (documentId === editSession.current?.documentId) return true;
-      if (!await prepareForDocumentTransition()) return false;
+      const canAdopt = await prepareForDocumentTransition();
+      if (!canAdopt) return false;
       const draft = await loadLocalDraft(documentId);
-      if (!draft) return;
+      if (!draft || !canAdopt.isCurrent()) return false;
       replaceWorkingDocument(draft.content, draft.localRevision);
       setPersistenceStatus("restored");
       return true;
@@ -379,7 +409,7 @@ export function App() {
     }
   };
 
-  const renameLocalDocument = async (documentId, title) => {
+  const renameLocalDocument = (documentId, title) => runDocumentMutation(async () => {
     try {
       const active = documentId === editSession.current?.documentId;
       if (active && !await prepareForDocumentTransition()) return false;
@@ -397,7 +427,7 @@ export function App() {
       setPersistenceStatus("error");
       return false;
     }
-  };
+  });
 
   const archiveLocalDocument = async (documentId, archived) => {
     try {
@@ -466,15 +496,17 @@ export function App() {
     }
   }, [createCheckpoint, editorWorkspace.mode, refreshVersionHistory]);
 
-  const restoreVersion = useCallback(async (targetVersionId) => {
+  const restoreVersion = useCallback((targetVersionId) => runDocumentMutation(async () => {
     if (editorWorkspace.mode !== "local" || !localVersionHistoryAvailable()) return false;
     setVersionStatus("saving");
     try {
-      const savedCheckpoint = await createCheckpoint();
+      const prepared = await prepareForDocumentTransition();
+      const savedCheckpoint = prepared?.checkpoint;
       if (!savedCheckpoint?.durable || !Number.isSafeInteger(savedCheckpoint.revision)) {
         throw new Error("durable_checkpoint_required");
       }
       const history = await listLocalVersionHistory(savedCheckpoint.document.id);
+      if (!prepared.isCurrent()) throw new Error("local_edit_changed");
       const restored = await restoreLocalDocumentVersion({
         documentId: savedCheckpoint.document.id, targetVersionId, history,
         authorId: getOrCreateLocalVersionAuthorId(), localRevision: savedCheckpoint.revision,
@@ -488,35 +520,39 @@ export function App() {
       setVersionStatus("error");
       return false;
     }
-  }, [createCheckpoint, editorWorkspace.mode, refreshVersionHistory, replaceWorkingDocument, t]);
+  }), [runDocumentMutation, prepareForDocumentTransition, editorWorkspace.mode, refreshVersionHistory, replaceWorkingDocument, t]);
 
   const exportLocalDocument = useCallback(async (format) => {
     setLocalExportStatus("saving");
     try {
-      const savedCheckpoint = await createCheckpoint();
-      if (!savedCheckpoint?.durable) throw new Error("durable_checkpoint_required");
-      let exported;
-      let exportedDocument = savedCheckpoint.document;
-      if (format === "komyaku") {
-        const history = await listLocalVersionHistory(savedCheckpoint.document.id);
-        if (!history.currentVersionId) throw new Error("local_version_not_found");
-        const [snapshot, assets] = await Promise.all([
-          loadLocalVersionSnapshot({ documentId: history.documentId, versionId: history.currentVersionId }),
-          loadLocalVersionAssets({ documentId: history.documentId, versionId: history.currentVersionId })
-        ]);
-        exportedDocument = snapshot.document;
-        exported = await createVerifiedLocalSnapshotExport(exportedDocument, { assets });
-      } else exported = renderLocalDocumentExport(exportedDocument, format);
-      downloadLocalExport({ ...exported, fileName: localExportFileName(
-        exportedDocument.metadata.title, exported.extension
-      ) });
+      const exported = await runCheckpointedExport({
+        prepare: prepareForDocumentTransition,
+        build: async (savedCheckpoint) => {
+          let exported;
+          let exportedDocument = savedCheckpoint.document;
+          if (format === "komyaku") {
+            const history = await listLocalVersionHistory(savedCheckpoint.document.id);
+            if (!history.currentVersionId) throw new Error("local_version_not_found");
+            const [snapshot, assets] = await Promise.all([
+              loadLocalVersionSnapshot({ documentId: history.documentId, versionId: history.currentVersionId }),
+              loadLocalVersionAssets({ documentId: history.documentId, versionId: history.currentVersionId })
+            ]);
+            exportedDocument = snapshot.document;
+            exported = await createVerifiedLocalSnapshotExport(exportedDocument, { assets });
+          } else exported = renderLocalDocumentExport(exportedDocument, format);
+          return { ...exported, fileName: localExportFileName(
+            exportedDocument.metadata.title, exported.extension
+          ) };
+        },
+        deliver: downloadLocalExport
+      });
       setLocalExportStatus(exported.warnings?.length ? "fidelity" : "ready");
       return true;
     } catch (error) {
       setLocalExportStatus(error?.message === "local_snapshot_assets_required" ? "assetsRequired" : "error");
       return false;
     }
-  }, [createCheckpoint]);
+  }, [prepareForDocumentTransition]);
 
   const compareVersions = useCallback(async (beforeVersionId, afterVersionId) => {
     const documentId = checkpoint?.document?.id;
@@ -608,7 +644,9 @@ export function App() {
   }
 
   return (
-    <main className="app-shell">
+    <>
+    {mutationBusy ? <p className="mutation-status" role="status">{t("documentWorkspace.applyingChange")}</p> : null}
+    <main className="app-shell" inert={mutationBusy ? true : undefined} aria-busy={mutationBusy}>
       <header className="app-header">
         <div className="brand-block">
           <p className="wordmark">KOMYAKU <span aria-hidden="true">/</span> 稿脈</p>
@@ -894,5 +932,6 @@ export function App() {
         ) : null}
       </footer>
     </main>
+    </>
   );
 }
