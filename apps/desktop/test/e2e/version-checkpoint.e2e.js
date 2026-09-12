@@ -2,20 +2,33 @@ import { expect, test } from '@playwright/test';
 
 // Only the native history boundary is substituted. Editor, edit-session,
 // checkpoint persistence and App event handlers are the real browser code.
-async function openHistory(page, initial = false) {
+async function openHistory(page, initial = false, paged = false) {
   if (initial) await page.addInitScript(() => { window.startWithoutHistory = true; });
+  if (paged) await page.addInitScript(() => { window.pagedHistory = true; });
   await page.route('**/src/services/local-version-history.js', route => route.fulfill({
     contentType: 'text/javascript', body: `
       const history = { versions: [{ id: 'version-1', label: 'Saved', reason: 'initial',
-        createdAt: '2026-09-09T00:00:00Z', snapshotHash: 'a'.repeat(64) }],
-        branches: [{ id: 'branch-1', name: 'Main' }], currentBranchId: 'branch-1', currentVersionId: 'version-1' };
-      history.versions.push({ ...history.versions[0], id: 'version-2', label: 'Other' });
+        createdAt: '2026-09-09T00:00:00Z', snapshotHash: 'a'.repeat(64), parentIds: ['version-2'] }],
+        branches: [{ id: 'branch-1', name: 'Main', headVersionId: 'version-1' }],
+        currentBranchId: 'branch-1', currentVersionId: 'version-1',
+        documentId: '00000000-0000-4000-8000-000000000001', nextCursor: null };
+      history.versions.push({ ...history.versions[0], id: 'version-2', label: 'Other', parentIds: [] });
+      if (window.pagedHistory) {
+        history.versions = Array.from({ length: 10 }, (_, index) => ({ ...history.versions[0],
+          id: 'version-' + (index + 1), label: 'Saved ' + (index + 1),
+          parentIds: [index === 1 ? 'version-4'
+            : index < 9 ? 'version-' + (index + 2) : 'version-older-1'] }));
+        history.versions[2].parentIds = ['version-4'];
+        history.branches = [history.branches[0],
+          { id: 'branch-2', name: 'Alternative', headVersionId: 'version-3' }];
+        history.nextCursor = { createdAt: history.versions[9].createdAt, versionId: history.versions[9].id };
+      }
       const initialVersions = structuredClone(history.versions);
       if (window.startWithoutHistory) { history.versions = []; history.currentVersionId = null; }
       window.versionWrites = [];
       export const localVersionHistoryAvailable = () => true;
       export const getOrCreateLocalVersionAuthorId = () => 'author';
-      export const listLocalVersionHistory = async documentId => {
+      export const listLocalVersionHistory = async (documentId, options = {}) => {
         if (window.holdOldDocument && documentId === '00000000-0000-4000-8000-000000000001') {
           await new Promise((resolve, reject) => {
             window.resumeOldHistory = () => window.rejectOldHistory ? reject(new Error('old read failed')) : resolve();
@@ -34,7 +47,38 @@ async function openHistory(page, initial = false) {
             };
           });
         }
+        if (options.cursor) {
+          window.historyPageRequests ??= [];
+          window.historyPageRequests.push(structuredClone(options.cursor));
+          return { ...structuredClone(history), versions: [
+            { ...history.versions[0], id: 'version-older-1', label: 'Older 1', parentIds: ['version-older-2'] },
+            { ...history.versions[0], id: 'version-older-2', label: 'Older 2', parentIds: [] }
+          ], nextCursor: null };
+        }
         return structuredClone(history);
+      };
+      export const appendLocalVersionHistoryPage = (loaded, page) => ({ ...loaded,
+        branches: page.branches, versions: [...loaded.versions, ...page.versions], nextCursor: page.nextCursor });
+      export const loadLocalHistoryArchiveSource = async documentId => {
+        const record = JSON.parse(localStorage.getItem('komyaku:local-draft:' + documentId));
+        return {
+          documentId,
+          currentBranchId: '00000000-0000-4000-8000-000000000022',
+          currentVersionId: '00000000-0000-4000-8000-000000000021',
+          versions: [{
+            id: '00000000-0000-4000-8000-000000000021', schemaVersion: 1,
+            snapshotEncoding: 'canonical-json-v1', snapshotJson: record.contentJson,
+            parentIds: [], authorId: '00000000-0000-4000-8000-000000000023',
+            reason: 'initial', restoredFromVersionId: null, label: 'Exported',
+            createdAt: '2026-09-12T00:00:00.000Z'
+          }],
+          branches: [{
+            id: '00000000-0000-4000-8000-000000000022', name: 'Main',
+            headVersionId: '00000000-0000-4000-8000-000000000021',
+            createdAt: '2026-09-12T00:00:00.000Z', updatedAt: '2026-09-12T00:00:00.000Z'
+          }],
+          assets: []
+        };
       };
       export const createLocalDocumentVersion = async input => {
         window.versionWrites.push(input);
@@ -210,4 +254,55 @@ test('comparison can be submitted from the keyboard and leaves focus usable', as
   await expect(page.locator('.version-compare .persistence-status')).toHaveAttribute('data-state', 'ready');
   await page.keyboard.press('Shift+Tab');
   await expect(page.locator('.version-compare select').nth(1)).toBeFocused();
+});
+
+test('older Version paging appends the next native page and keeps loaded items visible', async ({ page }) => {
+  const runtimeErrors = [];
+  page.on('console', message => { if (message.type() === 'error') runtimeErrors.push(message.text()); });
+  page.on('pageerror', error => runtimeErrors.push(error.message));
+  await openHistory(page, false, true);
+  await expect(page).toHaveTitle('KOMYAKU');
+  await expect(page.locator('main')).toBeVisible();
+  await expect(page.locator('vite-error-overlay')).toHaveCount(0);
+  await expect(page.locator('.version-list li')).toHaveCount(10);
+  await expect(page.locator('.version-lineage-node')).toHaveCount(10);
+  await expect(page.locator('.version-lineage-edge')).toHaveCount(9);
+  await expect(page.locator('.version-lineage-branches').filter({ hasText: /^Main$/ })).toBeVisible();
+  await expect(page.locator('.version-lineage-branches').filter({ hasText: /^Alternative$/ })).toBeVisible();
+  await expect(page.locator('.version-lineage-current')).toHaveText('現在位置');
+  expect(await page.locator('.version-lineage-node').evaluateAll((nodes) =>
+    new Set(nodes.map((node) => node.getAttribute('cx'))).size)).toBe(2);
+  const loadOlder = page.getByRole('button', { name: '古い版を10件表示', exact: true });
+  await loadOlder.click();
+  await expect(page.locator('.version-list li')).toHaveCount(12);
+  await expect(page.locator('.version-lineage-node')).toHaveCount(12);
+  await expect(page.locator('.version-lineage-edge')).toHaveCount(11);
+  await expect(loadOlder).toHaveCount(0);
+  expect(await page.evaluate(() => window.historyPageRequests)).toEqual([
+    { createdAt: '2026-09-09T00:00:00Z', versionId: 'version-10' }
+  ]);
+  const screenshotDirectory = process.env.KOMYAKU_QA_SCREENSHOT_DIRECTORY;
+  if (screenshotDirectory) await page.screenshot({
+    path: `${screenshotDirectory}/version-lineage-desktop.png`, fullPage: true
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth
+    <= document.documentElement.clientWidth)).toBe(true);
+  const graphBounds = await page.locator('.version-lineage-canvas').boundingBox();
+  expect(graphBounds.x).toBeGreaterThanOrEqual(0);
+  expect(graphBounds.x + graphBounds.width).toBeLessThanOrEqual(390);
+  if (screenshotDirectory) await page.screenshot({
+    path: `${screenshotDirectory}/version-lineage-mobile.png`, fullPage: true
+  });
+  expect(runtimeErrors).toEqual([]);
+});
+
+test('full-history export verifies v2 and initiates a local download', async ({ page }) => {
+  await openHistory(page);
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: '.komyaku 全履歴', exact: true }).click();
+  const artifact = await download;
+  expect(artifact.suggestedFilename()).toMatch(/\.komyaku$/);
+  await expect(page.locator('.version-export .persistence-status'))
+    .toHaveText('検証済みファイルのダウンロードを開始しました');
 });

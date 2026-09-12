@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createCanonicalNode, createEmptyDocument } from "@komyaku/document-schema";
 import {
+  createVerifiedLocalHistoryExport,
   createVerifiedLocalSnapshotExport,
   downloadLocalExport,
   localExportFileName,
@@ -48,6 +49,32 @@ describe("account-free local Document export", () => {
     });
     expect(exported.extension).toBe("komyaku");
     expect(exported.formatVersion).toBe(1);
+    expect(exported.archiveDigest).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  test("creates and rereads a complete v2 history", async () => {
+    const document = fixture();
+    const versionId = crypto.randomUUID();
+    const branchId = crypto.randomUUID();
+    const source = {
+      documentId: document.id,
+      currentBranchId: branchId,
+      currentVersionId: versionId,
+      versions: [{
+        id: versionId, schemaVersion: document.schemaVersion, snapshotEncoding: "canonical-json-v1",
+        snapshotJson: JSON.stringify(document), parentIds: [], authorId: crypto.randomUUID(),
+        reason: "initial", restoredFromVersionId: null, label: "Initial",
+        createdAt: "2026-09-12T00:00:00.000Z"
+      }],
+      branches: [{ id: branchId, name: "Main", headVersionId: versionId,
+        createdAt: "2026-09-12T00:00:00.000Z", updatedAt: "2026-09-12T00:00:00.000Z" }],
+      assets: []
+    };
+    const exported = await createVerifiedLocalHistoryExport(source, {
+      createdAt: "2026-09-12T01:00:00.000Z"
+    });
+    expect(exported.extension).toBe("komyaku");
+    expect(exported.formatVersion).toBe(2);
     expect(exported.archiveDigest).toMatch(/^[0-9a-f]{64}$/);
   });
 

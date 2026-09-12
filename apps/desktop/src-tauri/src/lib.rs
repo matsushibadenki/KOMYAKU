@@ -1,9 +1,8 @@
 use image::{ImageFormat, ImageReader, Limits};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use sqlx::{Pool, Sqlite};
-use std::collections::BTreeSet;
-use std::collections::BTreeMap;
+use sqlx::{Pool, QueryBuilder, Sqlite};
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Cursor;
 use tauri::State;
 use tauri_plugin_sql::{DbInstances, DbPool, Migration, MigrationKind};
@@ -15,6 +14,7 @@ const SECURE_SESSION_ACCOUNT: &str = "cloud-session-v1";
 const MAX_PROVIDER_SECRET_BYTES: usize = 16 * 1024;
 const MAX_LOCAL_CONVERSATION_BYTES: usize = 12 * 1024 * 1024;
 const MAX_LOCAL_CONVERSATION_LIST_ITEMS: i64 = 100;
+const MAX_LOCAL_VERSION_HISTORY_PAGE_ITEMS: usize = 100;
 const MAX_LOCAL_PNG_PREVIEW_BYTES: usize = 256 * 1024;
 const MAX_LOCAL_PNG_PREVIEW_PIXELS: u64 = 16_000_000;
 const MAX_LOCAL_ARCHIVE_ASSET_BYTES: usize = 1024 * 1024;
@@ -106,7 +106,7 @@ struct SaveLocalVersionResult {
     replayed: bool,
 }
 
-#[derive(Debug, Serialize, sqlx::FromRow, PartialEq)]
+#[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 struct LocalVersionSummary {
     id: String,
@@ -116,6 +116,24 @@ struct LocalVersionSummary {
     restored_from_version_id: Option<String>,
     label: Option<String>,
     created_at: String,
+    parent_ids: Vec<String>,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+struct LocalVersionSummaryRow {
+    id: String,
+    snapshot_hash: String,
+    author_id: String,
+    reason: String,
+    restored_from_version_id: Option<String>,
+    label: Option<String>,
+    created_at: String,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+struct LocalVersionParentRow {
+    version_id: String,
+    parent_version_id: String,
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow, PartialEq)]
@@ -136,6 +154,14 @@ struct LocalVersionHistoryResult {
     current_version_id: Option<String>,
     branches: Vec<LocalVersionBranchSummary>,
     versions: Vec<LocalVersionSummary>,
+    next_cursor: Option<LocalVersionHistoryCursor>,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct LocalVersionHistoryCursor {
+    created_at: String,
+    version_id: String,
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow, PartialEq)]
@@ -1622,42 +1648,129 @@ async fn save_local_version_transaction(
 
 #[tauri::command]
 async fn save_local_version_atomic(
-    db_instances: State<'_, DbInstances>, input: SaveLocalVersionInput,
+    db_instances: State<'_, DbInstances>,
+    input: SaveLocalVersionInput,
 ) -> Result<SaveLocalVersionResult, String> {
     let pool = {
         let instances = db_instances.0.read().await;
-        match instances.get(LOCAL_DATABASE_URL) { Some(DbPool::Sqlite(pool)) => pool.clone(),
-            _ => return Err("tauri_database_unavailable".into()) }
+        match instances.get(LOCAL_DATABASE_URL) {
+            Some(DbPool::Sqlite(pool)) => pool.clone(),
+            _ => return Err("tauri_database_unavailable".into()),
+        }
     };
-    save_local_version_transaction(&pool, &input).await.map_err(str::to_string)
+    save_local_version_transaction(&pool, &input)
+        .await
+        .map_err(str::to_string)
 }
 
 async fn list_local_version_history_transaction(
-    pool: &Pool<Sqlite>, document_id: &str,
+    pool: &Pool<Sqlite>,
+    document_id: &str,
+    cursor_created_at: Option<&str>,
+    cursor_version_id: Option<&str>,
 ) -> Result<LocalVersionHistoryResult, &'static str> {
-    if !valid_lower_uuid(document_id) { return Err("invalid_local_document_id"); }
+    if !valid_lower_uuid(document_id) {
+        return Err("invalid_local_document_id");
+    }
+    let cursor = match (cursor_created_at, cursor_version_id) {
+        (None, None) => None,
+        (Some(created_at), Some(version_id))
+            if !created_at.is_empty() && created_at.len() <= 64 && valid_lower_uuid(version_id) =>
+        {
+            Some((created_at, version_id))
+        }
+        _ => return Err("invalid_local_version_history_cursor"),
+    };
     let current: Option<(Option<String>, Option<String>)> = sqlx::query_as(
-        "SELECT current_branch_id, current_version_id FROM local_documents WHERE id = ? LIMIT 1")
-        .bind(document_id).fetch_optional(pool).await
-        .map_err(|_| "local_version_storage_failure")?;
+        "SELECT current_branch_id, current_version_id FROM local_documents WHERE id = ? LIMIT 1",
+    )
+    .bind(document_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| "local_version_storage_failure")?;
     let Some((current_branch_id, current_version_id)) = current else {
         return Err("local_version_document_not_found");
     };
     let branches = sqlx::query_as::<_, LocalVersionBranchSummary>(
         "SELECT id, name, head_version_id, created_at, updated_at
          FROM local_document_branches WHERE document_id = ?
-         ORDER BY updated_at DESC, id LIMIT 200")
-        .bind(document_id).fetch_all(pool).await
-        .map_err(|_| "local_version_storage_failure")?;
-    let versions = sqlx::query_as::<_, LocalVersionSummary>(
-        "SELECT id, snapshot_hash, author_id, reason, restored_from_version_id, label, created_at
-         FROM local_document_versions WHERE document_id = ?
-         ORDER BY created_at DESC, id DESC LIMIT 500")
-        .bind(document_id).fetch_all(pool).await
-        .map_err(|_| "local_version_storage_failure")?;
+         ORDER BY updated_at DESC, id LIMIT 200",
+    )
+    .bind(document_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|_| "local_version_storage_failure")?;
+    let fetch_limit = (MAX_LOCAL_VERSION_HISTORY_PAGE_ITEMS + 1) as i64;
+    let mut version_rows = if let Some((created_at, version_id)) = cursor {
+        sqlx::query_as::<_, LocalVersionSummaryRow>(
+            "SELECT id, snapshot_hash, author_id, reason, restored_from_version_id, label, created_at
+             FROM local_document_versions
+             WHERE document_id = ? AND (created_at < ? OR (created_at = ? AND id < ?))
+             ORDER BY created_at DESC, id DESC LIMIT ?")
+            .bind(document_id).bind(created_at).bind(created_at).bind(version_id).bind(fetch_limit)
+            .fetch_all(pool).await.map_err(|_| "local_version_storage_failure")?
+    } else {
+        sqlx::query_as::<_, LocalVersionSummaryRow>(
+            "SELECT id, snapshot_hash, author_id, reason, restored_from_version_id, label, created_at
+             FROM local_document_versions WHERE document_id = ?
+             ORDER BY created_at DESC, id DESC LIMIT ?")
+            .bind(document_id).bind(fetch_limit).fetch_all(pool).await
+            .map_err(|_| "local_version_storage_failure")?
+    };
+    let has_more = version_rows.len() > MAX_LOCAL_VERSION_HISTORY_PAGE_ITEMS;
+    version_rows.truncate(MAX_LOCAL_VERSION_HISTORY_PAGE_ITEMS);
+    let next_cursor = has_more
+        .then(|| {
+            version_rows
+                .last()
+                .map(|version| LocalVersionHistoryCursor {
+                    created_at: version.created_at.clone(),
+                    version_id: version.id.clone(),
+                })
+        })
+        .flatten();
+    let mut parents_by_version: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    if !version_rows.is_empty() {
+        let mut query = QueryBuilder::<Sqlite>::new(
+            "SELECT version_id, parent_version_id FROM local_document_version_parents WHERE version_id IN (",
+        );
+        let mut separated = query.separated(", ");
+        for version in &version_rows {
+            separated.push_bind(&version.id);
+        }
+        separated.push_unseparated(") ORDER BY version_id, parent_order");
+        let parent_rows = query
+            .build_query_as::<LocalVersionParentRow>()
+            .fetch_all(pool)
+            .await
+            .map_err(|_| "local_version_storage_failure")?;
+        for parent in parent_rows {
+            parents_by_version
+                .entry(parent.version_id)
+                .or_default()
+                .push(parent.parent_version_id);
+        }
+    }
+    let versions = version_rows
+        .into_iter()
+        .map(|version| LocalVersionSummary {
+            parent_ids: parents_by_version.remove(&version.id).unwrap_or_default(),
+            id: version.id,
+            snapshot_hash: version.snapshot_hash,
+            author_id: version.author_id,
+            reason: version.reason,
+            restored_from_version_id: version.restored_from_version_id,
+            label: version.label,
+            created_at: version.created_at,
+        })
+        .collect();
     Ok(LocalVersionHistoryResult {
-        document_id: document_id.to_string(), current_branch_id, current_version_id,
-        branches, versions,
+        document_id: document_id.to_string(),
+        current_branch_id,
+        current_version_id,
+        branches,
+        versions,
+        next_cursor,
     })
 }
 
@@ -1724,13 +1837,16 @@ async fn load_local_version_assets_transaction(
 #[tauri::command]
 async fn list_local_version_history(
     db_instances: State<'_, DbInstances>, document_id: String,
+    cursor_created_at: Option<String>, cursor_version_id: Option<String>,
 ) -> Result<LocalVersionHistoryResult, String> {
     let pool = {
         let instances = db_instances.0.read().await;
         match instances.get(LOCAL_DATABASE_URL) { Some(DbPool::Sqlite(pool)) => pool.clone(),
             _ => return Err("tauri_database_unavailable".into()) }
     };
-    list_local_version_history_transaction(&pool, &document_id).await.map_err(str::to_string)
+    list_local_version_history_transaction(
+        &pool, &document_id, cursor_created_at.as_deref(), cursor_version_id.as_deref(),
+    ).await.map_err(str::to_string)
 }
 
 #[tauri::command]
@@ -1877,6 +1993,12 @@ pub fn run() {
             sql: include_str!("../migrations/0007_local_document_versions.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 8,
+            description: "optimize_local_version_history_paging",
+            sql: include_str!("../migrations/0008_local_version_history_paging.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -1965,8 +2087,11 @@ mod tests {
         let mut reads = Vec::new();
         for _ in 0..20 {
             let started = std::time::Instant::now();
-            let history = list_local_version_history_transaction(&db, &draft.document_id).await.unwrap();
-            assert_eq!(history.versions.len(), 500);
+            let history = list_local_version_history_transaction(
+                &db, &draft.document_id, None, None,
+            ).await.unwrap();
+            assert_eq!(history.versions.len(), MAX_LOCAL_VERSION_HISTORY_PAGE_ITEMS);
+            assert!(history.next_cursor.is_some());
             assert_eq!(history.branches.len(), 20);
             reads.push(started.elapsed().as_secs_f64() * 1000.0);
         }
@@ -1974,18 +2099,45 @@ mod tests {
         db.close().await;
         let started = std::time::Instant::now();
         let reopened = SqlitePoolOptions::new().max_connections(1).connect(&url).await.unwrap();
-        let history = list_local_version_history_transaction(&reopened, &draft.document_id).await.unwrap();
-        assert_eq!(history.versions.len(), 500);
+        let history_paging_started = std::time::Instant::now();
+        let history = list_local_version_history_transaction(
+            &reopened, &draft.document_id, None, None,
+        ).await.unwrap();
+        assert_eq!(history.versions.len(), MAX_LOCAL_VERSION_HISTORY_PAGE_ITEMS);
         let reopen_ms = started.elapsed().as_secs_f64() * 1000.0;
+        let mut listed_versions = history.versions.len();
+        let mut page_count = 1;
+        let mut next_cursor = history.next_cursor;
+        while let Some(cursor) = next_cursor {
+            let page = list_local_version_history_transaction(
+                &reopened, &draft.document_id, Some(&cursor.created_at), Some(&cursor.version_id),
+            ).await.unwrap();
+            listed_versions += page.versions.len();
+            page_count += 1;
+            next_cursor = page.next_cursor;
+        }
+        let full_history_paging_ms = history_paging_started.elapsed().as_secs_f64() * 1000.0;
+        assert_eq!(listed_versions, 1000);
+        assert_eq!(page_count, 10);
         for id in heads {
             let snapshot = load_local_version_snapshot_transaction(&reopened, &draft.document_id, &id).await.unwrap();
             let parsed: serde_json::Value = serde_json::from_str(&snapshot.snapshot_json).unwrap();
             assert_eq!(parsed["content"][0]["content"][0]["text"].as_str().unwrap().len(), 100_000);
         }
         reopened.close().await;
+        let database_bytes = std::fs::metadata(&path).unwrap().len();
+        assert!(timings[949] <= 25.0, "Version save p95 exceeded 25 ms: {}", timings[949]);
+        assert!(reads[18] <= 10.0, "first history page p95 exceeded 10 ms: {}", reads[18]);
+        assert!(reopen_ms <= 25.0, "reopen and first page exceeded 25 ms: {reopen_ms}");
+        assert!(full_history_paging_ms <= 100.0,
+            "ten-page history traversal exceeded 100 ms: {full_history_paging_ms}");
+        assert!(database_bytes <= 128 * 1024 * 1024,
+            "fixture database exceeded 128 MiB: {database_bytes}");
         println!("PERF_RESULT {}", serde_json::json!({"versions": 1000, "branches": 20, "graphemes": 100000,
-            "listed_versions": 500, "save_p50_ms": timings[499], "save_p95_ms": timings[949], "list_p50_ms": reads[9],
-            "list_p95_ms": reads[18], "reopen_and_list_ms": reopen_ms, "database_bytes": std::fs::metadata(&path).unwrap().len()}));
+            "listed_versions": listed_versions, "history_pages": page_count,
+            "save_p50_ms": timings[499], "save_p95_ms": timings[949], "list_p50_ms": reads[9],
+            "list_p95_ms": reads[18], "reopen_and_list_ms": reopen_ms,
+            "full_history_paging_ms": full_history_paging_ms, "database_bytes": database_bytes}));
         std::fs::remove_file(path).unwrap();
     }
 
@@ -2051,6 +2203,8 @@ mod tests {
             .execute(pool).await.expect("apply local Document library schema");
         sqlx::raw_sql(include_str!("../migrations/0007_local_document_versions.sql"))
             .execute(pool).await.expect("apply local Document Version schema");
+        sqlx::raw_sql(include_str!("../migrations/0008_local_version_history_paging.sql"))
+            .execute(pool).await.expect("apply local Version paging schema");
     }
 
     fn local_version_input(
@@ -2252,13 +2406,16 @@ mod tests {
         second.version.snapshot_hash = Sha256::digest(second.version.snapshot_json.as_bytes()).iter()
             .map(|byte| format!("{byte:02x}")).collect();
         save_local_version_transaction(&pool, &second).await.expect("advance Branch");
-        let history = list_local_version_history_transaction(&pool, &second.version.document_id)
+        let history = list_local_version_history_transaction(
+            &pool, &second.version.document_id, None, None,
+        )
             .await.expect("list Version history");
         assert_eq!(history.current_branch_id.as_deref(), Some(second.branch_id.as_str()));
         assert_eq!(history.current_version_id.as_deref(), Some(second_id));
         assert_eq!(history.branches.len(), 1);
         assert_eq!(history.versions.len(), 2);
         assert_eq!(history.versions[0].id, second_id);
+        assert_eq!(history.versions[0].parent_ids, vec![first_id]);
         let loaded = load_local_version_snapshot_transaction(
             &pool, &second.version.document_id, first_id,
         ).await.expect("load immutable Version snapshot");
@@ -2302,6 +2459,47 @@ mod tests {
              FROM local_drafts draft JOIN local_documents document ON document.id = draft.document_id")
             .fetch_one(&pool).await.expect("read atomically restored draft");
         assert_eq!(restored, (conflict.version.snapshot_json, 2, restore_id.into()));
+    }
+
+    #[tokio::test]
+    async fn pages_every_version_without_gaps_when_timestamps_match() {
+        let pool = pool().await;
+        let draft = input(1, "Paged history");
+        save_local_draft_transaction(&pool, &draft).await.expect("save paged draft");
+        let created_at = "2026-09-12T00:00:00.000Z";
+        for number in 1000..1105 {
+            let version_id = format!("00000000-0000-4000-8000-{number:012}");
+            sqlx::query(
+                "INSERT INTO local_document_versions
+                 (id, document_id, schema_version, snapshot_encoding, snapshot_json, snapshot_hash,
+                  author_id, reason, restored_from_version_id, label, created_at)
+                 VALUES (?, ?, 1, 'canonical-json-v1', '{}', ?, ?, 'named', NULL, NULL, ?)")
+                .bind(version_id).bind(&draft.document_id).bind("a".repeat(64))
+                .bind("00000000-0000-4000-8000-000000000014").bind(created_at)
+                .execute(&pool).await.expect("insert paged Version");
+        }
+
+        let first = list_local_version_history_transaction(
+            &pool, &draft.document_id, None, None,
+        ).await.expect("list first Version page");
+        assert_eq!(first.versions.len(), 100);
+        assert_eq!(first.versions.first().unwrap().id,
+            "00000000-0000-4000-8000-000000001104");
+        let cursor = first.next_cursor.expect("older Version cursor");
+        assert_eq!(cursor.version_id, "00000000-0000-4000-8000-000000001005");
+
+        let second = list_local_version_history_transaction(
+            &pool, &draft.document_id, Some(&cursor.created_at), Some(&cursor.version_id),
+        ).await.expect("list final Version page");
+        assert_eq!(second.versions.len(), 5);
+        assert_eq!(second.versions.first().unwrap().id,
+            "00000000-0000-4000-8000-000000001004");
+        assert_eq!(second.versions.last().unwrap().id,
+            "00000000-0000-4000-8000-000000001000");
+        assert!(second.next_cursor.is_none());
+        assert_eq!(list_local_version_history_transaction(
+            &pool, &draft.document_id, Some(created_at), None,
+        ).await, Err("invalid_local_version_history_cursor"));
     }
 
     #[tokio::test]

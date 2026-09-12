@@ -19,7 +19,8 @@ describe("Tauri local SQLite migration", () => {
       "../../desktop/src-tauri/migrations/0004_local_asset_reference_lifecycle.sql",
       "../../desktop/src-tauri/migrations/0005_local_archive_materialization.sql",
       "../../desktop/src-tauri/migrations/0006_local_document_library.sql",
-      "../../desktop/src-tauri/migrations/0007_local_document_versions.sql"
+      "../../desktop/src-tauri/migrations/0007_local_document_versions.sql",
+      "../../desktop/src-tauri/migrations/0008_local_version_history_paging.sql"
     ];
     for (const relativePath of migrationPaths) {
       const migration = await Bun.file(path.resolve(import.meta.dir, relativePath)).text();
@@ -55,6 +56,12 @@ describe("Tauri local SQLite migration", () => {
       "local_version_operations",
       "sync_queue",
       "sync_state"
+    ]);
+    const pagingIndex = await database.unsafe(
+      "PRAGMA index_xinfo('local_document_versions_document_created_idx')"
+    );
+    expect(pagingIndex.filter((row) => row.key).map((row) => [row.name, row.desc])).toEqual([
+      ["document_id", 0], ["created_at", 1], ["id", 1]
     ]);
   });
 });

@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://komyaku.example/schemas/archive/manifest-v2.json",
+  "title": "KOMYAKU History Archive Manifest v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "formatVersion", "createdAt", "document", "versions", "branches", "assets", "extensions"],
+  "properties": {
+    "format": { "const": "komyaku-archive" },
+    "formatVersion": { "const": 2 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "document": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "currentBranchId", "currentVersionId"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "currentBranchId": { "$ref": "#/$defs/uuid" },
+        "currentVersionId": { "$ref": "#/$defs/uuid" }
+      }
+    },
+    "versions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5000,
+      "items": { "$ref": "#/$defs/version" }
+    },
+    "branches": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 200,
+      "items": { "$ref": "#/$defs/branch" }
+    },
+    "assets": {
+      "type": "array",
+      "maxItems": 5000,
+      "items": { "$ref": "#/$defs/asset" }
+    },
+    "extensions": { "type": "object" }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f-]{36}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "version": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "schemaVersion", "snapshotEncoding", "snapshotSha256", "snapshotByteSize", "path", "parentIds", "assetIds", "authorId", "reason", "restoredFromVersionId", "label", "createdAt"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "schemaVersion": { "type": "integer", "minimum": 1 },
+        "snapshotEncoding": { "const": "canonical-json-v1" },
+        "snapshotSha256": { "$ref": "#/$defs/sha256" },
+        "snapshotByteSize": { "type": "integer", "minimum": 1, "maximum": 12582912 },
+        "path": { "type": "string", "pattern": "^versions/[0-9a-f-]{36}\\.json$" },
+        "parentIds": {
+          "type": "array",
+          "maxItems": 2,
+          "items": { "$ref": "#/$defs/uuid" }
+        },
+        "assetIds": {
+          "type": "array",
+          "maxItems": 5000,
+          "items": { "$ref": "#/$defs/uuid" }
+        },
+        "authorId": { "$ref": "#/$defs/uuid" },
+        "reason": { "enum": ["initial", "named", "restore", "merge", "import"] },
+        "restoredFromVersionId": {
+          "anyOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }]
+        },
+        "label": {
+          "anyOf": [{ "type": "string", "maxLength": 1000 }, { "type": "null" }]
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "branch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "headVersionId", "createdAt", "updatedAt"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "headVersionId": { "$ref": "#/$defs/uuid" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "mediaType", "byteSize", "sha256", "path"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "mediaType": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "byteSize": { "type": "integer", "minimum": 1, "maximum": 104857600 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "path": { "type": "string", "pattern": "^assets/sha256/[0-9a-f]{2}/[0-9a-f]{64}$" }
+      }
+    }
+  }
+}

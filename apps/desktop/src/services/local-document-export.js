@@ -1,7 +1,9 @@
 import {
   createKomyakuArchive,
+  createKomyakuHistoryArchive,
   KOMYAKU_ARCHIVE_MEDIA_TYPE,
-  verifyKomyakuArchive
+  verifyKomyakuArchive,
+  verifyKomyakuHistoryArchive
 } from "@komyaku/archive-core";
 import { collectAssetIds, parseCanonicalDocument } from "@komyaku/document-schema";
 
@@ -94,6 +96,26 @@ export async function createVerifiedLocalSnapshotExport(input, { assets = [], cr
   }
   return Object.freeze({ bytes, mediaType: KOMYAKU_ARCHIVE_MEDIA_TYPE,
     extension: "komyaku", archiveDigest: verified.archiveDigest, formatVersion: 1 });
+}
+
+export async function createVerifiedLocalHistoryExport(input, { createdAt } = {}) {
+  const bytes = await createKomyakuHistoryArchive({ ...input, createdAt });
+  const verified = await verifyKomyakuHistoryArchive(bytes);
+  if (verified.documentId !== input.documentId
+    || verified.currentBranchId !== input.currentBranchId
+    || verified.currentVersionId !== input.currentVersionId
+    || verified.versions.length !== input.versions.length
+    || verified.branches.length !== input.branches.length
+    || verified.assets.length !== input.assets.length) {
+    throw new Error("invalid_local_history_export");
+  }
+  return Object.freeze({
+    bytes,
+    mediaType: KOMYAKU_ARCHIVE_MEDIA_TYPE,
+    extension: "komyaku",
+    archiveDigest: verified.archiveDigest,
+    formatVersion: 2
+  });
 }
 
 export function downloadLocalExport({ bytes, mediaType, fileName }, {

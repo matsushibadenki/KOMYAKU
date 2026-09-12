@@ -21,6 +21,7 @@ import { LocalArchiveImportConflictError, materializeLocalKomyakuImport } from "
 import { materializeCloudKomyakuImport } from "./services/cloud-komyaku-import.js";
 import { listLocalDocuments, mutateLocalDocument } from "./services/local-document-library.js";
 import {
+  createVerifiedLocalHistoryExport,
   createVerifiedLocalSnapshotExport,
   downloadLocalExport,
   localExportFileName,
@@ -31,9 +32,11 @@ import {
   prepareLocalEditTransition
 } from "./services/local-edit-session.js";
 import {
+  appendLocalVersionHistoryPage,
   createLocalDocumentVersion,
   compareLocalDocumentVersions,
   getOrCreateLocalVersionAuthorId,
+  loadLocalHistoryArchiveSource,
   loadLocalVersionAssets,
   loadLocalVersionSnapshot,
   listLocalVersionHistory,
@@ -214,6 +217,28 @@ export function App() {
       return null;
     }
   }, []);
+
+  const loadOlderVersionHistory = useCallback(async () => {
+    const loadedHistory = versionHistory;
+    const cursor = loadedHistory?.nextCursor;
+    if (!cursor) return true;
+    const session = editSession.current;
+    if (session?.documentId !== loadedHistory.documentId) return false;
+    const sequence = ++historyReadSequence.current;
+    const isCurrent = () => editSession.current === session && sequence === historyReadSequence.current;
+    setVersionStatus("loading");
+    try {
+      const page = await listLocalVersionHistory(loadedHistory.documentId, { cursor });
+      if (!isCurrent()) return false;
+      setVersionHistory(appendLocalVersionHistoryPage(loadedHistory, page));
+      setVersionStatus("ready");
+      return true;
+    } catch {
+      if (!isCurrent()) return false;
+      setVersionStatus("error");
+      return false;
+    }
+  }, [versionHistory]);
 
   const replaceWorkingDocument = useCallback((document, localRevision) => {
     if (checkpointTimer.current) window.clearTimeout(checkpointTimer.current);
@@ -575,7 +600,13 @@ export function App() {
         build: async (savedCheckpoint) => {
           let exported;
           let exportedDocument = savedCheckpoint.document;
-          if (format === "komyaku") {
+          if (format === "komyaku-history") {
+            const source = await loadLocalHistoryArchiveSource(savedCheckpoint.document.id);
+            const current = source.versions.find(({ id }) => id === source.currentVersionId);
+            if (!current) throw new Error("local_version_not_found");
+            exportedDocument = parseCanonicalDocument(JSON.parse(current.snapshotJson));
+            exported = await createVerifiedLocalHistoryExport(source);
+          } else if (format === "komyaku") {
             const history = await listLocalVersionHistory(savedCheckpoint.document.id);
             if (!history.currentVersionId) throw new Error("local_version_not_found");
             const [snapshot, assets] = await Promise.all([
@@ -872,6 +903,7 @@ export function App() {
             onSaveNamed={(label) => createVersion({ kind: "named", label })}
             onCreateAlternative={(branchName, label) => createVersion({ kind: "alternative", branchName, label })}
             onRestore={restoreVersion}
+            onLoadOlder={loadOlderVersionHistory}
             onExport={exportLocalDocument}
             exportStatus={localExportStatus}
             onCompare={compareVersions}
@@ -886,7 +918,13 @@ export function App() {
               branchName: t("versionHistory.branchName"), branchPlaceholder: t("versionHistory.branchPlaceholder"),
               createAlternative: t("versionHistory.createAlternative"),
               restore: t("versionHistory.restore"),
+              loadOlder: t("versionHistory.loadOlder"),
+              lineageTitle: t("versionHistory.lineageTitle"),
+              lineageDescription: t("versionHistory.lineageDescription"),
+              lineageList: t("versionHistory.lineageList"),
+              currentPosition: t("versionHistory.currentPosition"),
               exportTitle: t("versionHistory.exportTitle"), exportDescription: t("versionHistory.exportDescription"),
+              exportHistory: t("versionHistory.exportHistory"),
               exportSnapshot: t("versionHistory.exportSnapshot"), exportMarkdown: t("versionHistory.exportMarkdown"),
               exportText: t("versionHistory.exportText"),
               exportStatus: {

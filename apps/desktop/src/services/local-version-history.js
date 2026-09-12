@@ -45,28 +45,75 @@ function parseHistory(value, documentId) {
     return Object.freeze({ ...branch });
   });
   const versions = value.versions.map((version) => {
+    const parentIds = version?.parentIds ?? [];
     if (!version || !UUID.test(version.id) || !HASH.test(version.snapshotHash)
       || !UUID.test(version.authorId) || typeof version.reason !== "string"
       || (version.restoredFromVersionId !== null && !UUID.test(version.restoredFromVersionId))
       || (version.label !== null && typeof version.label !== "string")
-      || typeof version.createdAt !== "string") {
+      || typeof version.createdAt !== "string" || !Array.isArray(parentIds)
+      || parentIds.length > 2 || parentIds.some((id) => !UUID.test(id))
+      || new Set(parentIds).size !== parentIds.length) {
       throw new Error("invalid_local_version_history");
     }
-    return Object.freeze({ ...version });
+    return Object.freeze({ ...version, parentIds: Object.freeze([...parentIds]) });
   });
-  return Object.freeze({ ...value, branches: Object.freeze(branches), versions: Object.freeze(versions) });
+  const rawCursor = value.nextCursor ?? null;
+  const nextCursor = rawCursor === null ? null : (() => {
+    if (!rawCursor || typeof rawCursor.createdAt !== "string" || !rawCursor.createdAt
+      || rawCursor.createdAt.length > 64 || !UUID.test(rawCursor.versionId)) {
+      throw new Error("invalid_local_version_history");
+    }
+    const last = versions.at(-1);
+    if (!last || last.createdAt !== rawCursor.createdAt || last.id !== rawCursor.versionId) {
+      throw new Error("invalid_local_version_history");
+    }
+    return Object.freeze({ ...rawCursor });
+  })();
+  return Object.freeze({ ...value, branches: Object.freeze(branches),
+    versions: Object.freeze(versions), nextCursor });
 }
 
 export async function listLocalVersionHistory(documentId, {
   invokeImpl = invoke,
-  native = isTauriRuntime()
+  native = isTauriRuntime(),
+  cursor = null
 } = {}) {
   if (!native) return Object.freeze({
     documentId, currentBranchId: null, currentVersionId: null,
-    branches: Object.freeze([]), versions: Object.freeze([]), available: false
+    branches: Object.freeze([]), versions: Object.freeze([]), nextCursor: null, available: false
   });
   if (!UUID.test(documentId)) throw new Error("invalid_local_document_id");
-  return parseHistory(await invokeImpl("list_local_version_history", { documentId }), documentId);
+  if (cursor !== null && (!cursor || typeof cursor.createdAt !== "string" || !cursor.createdAt
+    || cursor.createdAt.length > 64 || !UUID.test(cursor.versionId))) {
+    throw new Error("invalid_local_version_history_cursor");
+  }
+  return parseHistory(await invokeImpl("list_local_version_history", {
+    documentId,
+    cursorCreatedAt: cursor?.createdAt ?? null,
+    cursorVersionId: cursor?.versionId ?? null
+  }), documentId);
+}
+
+export function appendLocalVersionHistoryPage(history, page) {
+  if (!history || !page || history.documentId !== page.documentId
+    || history.currentBranchId !== page.currentBranchId
+    || history.currentVersionId !== page.currentVersionId) {
+    throw new Error("invalid_local_version_history_page");
+  }
+  const knownIds = new Set(history.versions.map(({ id }) => id));
+  if (page.versions.some(({ id }) => knownIds.has(id))) {
+    throw new Error("invalid_local_version_history_page");
+  }
+  const newestOlderVersion = page.versions[0];
+  const oldestLoadedVersion = history.versions.at(-1);
+  if (newestOlderVersion && oldestLoadedVersion
+    && (newestOlderVersion.createdAt > oldestLoadedVersion.createdAt
+      || (newestOlderVersion.createdAt === oldestLoadedVersion.createdAt
+        && newestOlderVersion.id >= oldestLoadedVersion.id))) {
+    throw new Error("invalid_local_version_history_page");
+  }
+  return Object.freeze({ ...history, branches: page.branches,
+    versions: Object.freeze([...history.versions, ...page.versions]), nextCursor: page.nextCursor });
 }
 
 export async function loadLocalVersionSnapshot({ documentId, versionId }, {
@@ -118,6 +165,90 @@ export async function loadLocalVersionAssets({ documentId, versionId }, {
     assets.push(Object.freeze({ id: value.id, mediaType: value.mediaType, bytes }));
   }
   return Object.freeze(assets);
+}
+
+function sameBytes(left, right) {
+  return left.byteLength === right.byteLength && left.every((value, index) => value === right[index]);
+}
+
+export async function loadLocalHistoryArchiveSource(documentId, {
+  concurrency = 4,
+  ...options
+} = {}) {
+  if (!UUID.test(documentId) || !Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 8) {
+    throw new Error("invalid_local_history_archive_request");
+  }
+  let history = await listLocalVersionHistory(documentId, options);
+  let pageCount = 1;
+  while (history.nextCursor) {
+    if (history.versions.length >= 5000 || pageCount >= 50) {
+      throw new Error("local_history_archive_version_limit");
+    }
+    const page = await listLocalVersionHistory(documentId, { ...options, cursor: history.nextCursor });
+    history = appendLocalVersionHistoryPage(history, page);
+    pageCount += 1;
+  }
+  if (!history.currentBranchId || !history.currentVersionId || history.versions.length < 1) {
+    throw new Error("local_history_archive_empty");
+  }
+  const archiveVersions = new Array(history.versions.length);
+  const assetsById = new Map();
+  let totalAssetBytes = 0;
+  let nextIndex = 0;
+  const worker = async () => {
+    while (nextIndex < history.versions.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      const metadata = history.versions[index];
+      const [snapshot, assets] = await Promise.all([
+        loadLocalVersionSnapshot({ documentId, versionId: metadata.id }, options),
+        loadLocalVersionAssets({ documentId, versionId: metadata.id }, options)
+      ]);
+      if (snapshot.snapshotHash !== metadata.snapshotHash) {
+        throw new Error("local_history_archive_snapshot_changed");
+      }
+      archiveVersions[index] = Object.freeze({
+        ...metadata,
+        schemaVersion: snapshot.schemaVersion,
+        snapshotEncoding: snapshot.snapshotEncoding,
+        snapshotJson: snapshot.snapshotJson
+      });
+      for (const asset of assets) {
+        const existing = assetsById.get(asset.id);
+        if (existing && (existing.mediaType !== asset.mediaType || !sameBytes(existing.bytes, asset.bytes))) {
+          throw new Error("local_history_archive_asset_conflict");
+        }
+        if (!existing) {
+          totalAssetBytes += asset.bytes.byteLength;
+          if (totalAssetBytes > 512 * 1024 * 1024) {
+            throw new Error("local_history_archive_size_limit");
+          }
+          assetsById.set(asset.id, asset);
+        }
+      }
+    }
+  };
+  await Promise.all(Array.from(
+    { length: Math.min(concurrency, history.versions.length) }, () => worker()
+  ));
+  const confirmation = await listLocalVersionHistory(documentId, options);
+  const originalBranches = history.branches.map(({ id, name, headVersionId }) => ({ id, name, headVersionId }))
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const confirmedBranches = confirmation.branches.map(({ id, name, headVersionId }) => ({ id, name, headVersionId }))
+    .sort((left, right) => left.id.localeCompare(right.id));
+  if (confirmation.currentBranchId !== history.currentBranchId
+    || confirmation.currentVersionId !== history.currentVersionId
+    || JSON.stringify(confirmedBranches) !== JSON.stringify(originalBranches)) {
+    throw new Error("local_history_archive_changed");
+  }
+  return Object.freeze({
+    documentId,
+    currentBranchId: history.currentBranchId,
+    currentVersionId: history.currentVersionId,
+    versions: Object.freeze(archiveVersions),
+    branches: history.branches,
+    assets: Object.freeze([...assetsById.values()])
+  });
 }
 
 export async function compareLocalDocumentVersions({ documentId, beforeVersionId, afterVersionId, locale }, options = {}) {
@@ -208,8 +339,7 @@ export async function restoreLocalDocumentVersion({
   if (!history || history.documentId !== documentId || !UUID.test(documentId)
     || !UUID.test(targetVersionId) || !UUID.test(authorId)
     || !UUID.test(history.currentVersionId) || !UUID.test(history.currentBranchId)
-    || !Number.isSafeInteger(localRevision) || localRevision < 0
-    || !history.versions.some(({ id }) => id === targetVersionId)) {
+    || !Number.isSafeInteger(localRevision) || localRevision < 0) {
     throw new Error("invalid_local_version_restore");
   }
   const branch = history.branches.find(({ id }) => id === history.currentBranchId);

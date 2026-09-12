@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { createEmptyDocument } from "@komyaku/document-schema";
+import { createCanonicalNode, createEmptyDocument } from "@komyaku/document-schema";
 import {
+  appendLocalVersionHistoryPage,
   compareLocalDocumentVersions,
   createLocalDocumentVersion,
   getOrCreateLocalVersionAuthorId,
+  loadLocalHistoryArchiveSource,
   listLocalVersionHistory,
   loadLocalVersionAssets,
   loadLocalVersionSnapshot,
@@ -63,22 +65,68 @@ describe("local Version persistence adapter", () => {
   test("lists bounded metadata and verifies an immutable snapshot on read", async () => {
     const document = createEmptyDocument();
     const versionId = crypto.randomUUID();
+    const parentVersionId = crypto.randomUUID();
     const authorId = crypto.randomUUID();
     const snapshotJson = JSON.stringify(document);
     const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(snapshotJson)));
     const snapshotHash = [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-    const history = await listLocalVersionHistory(document.id, { native: true, invokeImpl: async () => ({
-      documentId: document.id, currentBranchId: null, currentVersionId: null, branches: [],
-      versions: [{ id: versionId, snapshotHash, authorId, reason: "initial",
-        restoredFromVersionId: null, label: null, createdAt: "2026-09-08T00:00:00.000Z" }]
-    }) });
+    let historyRequest;
+    const history = await listLocalVersionHistory(document.id, { native: true, invokeImpl: async (name, payload) => {
+      historyRequest = { name, payload };
+      return {
+        documentId: document.id, currentBranchId: null, currentVersionId: null, branches: [],
+        versions: [{ id: versionId, snapshotHash, authorId, reason: "initial",
+          restoredFromVersionId: null, label: null, parentIds: [parentVersionId],
+          createdAt: "2026-09-08T00:00:00.000Z" }],
+        nextCursor: null
+      };
+    } });
+    expect(historyRequest).toEqual({ name: "list_local_version_history", payload: {
+      documentId: document.id, cursorCreatedAt: null, cursorVersionId: null
+    }});
     expect(history.versions[0].id).toBe(versionId);
+    expect(history.versions[0].parentIds).toEqual([parentVersionId]);
+    expect(Object.isFrozen(history.versions[0].parentIds)).toBe(true);
     const loaded = await loadLocalVersionSnapshot({ documentId: document.id, versionId }, {
       native: true, invokeImpl: async () => ({ documentId: document.id, versionId,
         schemaVersion: document.schemaVersion, snapshotEncoding: "canonical-json-v1",
         snapshotJson, snapshotHash })
     });
     expect(loaded.document).toEqual(document);
+  });
+
+  test("requests and appends an older page without duplicate Versions", async () => {
+    const documentId = crypto.randomUUID();
+    const currentVersionId = "00000000-0000-4000-8000-000000000030";
+    const olderVersionId = "00000000-0000-4000-8000-000000000020";
+    const oldestVersionId = "00000000-0000-4000-8000-000000000010";
+    const authorId = crypto.randomUUID();
+    const branchId = crypto.randomUUID();
+    const version = (id, createdAt) => ({ id, createdAt, authorId, snapshotHash: "a".repeat(64),
+      reason: "named", restoredFromVersionId: null, label: null });
+    const branch = { id: branchId, name: "Main", headVersionId: currentVersionId,
+      createdAt: "2026-09-12T00:00:00.000Z", updatedAt: "2026-09-12T00:02:00.000Z" };
+    const first = await listLocalVersionHistory(documentId, { native: true, invokeImpl: async () => ({
+      documentId, currentBranchId: branchId, currentVersionId, branches: [branch],
+      versions: [version(currentVersionId, "2026-09-12T00:02:00.000Z"),
+        version(olderVersionId, "2026-09-12T00:01:00.000Z")],
+      nextCursor: { createdAt: "2026-09-12T00:01:00.000Z", versionId: olderVersionId }
+    }) });
+    let request;
+    const page = await listLocalVersionHistory(documentId, { native: true, cursor: first.nextCursor,
+      invokeImpl: async (name, payload) => {
+        request = { name, payload };
+        return { documentId, currentBranchId: branchId, currentVersionId, branches: [branch],
+          versions: [version(oldestVersionId, "2026-09-12T00:00:00.000Z")], nextCursor: null };
+      } });
+    expect(request.payload).toEqual({ documentId,
+      cursorCreatedAt: "2026-09-12T00:01:00.000Z", cursorVersionId: olderVersionId });
+    const combined = appendLocalVersionHistoryPage(first, page);
+    expect(combined.versions.map(({ id }) => id)).toEqual([
+      currentVersionId, olderVersionId, oldestVersionId
+    ]);
+    expect(combined.nextCursor).toBeNull();
+    expect(() => appendLocalVersionHistoryPage(first, first)).toThrow(/invalid_local_version_history_page/);
   });
 
   test("creates initial, named, and alternative Version requests from the current head", async () => {
@@ -130,9 +178,8 @@ describe("local Version persistence adapter", () => {
     const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(snapshotJson)));
     const snapshotHash = [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("");
     const history = { documentId: document.id, currentBranchId: branchId,
-      currentVersionId, branches: [{ id: branchId, name: "本文" }], versions: [
-        { id: currentVersionId }, { id: targetVersionId }
-      ] };
+      currentVersionId, branches: [{ id: branchId, name: "本文" }],
+      versions: [{ id: currentVersionId }] };
     let saved;
     const invokeImpl = async (command, payload) => {
       if (command === "load_local_version_snapshot") return { documentId: document.id, versionId: targetVersionId,
@@ -165,6 +212,65 @@ describe("local Version persistence adapter", () => {
     expect(assets).toHaveLength(1);
     expect(assets[0]).toMatchObject({ id: assetId, mediaType: "text/plain" });
     expect(new TextDecoder().decode(assets[0].bytes)).toBe("historical source");
+  });
+
+  test("loads every history page, exact Snapshot, and historical-only Asset for a v2 export", async () => {
+    const base = createEmptyDocument();
+    const current = structuredClone(base);
+    const baseVersionId = crypto.randomUUID();
+    const currentVersionId = crypto.randomUUID();
+    const branchId = crypto.randomUUID();
+    const authorId = crypto.randomUUID();
+    const assetId = crypto.randomUUID();
+    base.content.push(createCanonicalNode("file", {
+      assetId, mediaType: "text/plain", fileName: "old.txt", title: "Old", description: null
+    }));
+    const snapshots = new Map();
+    for (const [versionId, document] of [[baseVersionId, base], [currentVersionId, current]]) {
+      const snapshotJson = JSON.stringify(document);
+      const bytes = new TextEncoder().encode(snapshotJson);
+      const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+      snapshots.set(versionId, { snapshotJson,
+        snapshotHash: [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("") });
+    }
+    const branch = { id: branchId, name: "本文", headVersionId: currentVersionId,
+      createdAt: "2026-09-12T00:00:00.000Z", updatedAt: "2026-09-12T00:01:00.000Z" };
+    const metadata = (id, parentIds, createdAt, reason) => ({ id, parentIds, createdAt, reason,
+      authorId, snapshotHash: snapshots.get(id).snapshotHash, restoredFromVersionId: null, label: null });
+    const olderCursor = { createdAt: "2026-09-12T00:01:00.000Z", versionId: currentVersionId };
+    const assetBytes = new TextEncoder().encode("historical only\n");
+    const assetDigest = new Uint8Array(await crypto.subtle.digest("SHA-256", assetBytes));
+    const contentHash = [...assetDigest].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    const requests = [];
+    const invokeImpl = async (command, payload) => {
+      requests.push({ command, payload });
+      if (command === "list_local_version_history") {
+        return payload.cursorVersionId ? {
+          documentId: base.id, currentBranchId: branchId, currentVersionId, branches: [branch],
+          versions: [metadata(baseVersionId, [], "2026-09-12T00:00:00.000Z", "initial")], nextCursor: null
+        } : {
+          documentId: base.id, currentBranchId: branchId, currentVersionId, branches: [branch],
+          versions: [metadata(currentVersionId, [baseVersionId], olderCursor.createdAt, "named")],
+          nextCursor: olderCursor
+        };
+      }
+      if (command === "load_local_version_snapshot") {
+        const stored = snapshots.get(payload.versionId);
+        return { documentId: base.id, versionId: payload.versionId, schemaVersion: 1,
+          snapshotEncoding: "canonical-json-v1", ...stored };
+      }
+      if (command === "load_local_version_assets" && payload.versionId === baseVersionId) {
+        return [{ id: assetId, mediaType: "text/plain", contentHash, bytes: [...assetBytes] }];
+      }
+      if (command === "load_local_version_assets") return [];
+      throw new Error("unexpected command");
+    };
+    const source = await loadLocalHistoryArchiveSource(base.id, { native: true, invokeImpl, concurrency: 2 });
+    expect(source.versions.map(({ id }) => id)).toEqual([currentVersionId, baseVersionId]);
+    expect(source.versions[1].snapshotJson).toBe(snapshots.get(baseVersionId).snapshotJson);
+    expect(source.assets).toHaveLength(1);
+    expect(source.assets[0].id).toBe(assetId);
+    expect(requests.filter(({ command }) => command === "list_local_version_history")).toHaveLength(3);
   });
 
   test("compares two independently verified Version snapshots", async () => {

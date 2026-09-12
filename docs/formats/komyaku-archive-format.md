@@ -4,6 +4,8 @@
 
 This is the normative specification for format version 1 of the open `.komyaku` Archive.
 
+Format version 1 carries one immutable Snapshot. Complete Version/parent/Branch history uses the separately versioned [History Archive Format 2](komyaku-history-archive-format-v2.md). A v1 reader must reject v2 rather than silently discarding its history.
+
 - Extension: `.komyaku`
 - Media type: `application/vnd.komyaku.archive+zip`
 - Container: ZIP, stored entries only for the v1 writer profile

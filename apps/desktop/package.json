@@ -11,6 +11,7 @@
     "test:preview:package": "tauri build --debug --bundles app --config src-tauri/tauri.preview-qa.conf.json",
     "test:history:package": "tauri build --debug --bundles app --config src-tauri/tauri.history-qa.conf.json",
     "test:editing:package": "tauri build --debug --bundles app --config src-tauri/tauri.editing-qa.conf.json",
+    "benchmark:startup:macos": "swift scripts/benchmark-packaged-startup.swift 'src-tauri/target/debug/bundle/macos/KOMYAKU Editing QA.app'",
     "tauri": "tauri"
   },
   "dependencies": {

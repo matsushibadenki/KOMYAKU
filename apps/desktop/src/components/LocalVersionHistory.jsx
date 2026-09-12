@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
+import { VersionLineageGraph } from "./VersionLineageGraph.jsx";
 
 export function LocalVersionHistory({ history, available, status, onCreateInitial, onSaveNamed,
-  onCreateAlternative, onRestore, onExport, exportStatus, onCompare, comparison,
+  onCreateAlternative, onRestore, onLoadOlder, onExport, exportStatus, onCompare, comparison,
   comparisonStatus, locale, labels }) {
   const [label, setLabel] = useState("");
   const [branchName, setBranchName] = useState("");
   const [compareFrom, setCompareFrom] = useState("");
   const [compareTo, setCompareTo] = useState("");
+  const [visibleVersionCount, setVisibleVersionCount] = useState(10);
   const currentBranch = history?.branches.find(({ id }) => id === history.currentBranchId) ?? null;
   const busy = status === "saving" || status === "loading";
 
@@ -15,6 +17,8 @@ export function LocalVersionHistory({ history, available, status, onCreateInitia
     setCompareFrom((current) => versions.some(({ id }) => id === current) ? current : versions[1]?.id ?? "");
     setCompareTo((current) => versions.some(({ id }) => id === current) ? current : versions[0]?.id ?? "");
   }, [history]);
+
+  useEffect(() => { setVisibleVersionCount(10); }, [history?.documentId]);
 
   const submitNamed = async (event) => {
     event.preventDefault();
@@ -25,6 +29,15 @@ export function LocalVersionHistory({ history, available, status, onCreateInitia
     if (await onCreateAlternative(branchName, label)) {
       setBranchName("");
       setLabel("");
+    }
+  };
+  const showOlderVersions = async () => {
+    if (visibleVersionCount < history.versions.length) {
+      setVisibleVersionCount((count) => count + 10);
+      return;
+    }
+    if (history.nextCursor && await onLoadOlder()) {
+      setVisibleVersionCount((count) => count + 10);
     }
   };
 
@@ -69,21 +82,16 @@ export function LocalVersionHistory({ history, available, status, onCreateInitia
               <button type="submit" disabled={busy}>{labels.createAlternative}</button>
             </form>
           </div>
-          <ol className="version-list">
-            {history.versions.slice(0, 10).map((version) => (
-              <li key={version.id} data-current={version.id === history.currentVersionId}>
-                <div><strong>{version.label || labels.reasons[version.reason] || version.reason}</strong>
-                  <span>{new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" })
-                    .format(new Date(version.createdAt))}</span></div>
-                <code>{version.snapshotHash.slice(0, 12)}</code>
-                {version.id !== history.currentVersionId ? (
-                  <button type="button" disabled={busy} onClick={() => onRestore(version.id)}>
-                    {labels.restore}
-                  </button>
-                ) : null}
-              </li>
-            ))}
-          </ol>
+          <VersionLineageGraph versions={history.versions.slice(0, visibleVersionCount)}
+            branches={history.branches} currentBranchId={history.currentBranchId}
+            currentVersionId={history.currentVersionId} busy={busy} locale={locale}
+            onRestore={onRestore} labels={labels} />
+          {visibleVersionCount < history.versions.length || history.nextCursor ? (
+            <button type="button" className="version-load-older" disabled={busy}
+              onClick={() => { void showOlderVersions(); }}>
+              {labels.loadOlder}
+            </button>
+          ) : null}
           <div className="version-compare">
             <div><h3>{labels.compareTitle}</h3><p>{labels.compareDescription}</p></div>
             <form onSubmit={(event) => { event.preventDefault(); void onCompare(compareFrom, compareTo); }}>
@@ -128,6 +136,10 @@ export function LocalVersionHistory({ history, available, status, onCreateInitia
           <div className="version-export">
             <div><h3>{labels.exportTitle}</h3><p>{labels.exportDescription}</p></div>
             <div className="library-actions">
+              <button type="button" disabled={exportStatus === "saving"}
+                onClick={() => onExport("komyaku-history")}>
+                {labels.exportHistory}
+              </button>
               <button type="button" disabled={exportStatus === "saving"} onClick={() => onExport("komyaku")}>
                 {labels.exportSnapshot}
               </button>

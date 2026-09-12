@@ -67,7 +67,7 @@ React/Vite/Tauri、ProseMirror/Yjs、Canonical Schema、SQLite、Bun/Hono、Post
 
 ### 持ち出しと同期の契約
 
-ローカルのv1単一文書exportを先に完成させ、その後に別majorのhistory Archiveを仕様化する。v1 readerで新形式を読めるとは主張せず、既存v1の読込を維持する。全Version/Snapshot、parents、Branch heads、到達可能な全Assetsを閉じた集合として検証し、空のアプリ環境へ戻せることを公開Alphaの条件にする。本文だけのTXT/Markdownは、書式やAssetsの損失を説明した派生exportとする。
+ローカルのv1単一文書exportに加え、2026-09-12に別majorのHistory Archive v2契約、reader/writer、Desktop全履歴exportを実装した。v1 readerで新形式を読めるとは主張せず、既存v1の読込を維持する。v2は全Versionの元Snapshot bytes、ordered parents、Branch heads、到達可能な全Assetsを閉じた集合として検証し、生成後にもreaderで再検証してからdownloadする。空のアプリ環境へ原子的に戻し、再起動後に全bytesと関係を比較する経路は引き続き公開Alphaの条件とする。本文だけのTXT/Markdownは、書式やAssetsの損失を説明した派生exportとする。
 
 同期はローカル中核の検証後。Version送信とhead更新は別契約にし、expected head不一致時に双方の案を残す。Cloudの文書Asset checkpoint APIを本文やVersionの同期と呼ばない。リアルタイム共同編集と確定版の作成権限も別に設計する。
 
@@ -81,7 +81,7 @@ React/Vite/Tauri、ProseMirror/Yjs、Canonical Schema、SQLite、Bun/Hono、Post
 | restore | この版から復元する | Restore from this version | 从此版本恢复 |
 | merge | 案を統合する | Merge alternatives | 合并方案 |
 
-最初の画面は文書一覧、単一エディター、履歴一覧と案の切替、変更比較で構成する。グラフは補助表示とし、巨大なDAGを理解しないと文章を書けない画面にしない。新規文書、保存状態、失敗からの再試行、undo/redo、キーボード操作を完了条件に含める。英語・日本語・简体中文、狭い画面、意味の自然な改行を確認する。
+最初の画面は文書一覧、単一エディター、履歴一覧と案の切替、変更比較で構成する。2026-09-12に、保存版の親関係を線、別案を色付きlane、現在位置と各Branch headをラベルで示す補助グラフを履歴一覧へ追加した。実際の行位置を測って翻訳文の折返しと追加読込へ追従し、SVGを読めなくても同じ操作ができるsemantic listを正本の導線にする。巨大なDAGを理解しないと文章を書けない画面にしない。新規文書、保存状態、失敗からの再試行、undo/redo、キーボード操作を完了条件に含める。英語・日本語・简体中文、狭い画面、意味の自然な改行を確認する。
 
 ## 検証と継続判断
 
@@ -91,7 +91,7 @@ N2後に対象者5名を目安に、アカウントなしで「新規作成→�
 
 その後2週間の試用で、履歴を実際に見返した回数、別案の作成と採用、復元による救済、継続利用の理由を本人同意の下で確認する。本文を収集しない。課金意向はCloud backup/共有レビューの具体的な場面で聞き、5名の結果を市場規模へ外挿しない。比較が理解できなければDiff/UIを優先し、案が使われなければ版の保存・復元へ絞る。反復利用が確認できるまで課金実装やメディア形式を増やさない。
 
-性能の最初の計測用fixtureは10万grapheme、1,000版、20案。commit/比較/起動のp50/p95、メモリ、archiveサイズを端末条件付きで記録する。受入予算は実装着手時に固定し、超過時は一覧のページングや遅延取得を先に検討する。現時点の達成性能を意味しない。
+性能の最初の計測用fixtureは10万grapheme、1,000版、20案。Version保存、履歴取得、再起動、メモリ、Archiveサイズを端末条件付きで記録する。2026-09-12にApple M4のdebug fixture向け予算を、Version保存p95 25 ms、履歴先頭100件p95 10 ms、再接続と先頭page 25 ms、全10 page取得100 ms、SQLite 128 MiB以下へ固定した。Packaged Editing QA appは別の5回計測で、可視window到達p95 3秒、3秒安定後のprocess-family RSS p95 512 MiB以下へ固定した。超過時は描画数、遅延取得、Snapshot保持方式の順に調べる。
 
 ## Cloudと周辺計画
 
