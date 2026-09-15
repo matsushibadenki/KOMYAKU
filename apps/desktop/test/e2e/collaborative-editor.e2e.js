@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { inspectConversationExport } from "../../src/services/conversation-import-preview.js";
-import { createKomyakuArchive } from "@komyaku/archive-core";
+import { createKomyakuArchive, createKomyakuHistoryArchive } from "@komyaku/archive-core";
 import { createEmptyDocument } from "@komyaku/document-schema";
 
 const DRAFT_KEY = "komyaku:local-draft:00000000-0000-4000-8000-000000000001";
@@ -222,6 +222,35 @@ test(`preserves typing during ${phase}`, async ({ page }) => {
   await expect(editor).toContainText("keep-edit-during-import");
 });
 }
+
+test("imports a verified History Archive v2 through the visible file control", async ({ page }) => {
+  const document = createEmptyDocument({ metadata: { title: "Restored lineage" } });
+  document.content[0].content = [{ type: "text", text: "Current branch text / 現在の本文 / 当前正文", marks: [] }];
+  const authorId = crypto.randomUUID();
+  const versionId = crypto.randomUUID();
+  const branchId = crypto.randomUUID();
+  const snapshotJson = `${JSON.stringify(document, null, 2)}\n`;
+  const bytes = await createKomyakuHistoryArchive({
+    documentId: document.id, currentBranchId: branchId, currentVersionId: versionId,
+    versions: [{ id: versionId, schemaVersion: 1, snapshotEncoding: "canonical-json-v1",
+      snapshotJson, parentIds: [], authorId, reason: "initial", restoredFromVersionId: null,
+      label: "Imported root", createdAt: "2026-09-15T00:00:00.000Z" }],
+    branches: [{ id: branchId, name: "Main", headVersionId: versionId,
+      createdAt: "2026-09-15T00:00:00.000Z", updatedAt: "2026-09-15T00:00:00.000Z" }],
+    assets: [], createdAt: "2026-09-15T00:01:00.000Z"
+  });
+  await page.goto("/");
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await expect(page.locator(".app-footer .persistence-status")).toHaveAttribute("data-state", "saved");
+  await page.locator('input[type="file"][accept^=".komyaku"]').setInputFiles({
+    name: "lineage.komyaku", mimeType: "application/vnd.komyaku.archive+zip", buffer: Buffer.from(bytes)
+  });
+  await expect(page.locator('.checkpoint-strip .persistence-status')).toHaveAttribute("data-state", "ready");
+  await expect(page.locator(".ProseMirror")).toContainText("Current branch text / 現在の本文 / 当前正文");
+  await expect.poll(() => page.evaluate((id) => localStorage.getItem(`komyaku:local-draft:${id}`), document.id))
+    .toContain("Current branch text / 現在の本文 / 当前正文");
+});
 
 for (const composing of [false, true]) {
   test(`cancels navigation when ${composing ? "composition starts" : "text changes"} during its checkpoint`, async ({ page }) => {

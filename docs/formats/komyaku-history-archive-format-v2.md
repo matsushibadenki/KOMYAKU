@@ -50,7 +50,7 @@ Hash verification establishes integrity, not authorship or a cryptographic signa
 
 The reader rejects the Archive unless all conditions hold:
 
-- Version IDs, Branch IDs, Branch names, and Asset IDs are unique in their respective namespaces;
+- Version IDs, Branch IDs, Branch names, Asset IDs, and Asset content digests are unique in their respective namespaces;
 - every ordered parent exists in the Archive, differs from its child, and appears at most once;
 - the Version graph is acyclic;
 - `initial` has zero parents, `merge` has two, and ordinary named/restore Versions have one;
@@ -65,7 +65,7 @@ This contract preserves ordered merge parents but does not define merge semantic
 
 ## Asset closure
 
-Asset paths are content addressed by SHA-256. Each Asset record binds one logical Asset UUID to media type, byte length, digest, and path. An Asset referenced only by an old Version remains required even when the current Version no longer references it.
+Asset paths are content addressed by SHA-256. Each Asset record binds one logical Asset UUID to media type, byte length, digest, and path. One archive cannot assign the same content digest to multiple logical Asset IDs because the native store preserves one stable identity per content-addressed blob. An Asset referenced only by an old Version remains required even when the current Version no longer references it.
 
 The reader verifies every Asset byte length, digest, and path before returning any materialization input.
 
@@ -94,7 +94,7 @@ Verification completes before database mutation. Materialization then occurs in 
 | Document | Reject an existing ID unless the same Archive digest is an idempotent replay |
 | Version | Reject any existing Version ID during a new import |
 | Branch | Reject any existing Branch ID or same-Document name during a new import |
-| Asset | Deduplicate only when ID, media type, byte size, and SHA-256 all match |
+| Asset | Reuse only when ID, media type, bytes, byte size, and SHA-256 all match; reject cross-ID digest collisions |
 
 History import does not remap Document, Version, Branch, Node, or Asset identities. A user-requested copy is a separate transformation that must mint a new closed graph and disclose that it is no longer the same history.
 

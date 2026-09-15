@@ -432,7 +432,8 @@ export function App() {
       void refreshLocalDocuments();
     } catch (error) {
       if (error instanceof LocalArchiveImportConflictError) {
-        setArchiveImportConflict({ bytes: new Uint8Array(await file.arrayBuffer()), documentId: error.documentId });
+        setArchiveImportConflict({ bytes: new Uint8Array(await file.arrayBuffer()),
+          documentId: error.documentId, formatVersion: error.formatVersion });
         setArchiveImportStatus("conflict");
       } else setArchiveImportStatus("error");
     }
@@ -1005,7 +1006,9 @@ export function App() {
           {archiveImportConflict ? (
             <div className="library-actions">
               <button type="button" onClick={() => resolveArchiveConflict("open")}>{t("archiveImport.openExisting")}</button>
-              <button type="button" onClick={() => resolveArchiveConflict("copy")}>{t("archiveImport.importCopy")}</button>
+              {archiveImportConflict.formatVersion === 1 ? (
+                <button type="button" onClick={() => resolveArchiveConflict("copy")}>{t("archiveImport.importCopy")}</button>
+              ) : null}
             </div>
           ) : null}
         </div>

@@ -218,14 +218,21 @@ function validateHistoryGraph(manifest) {
       || version.parentIds.some((parentId) => !versionIds.has(parentId) || parentId === version.id)) {
       throw new Error("history_invalid_parent");
     }
-    if (version.reason === "initial" && version.parentIds.length !== 0) {
+    if (version.reason === "initial"
+      && (version.parentIds.length !== 0 || version.restoredFromVersionId !== null)) {
       throw new Error("history_invalid_initial_version");
     }
-    if (version.reason === "merge" && version.parentIds.length !== 2) {
+    if (version.reason === "merge"
+      && (version.parentIds.length !== 2 || version.restoredFromVersionId !== null)) {
       throw new Error("history_invalid_merge_version");
     }
-    if (!["initial", "merge", "import"].includes(version.reason) && version.parentIds.length !== 1) {
+    if (["named", "import"].includes(version.reason)
+      && (version.parentIds.length !== 1 || version.restoredFromVersionId !== null)) {
       throw new Error("history_invalid_version_parent_count");
+    }
+    if (version.reason === "restore"
+      && (version.parentIds.length !== 1 || !version.restoredFromVersionId)) {
+      throw new Error("history_invalid_restore_reference");
     }
     if (version.restoredFromVersionId && !versionIds.has(version.restoredFromVersionId)) {
       throw new Error("history_invalid_restore_reference");
@@ -239,12 +246,15 @@ function validateHistoryGraph(manifest) {
     if (state.get(versionId) === "visiting") throw new Error("history_version_cycle");
     if (state.get(versionId) === "visited") return;
     state.set(versionId, "visiting");
-    versionsById.get(versionId).parentIds.forEach(visit);
+    const version = versionsById.get(versionId);
+    version.parentIds.forEach(visit);
+    if (version.restoredFromVersionId) visit(version.restoredFromVersionId);
     state.set(versionId, "visited");
   };
   versionIds.forEach(visit);
   for (const branch of manifest.branches) {
     if (!versionIds.has(branch.headVersionId)) throw new Error("history_invalid_branch_head");
+    if (branch.name !== branch.name.trim()) throw new Error("history_invalid_branch_name");
     if (branchNames.has(branch.name)) throw new Error("history_duplicate_branch_name");
     branchNames.add(branch.name);
   }
@@ -326,6 +336,7 @@ export async function createKomyakuHistoryArchive({
   }
   normalizedVersions.sort((left, right) => left.id.localeCompare(right.id));
   const seenAssets = new Set();
+  const seenAssetHashes = new Set();
   const normalizedAssets = [];
   for (const asset of assets) {
     if (seenAssets.has(asset?.id) || !(asset?.bytes instanceof Uint8Array)
@@ -336,6 +347,8 @@ export async function createKomyakuHistoryArchive({
     payloadByteSize += asset.bytes.byteLength;
     if (payloadByteSize > 512 * 1024 * 1024) throw new Error("history_archive_size_limit");
     const sha256 = await digest(asset.bytes);
+    if (seenAssetHashes.has(sha256)) throw new Error("history_duplicate_asset_content");
+    seenAssetHashes.add(sha256);
     normalizedAssets.push({
       id: asset.id,
       mediaType: asset.mediaType,
@@ -362,17 +375,11 @@ export async function createKomyakuHistoryArchive({
     extensions: {}
   });
   validateHistoryGraph(manifest);
-  const emittedAssetPaths = new Set();
-  const assetEntries = normalizedAssets.filter(({ path }) => {
-    if (emittedAssetPaths.has(path)) return false;
-    emittedAssetPaths.add(path);
-    return true;
-  });
   const archive = zipStore([
     { path: "mimetype", bytes: encoder.encode(KOMYAKU_ARCHIVE_MEDIA_TYPE) },
     { path: "manifest.json", bytes: encoder.encode(JSON.stringify(manifest)) },
     ...normalizedVersions.map(({ path, snapshotBytes }) => ({ path, bytes: snapshotBytes })),
-    ...assetEntries.map(({ path, bytes: content }) => ({ path, bytes: content }))
+    ...normalizedAssets.map(({ path, bytes: content }) => ({ path, bytes: content }))
   ]);
   if (archive.byteLength > 512 * 1024 * 1024) throw new Error("history_archive_size_limit");
   return archive;
@@ -399,6 +406,10 @@ export async function verifyKomyakuHistoryArchive(bytes, limits = {}) {
     ...manifest.versions.map(({ path }) => path), ...manifest.assets.map(({ path }) => path)]);
   exactEntrySet(entries, expectedPaths);
   const manifestAssetIds = new Set(uniqueIds(manifest.assets, "history_duplicate_asset"));
+  const manifestAssetHashes = new Set(manifest.assets.map(({ sha256 }) => sha256));
+  if (manifestAssetHashes.size !== manifest.assets.length) {
+    throw new Error("history_duplicate_asset_content");
+  }
   const requiredAssetIds = new Set();
   const verifiedVersions = [];
   for (const version of manifest.versions) {

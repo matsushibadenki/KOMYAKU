@@ -46,6 +46,43 @@ struct LocalArchiveImportResult {
     replayed: bool,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalHistoryArchiveBranchInput {
+    id: String,
+    name: String,
+    head_version_id: String,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalHistoryArchiveImportInput {
+    archive_digest: String,
+    imported_at: String,
+    document: LocalDraftInput,
+    current_branch_id: String,
+    current_version_id: String,
+    versions: Vec<LocalVersionInput>,
+    branches: Vec<LocalHistoryArchiveBranchInput>,
+    assets: Vec<LocalArchiveAssetInput>,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct LocalHistoryArchiveImportResult {
+    archive_digest: String,
+    document_id: String,
+    current_branch_id: String,
+    current_version_id: String,
+    content_json: String,
+    version_count: usize,
+    branch_count: usize,
+    asset_count: usize,
+    replayed: bool,
+}
+
 #[derive(Debug, Serialize, sqlx::FromRow, PartialEq)]
 #[serde(rename_all = "camelCase")]
 struct LocalDocumentSummary {
@@ -1352,14 +1389,368 @@ async fn import_local_komyaku_archive_atomic(
     import_local_archive_transaction(&pool, &input).await.map_err(str::to_string)
 }
 
+fn validate_local_history_archive_input(
+    input: &LocalHistoryArchiveImportInput,
+) -> Result<(Vec<usize>, Vec<BTreeSet<String>>, Vec<(String, Option<i64>, Option<i64>)>), &'static str> {
+    if input.archive_digest.len() != 64
+        || input.archive_digest.bytes().any(|value| !value.is_ascii_hexdigit() || value.is_ascii_uppercase())
+        || input.imported_at.is_empty() || input.imported_at.len() > 64
+        || input.document.local_revision != 1
+        || input.versions.is_empty() || input.versions.len() > 5000
+        || input.branches.is_empty() || input.branches.len() > 200
+        || input.assets.len() > 5000
+        || !valid_lower_uuid(&input.current_branch_id)
+        || !valid_lower_uuid(&input.current_version_id)
+    {
+        return Err("invalid_local_history_archive_import");
+    }
+    validate_local_draft_input(&input.document)
+        .map_err(|_| "invalid_local_history_archive_import")?;
+
+    let version_ids: BTreeSet<&str> = input.versions.iter().map(|version| version.id.as_str()).collect();
+    let branch_ids: BTreeSet<&str> = input.branches.iter().map(|branch| branch.id.as_str()).collect();
+    let branch_names: BTreeSet<&str> = input.branches.iter().map(|branch| branch.name.as_str()).collect();
+    let asset_ids: BTreeSet<&str> = input.assets.iter().map(|asset| asset.asset_id.as_str()).collect();
+    let asset_hashes: BTreeSet<&str> = input.assets.iter().map(|asset| asset.content_hash.as_str()).collect();
+    if version_ids.len() != input.versions.len() || branch_ids.len() != input.branches.len()
+        || branch_names.len() != input.branches.len() || asset_ids.len() != input.assets.len()
+        || asset_hashes.len() != input.assets.len()
+    {
+        return Err("local_history_archive_identity_conflict");
+    }
+    let total_asset_bytes = input.assets.iter().try_fold(0usize, |total, asset| {
+        total.checked_add(asset.bytes.len()).ok_or("invalid_local_history_archive_import")
+    })?;
+    let total_payload_bytes = input.versions.iter().try_fold(total_asset_bytes, |total, version| {
+        total.checked_add(version.snapshot_json.len()).ok_or("invalid_local_history_archive_import")
+    })?;
+    if total_payload_bytes > 50 * 1024 * 1024 {
+        return Err("invalid_local_history_archive_import");
+    }
+    let inspections = input.assets.iter()
+        .map(|asset| inspect_local_archive_asset(asset, &input.imported_at))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut all_snapshot_assets = BTreeSet::new();
+    let mut snapshot_assets = Vec::with_capacity(input.versions.len());
+    for version in &input.versions {
+        let assets = collect_local_asset_ids(&version.snapshot_json)
+            .map_err(|_| "invalid_local_history_archive_import")?;
+        if !valid_lower_uuid(&version.id) || !valid_lower_uuid(&version.document_id)
+            || version.document_id != input.document.document_id
+            || !valid_lower_uuid(&version.author_id)
+            || version.snapshot_encoding != "canonical-json-v1"
+            || version.snapshot_json.len() > MAX_LOCAL_DRAFT_BYTES
+            || version.snapshot_hash.len() != 64
+            || version.snapshot_hash.bytes().any(|byte| !byte.is_ascii_hexdigit() || byte.is_ascii_uppercase())
+            || version.parent_ids.len() > 2
+            || version.parent_ids.iter().any(|id| !valid_lower_uuid(id) || id == &version.id)
+            || version.parent_ids.iter().collect::<BTreeSet<_>>().len() != version.parent_ids.len()
+            || version.label.as_ref().is_some_and(|label| label.len() > 1000)
+            || version.created_at.is_empty() || version.created_at.len() > 64
+            || assets.iter().any(|asset_id| !asset_ids.contains(asset_id.as_str()))
+        {
+            return Err("invalid_local_history_archive_import");
+        }
+        let reason_valid = match version.reason.as_str() {
+            "initial" => version.parent_ids.is_empty() && version.restored_from_version_id.is_none(),
+            "merge" => version.parent_ids.len() == 2 && version.restored_from_version_id.is_none(),
+            "restore" => version.parent_ids.len() == 1
+                && version.restored_from_version_id.as_deref().is_some_and(valid_lower_uuid),
+            "named" | "import" => version.parent_ids.len() == 1
+                && version.restored_from_version_id.is_none(),
+            _ => false,
+        };
+        if !reason_valid
+            || version.parent_ids.iter().any(|id| !version_ids.contains(id.as_str()))
+            || version.restored_from_version_id.as_ref()
+                .is_some_and(|id| id == &version.id || !version_ids.contains(id.as_str()))
+        {
+            return Err("invalid_local_history_archive_graph");
+        }
+        let snapshot: serde_json::Value = serde_json::from_str(&version.snapshot_json)
+            .map_err(|_| "invalid_local_history_archive_import")?;
+        if snapshot.get("id").and_then(serde_json::Value::as_str) != Some(version.document_id.as_str())
+            || snapshot.get("schemaVersion").and_then(serde_json::Value::as_i64) != Some(version.schema_version)
+        {
+            return Err("invalid_local_history_archive_import");
+        }
+        let actual_hash: String = Sha256::digest(version.snapshot_json.as_bytes()).iter()
+            .map(|byte| format!("{byte:02x}")).collect();
+        if actual_hash != version.snapshot_hash {
+            return Err("local_history_archive_snapshot_hash_mismatch");
+        }
+        all_snapshot_assets.extend(assets.iter().cloned());
+        snapshot_assets.push(assets);
+    }
+    if all_snapshot_assets.iter().map(String::as_str).collect::<BTreeSet<_>>() != asset_ids {
+        return Err("local_history_archive_asset_set_mismatch");
+    }
+
+    for branch in &input.branches {
+        if !valid_lower_uuid(&branch.id) || !version_ids.contains(branch.head_version_id.as_str())
+            || branch.name.trim().is_empty() || branch.name != branch.name.trim() || branch.name.len() > 200
+            || branch.created_at.is_empty() || branch.created_at.len() > 64
+            || branch.updated_at.is_empty() || branch.updated_at.len() > 64
+        {
+            return Err("invalid_local_history_archive_graph");
+        }
+    }
+    let current_branch = input.branches.iter().find(|branch| branch.id == input.current_branch_id)
+        .ok_or("invalid_local_history_archive_graph")?;
+    if current_branch.head_version_id != input.current_version_id {
+        return Err("invalid_local_history_archive_graph");
+    }
+    let current_version = input.versions.iter().find(|version| version.id == input.current_version_id)
+        .ok_or("invalid_local_history_archive_graph")?;
+    if current_version.snapshot_json != input.document.content_json
+        || current_version.schema_version != input.document.schema_version
+    {
+        return Err("local_history_archive_current_snapshot_mismatch");
+    }
+
+    let by_id: BTreeMap<&str, usize> = input.versions.iter().enumerate()
+        .map(|(index, version)| (version.id.as_str(), index)).collect();
+    let mut reachable = BTreeSet::new();
+    let mut pending: Vec<&str> = input.branches.iter().map(|branch| branch.head_version_id.as_str()).collect();
+    while let Some(id) = pending.pop() {
+        if !reachable.insert(id) { continue; }
+        let version = &input.versions[*by_id.get(id).ok_or("invalid_local_history_archive_graph")?];
+        pending.extend(version.parent_ids.iter().map(String::as_str));
+    }
+    if reachable.len() != input.versions.len() {
+        return Err("local_history_archive_unreachable_version");
+    }
+
+    let mut order = Vec::with_capacity(input.versions.len());
+    let mut inserted = BTreeSet::new();
+    while order.len() < input.versions.len() {
+        let before = order.len();
+        for (index, version) in input.versions.iter().enumerate() {
+            if inserted.contains(version.id.as_str()) { continue; }
+            let dependencies_ready = version.parent_ids.iter().all(|id| inserted.contains(id.as_str()))
+                && version.restored_from_version_id.as_ref()
+                    .is_none_or(|id| inserted.contains(id.as_str()));
+            if dependencies_ready {
+                inserted.insert(version.id.as_str());
+                order.push(index);
+            }
+        }
+        if order.len() == before { return Err("local_history_archive_cycle"); }
+    }
+    Ok((order, snapshot_assets, inspections))
+}
+
+async fn import_local_history_archive_transaction(
+    pool: &Pool<Sqlite>, input: &LocalHistoryArchiveImportInput,
+) -> Result<LocalHistoryArchiveImportResult, &'static str> {
+    let (version_order, snapshot_assets, inspections) = validate_local_history_archive_input(input)?;
+    let mut transaction = pool.begin().await.map_err(|_| "local_history_archive_storage_failure")?;
+    let replay: Option<(String, String, String, String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT receipt.document_id, receipt.current_branch_id, receipt.current_version_id,
+                draft.content_json, receipt.version_count, receipt.branch_count, receipt.asset_count
+         FROM local_history_archive_imports receipt
+         JOIN local_drafts draft ON draft.document_id = receipt.document_id
+         WHERE receipt.archive_digest = ? AND receipt.document_id = ? LIMIT 1")
+        .bind(&input.archive_digest).bind(&input.document.document_id)
+        .fetch_optional(&mut *transaction).await
+        .map_err(|_| "local_history_archive_storage_failure")?;
+    if let Some((document_id, current_branch_id, current_version_id, content_json,
+        version_count, branch_count, asset_count)) = replay {
+        if current_branch_id != input.current_branch_id || current_version_id != input.current_version_id
+            || version_count != input.versions.len() as i64 || branch_count != input.branches.len() as i64
+            || asset_count != input.assets.len() as i64 || content_json != input.document.content_json
+        {
+            return Err("local_history_archive_replay_conflict");
+        }
+        return Ok(LocalHistoryArchiveImportResult {
+            archive_digest: input.archive_digest.clone(), document_id, current_branch_id,
+            current_version_id, content_json, version_count: input.versions.len(),
+            branch_count: input.branches.len(), asset_count: input.assets.len(), replayed: true,
+        });
+    }
+    let document_conflict: Option<String> = sqlx::query_scalar(
+        "SELECT id FROM local_documents WHERE id = ? LIMIT 1")
+        .bind(&input.document.document_id).fetch_optional(&mut *transaction).await
+        .map_err(|_| "local_history_archive_storage_failure")?;
+    if document_conflict.is_some() { return Err("local_archive_document_identity_conflict"); }
+
+    for (asset, (policy, width, height)) in input.assets.iter().zip(inspections.iter()) {
+        let by_id: Option<(String, String, Vec<u8>)> = sqlx::query_as(
+            "SELECT content_hash, media_type, bytes FROM local_archive_assets WHERE asset_id = ? LIMIT 1")
+            .bind(&asset.asset_id).fetch_optional(&mut *transaction).await
+            .map_err(|_| "local_history_archive_storage_failure")?;
+        if let Some((content_hash, media_type, bytes)) = by_id {
+            if content_hash != asset.content_hash || media_type != asset.media_type || bytes != asset.bytes {
+                return Err("local_history_archive_asset_identity_conflict");
+            }
+            sqlx::query(
+                "UPDATE local_archive_assets SET lifecycle_status = 'active', updated_at = ? WHERE asset_id = ?")
+                .bind(&input.imported_at).bind(&asset.asset_id)
+                .execute(&mut *transaction).await
+                .map_err(|_| "local_history_archive_storage_failure")?;
+        } else {
+            let by_hash: Option<String> = sqlx::query_scalar(
+                "SELECT asset_id FROM local_archive_assets WHERE content_hash = ? LIMIT 1")
+                .bind(&asset.content_hash).fetch_optional(&mut *transaction).await
+                .map_err(|_| "local_history_archive_storage_failure")?;
+            if by_hash.is_some() { return Err("local_history_archive_asset_identity_conflict"); }
+            sqlx::query(
+                "INSERT INTO local_archive_assets
+                 (asset_id, bytes, byte_size, content_hash, media_type, inspection_policy_version,
+                  inspected_width, inspected_height, lifecycle_status, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)")
+                .bind(&asset.asset_id).bind(&asset.bytes).bind(asset.bytes.len() as i64)
+                .bind(&asset.content_hash).bind(&asset.media_type).bind(policy)
+                .bind(width).bind(height).bind(&input.imported_at).bind(&input.imported_at)
+                .execute(&mut *transaction).await
+                .map_err(|_| "local_history_archive_asset_identity_conflict")?;
+        }
+        if asset.media_type == "image/png" {
+            let preview: Option<(String, String, Vec<u8>)> = sqlx::query_as(
+                "SELECT content_hash, detected_media_type, bytes
+                 FROM local_asset_previews WHERE asset_id = ? LIMIT 1")
+                .bind(&asset.asset_id).fetch_optional(&mut *transaction).await
+                .map_err(|_| "local_history_archive_storage_failure")?;
+            if let Some((content_hash, media_type, bytes)) = preview {
+                if content_hash != asset.content_hash || media_type != asset.media_type || bytes != asset.bytes {
+                    return Err("local_history_archive_asset_identity_conflict");
+                }
+                sqlx::query(
+                    "UPDATE local_asset_previews SET lifecycle_status = 'active', last_referenced_at = ?,
+                            quarantined_at = NULL, updated_at = ? WHERE asset_id = ?")
+                    .bind(&input.imported_at).bind(&input.imported_at).bind(&asset.asset_id)
+                    .execute(&mut *transaction).await
+                    .map_err(|_| "local_history_archive_storage_failure")?;
+            } else {
+                sqlx::query(
+                    "INSERT INTO local_asset_previews
+                     (asset_id, bytes, byte_size, content_hash, detected_media_type, inspection_status,
+                      inspection_policy_version, inspected_width, inspected_height, updated_at, lifecycle_status)
+                     VALUES (?, ?, ?, ?, 'image/png', 'accepted', 'decoder-backed-png-v1', ?, ?, ?, 'active')")
+                    .bind(&asset.asset_id).bind(&asset.bytes).bind(asset.bytes.len() as i64)
+                    .bind(&asset.content_hash).bind(width).bind(height).bind(&input.imported_at)
+                    .execute(&mut *transaction).await
+                    .map_err(|_| "local_history_archive_asset_identity_conflict")?;
+            }
+        }
+    }
+
+    sqlx::query(
+        "INSERT INTO local_documents
+         (id, title, default_language, default_direction, default_writing_mode, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)")
+        .bind(&input.document.document_id).bind(&input.document.title).bind(&input.document.language)
+        .bind(&input.document.direction).bind(&input.document.writing_mode)
+        .bind(&input.imported_at).bind(&input.document.updated_at)
+        .execute(&mut *transaction).await.map_err(|_| "local_history_archive_storage_failure")?;
+    sqlx::query(
+        "INSERT INTO local_drafts
+         (document_id, schema_version, content_json, local_revision, is_composing, updated_at)
+         VALUES (?, ?, ?, 1, 0, ?)")
+        .bind(&input.document.document_id).bind(input.document.schema_version)
+        .bind(&input.document.content_json).bind(&input.document.updated_at)
+        .execute(&mut *transaction).await.map_err(|_| "local_history_archive_storage_failure")?;
+    for asset in &input.assets {
+        sqlx::query(
+            "INSERT INTO local_archive_asset_references (document_id, asset_id, updated_at) VALUES (?, ?, ?)")
+            .bind(&input.document.document_id).bind(&asset.asset_id).bind(&input.imported_at)
+            .execute(&mut *transaction).await.map_err(|_| "local_history_archive_storage_failure")?;
+    }
+    let current_assets = &snapshot_assets[*version_order.iter()
+        .find(|index| input.versions[**index].id == input.current_version_id)
+        .ok_or("invalid_local_history_archive_graph")?];
+    for asset_id in current_assets {
+        sqlx::query(
+            "INSERT INTO local_document_asset_references (document_id, asset_id, updated_at)
+             SELECT ?, asset_id, ? FROM local_asset_previews WHERE asset_id = ?")
+            .bind(&input.document.document_id).bind(&input.document.updated_at).bind(asset_id)
+            .execute(&mut *transaction).await.map_err(|_| "local_history_archive_storage_failure")?;
+    }
+
+    for index in version_order {
+        let version = &input.versions[index];
+        sqlx::query(
+            "INSERT INTO local_document_versions
+             (id, document_id, schema_version, snapshot_encoding, snapshot_json, snapshot_hash,
+              author_id, reason, restored_from_version_id, label, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+            .bind(&version.id).bind(&version.document_id).bind(version.schema_version)
+            .bind(&version.snapshot_encoding).bind(&version.snapshot_json).bind(&version.snapshot_hash)
+            .bind(&version.author_id).bind(&version.reason).bind(&version.restored_from_version_id)
+            .bind(&version.label).bind(&version.created_at)
+            .execute(&mut *transaction).await.map_err(|_| "local_history_archive_storage_failure")?;
+        for asset_id in &snapshot_assets[index] {
+            sqlx::query("INSERT INTO local_version_asset_references (version_id, asset_id) VALUES (?, ?)")
+                .bind(&version.id).bind(asset_id).execute(&mut *transaction).await
+                .map_err(|_| "local_history_archive_storage_failure")?;
+        }
+    }
+    for version in &input.versions {
+        for (position, parent_id) in version.parent_ids.iter().enumerate() {
+            sqlx::query(
+                "INSERT INTO local_document_version_parents (version_id, parent_version_id, parent_order)
+                 VALUES (?, ?, ?)")
+                .bind(&version.id).bind(parent_id).bind(position as i64)
+                .execute(&mut *transaction).await.map_err(|_| "local_history_archive_storage_failure")?;
+        }
+    }
+    for branch in &input.branches {
+        sqlx::query(
+            "INSERT INTO local_document_branches
+             (id, document_id, name, head_version_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)")
+            .bind(&branch.id).bind(&input.document.document_id).bind(&branch.name)
+            .bind(&branch.head_version_id).bind(&branch.created_at).bind(&branch.updated_at)
+            .execute(&mut *transaction).await.map_err(|_| "local_history_archive_storage_failure")?;
+    }
+    sqlx::query(
+        "UPDATE local_documents SET current_branch_id = ?, current_version_id = ?, updated_at = ? WHERE id = ?")
+        .bind(&input.current_branch_id).bind(&input.current_version_id)
+        .bind(&input.document.updated_at).bind(&input.document.document_id)
+        .execute(&mut *transaction).await.map_err(|_| "local_history_archive_storage_failure")?;
+    sqlx::query(
+        "INSERT INTO local_history_archive_imports
+         (archive_digest, document_id, current_branch_id, current_version_id,
+          version_count, branch_count, asset_count, imported_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(&input.archive_digest).bind(&input.document.document_id)
+        .bind(&input.current_branch_id).bind(&input.current_version_id)
+        .bind(input.versions.len() as i64).bind(input.branches.len() as i64)
+        .bind(input.assets.len() as i64).bind(&input.imported_at)
+        .execute(&mut *transaction).await.map_err(|_| "local_history_archive_storage_failure")?;
+    transaction.commit().await.map_err(|_| "local_history_archive_storage_failure")?;
+    Ok(LocalHistoryArchiveImportResult {
+        archive_digest: input.archive_digest.clone(), document_id: input.document.document_id.clone(),
+        current_branch_id: input.current_branch_id.clone(), current_version_id: input.current_version_id.clone(),
+        content_json: input.document.content_json.clone(), version_count: input.versions.len(),
+        branch_count: input.branches.len(), asset_count: input.assets.len(), replayed: false,
+    })
+}
+
+#[tauri::command]
+async fn import_local_history_archive_atomic(
+    db_instances: State<'_, DbInstances>, input: LocalHistoryArchiveImportInput,
+) -> Result<LocalHistoryArchiveImportResult, String> {
+    let pool = {
+        let instances = db_instances.0.read().await;
+        match instances.get(LOCAL_DATABASE_URL) {
+            Some(DbPool::Sqlite(pool)) => pool.clone(),
+            _ => return Err("tauri_database_unavailable".to_string()),
+        }
+    };
+    import_local_history_archive_transaction(&pool, &input).await.map_err(str::to_string)
+}
+
 async fn list_local_documents_transaction(
     pool: &Pool<Sqlite>,
 ) -> Result<Vec<LocalDocumentSummary>, &'static str> {
     sqlx::query_as(
         "SELECT document.id AS document_id, document.title, document.default_language,
-                draft.local_revision, document.updated_at, document.archived_at, imported.archive_digest
+                draft.local_revision, document.updated_at, document.archived_at,
+                COALESCE(imported.archive_digest, history_imported.archive_digest) AS archive_digest
          FROM local_documents document JOIN local_drafts draft ON draft.document_id = document.id
          LEFT JOIN local_archive_imports imported ON imported.document_id = document.id
+         LEFT JOIN local_history_archive_imports history_imported ON history_imported.document_id = document.id
          ORDER BY document.archived_at IS NOT NULL, document.updated_at DESC, document.id
          LIMIT 200")
         .fetch_all(pool).await.map_err(|_| "local_document_library_unavailable")
@@ -1401,9 +1792,11 @@ async fn mutate_local_document_transaction(
     }
     let summary = sqlx::query_as(
         "SELECT document.id AS document_id, document.title, document.default_language,
-                draft.local_revision, document.updated_at, document.archived_at, imported.archive_digest
+                draft.local_revision, document.updated_at, document.archived_at,
+                COALESCE(imported.archive_digest, history_imported.archive_digest) AS archive_digest
          FROM local_documents document JOIN local_drafts draft ON draft.document_id = document.id
          LEFT JOIN local_archive_imports imported ON imported.document_id = document.id
+         LEFT JOIN local_history_archive_imports history_imported ON history_imported.document_id = document.id
          WHERE document.id = ? LIMIT 1")
         .bind(&input.document_id).fetch_optional(&mut *transaction).await
         .map_err(|_| "local_document_library_failure")?.ok_or("local_document_not_found")?;
@@ -1999,6 +2392,12 @@ pub fn run() {
             sql: include_str!("../migrations/0008_local_version_history_paging.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 9,
+            description: "create_local_history_archive_imports",
+            sql: include_str!("../migrations/0009_local_history_archive_imports.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -2007,6 +2406,7 @@ pub fn run() {
             store_local_png_preview_atomic,
             list_quarantined_local_assets,
             import_local_komyaku_archive_atomic,
+            import_local_history_archive_atomic,
             list_local_documents,
             mutate_local_document_atomic,
             save_local_version_atomic,
@@ -2205,6 +2605,8 @@ mod tests {
             .execute(pool).await.expect("apply local Document Version schema");
         sqlx::raw_sql(include_str!("../migrations/0008_local_version_history_paging.sql"))
             .execute(pool).await.expect("apply local Version paging schema");
+        sqlx::raw_sql(include_str!("../migrations/0009_local_history_archive_imports.sql"))
+            .execute(pool).await.expect("apply local History Archive import schema");
     }
 
     fn local_version_input(
@@ -2270,6 +2672,178 @@ mod tests {
                 asset_id: asset_id.into(), media_type: "text/markdown".into(), content_hash, bytes
             }]
         }
+    }
+
+    fn local_history_archive_input() -> LocalHistoryArchiveImportInput {
+        let document_id = "00000000-0000-4000-8000-000000000300";
+        let author_id = "00000000-0000-4000-8000-000000000301";
+        let initial_id = "00000000-0000-4000-8000-000000000302";
+        let current_id = "00000000-0000-4000-8000-000000000303";
+        let alternative_id = "00000000-0000-4000-8000-000000000304";
+        let main_branch_id = "00000000-0000-4000-8000-000000000305";
+        let alternative_branch_id = "00000000-0000-4000-8000-000000000306";
+        let asset_id = "00000000-0000-4000-8000-000000000307";
+        let asset_bytes = b"# Historical only\n".to_vec();
+        let content_hash: String = Sha256::digest(&asset_bytes).iter()
+            .map(|byte| format!("{byte:02x}")).collect();
+        let document = |title: &str, with_asset: bool| serde_json::json!({
+            "id": document_id,
+            "schemaVersion": 1,
+            "attrs": { "language": "ja", "direction": "auto", "writingMode": "horizontal-tb" },
+            "metadata": { "title": title },
+            "content": if with_asset { serde_json::json!([{
+                "id": "00000000-0000-4000-8000-000000000308", "schemaVersion": 1,
+                "metadata": {}, "extensions": {}, "renderArtifacts": [], "type": "file",
+                "assetId": asset_id, "mediaType": "text/markdown", "fileName": "history.md",
+                "title": null, "description": null
+            }]) } else { serde_json::json!([]) }
+        }).to_string();
+        let initial_snapshot = document("Initial", true);
+        let current_snapshot = document("Current", false);
+        let alternative_snapshot = document("Alternative", true);
+        let version = |id: &str, snapshot_json: String, parent_ids: Vec<String>, reason: &str,
+                       created_at: &str| LocalVersionInput {
+            id: id.into(), document_id: document_id.into(), schema_version: 1,
+            snapshot_encoding: "canonical-json-v1".into(),
+            snapshot_hash: Sha256::digest(snapshot_json.as_bytes()).iter()
+                .map(|byte| format!("{byte:02x}")).collect(),
+            snapshot_json, parent_ids, author_id: author_id.into(), reason: reason.into(),
+            restored_from_version_id: None, label: Some(reason.into()), created_at: created_at.into(),
+        };
+        LocalHistoryArchiveImportInput {
+            archive_digest: "c".repeat(64), imported_at: "2026-09-15T00:03:00.000Z".into(),
+            document: LocalDraftInput {
+                document_id: document_id.into(), schema_version: 1,
+                content_json: current_snapshot.clone(), local_revision: 1,
+                updated_at: "2026-09-15T00:01:00.000Z".into(), title: "Current".into(),
+                language: "ja".into(), direction: "auto".into(), writing_mode: "horizontal-tb".into(),
+            },
+            current_branch_id: main_branch_id.into(), current_version_id: current_id.into(),
+            versions: vec![
+                version(current_id, current_snapshot, vec![initial_id.into()], "named", "2026-09-15T00:01:00.000Z"),
+                version(initial_id, initial_snapshot, vec![], "initial", "2026-09-15T00:00:00.000Z"),
+                version(alternative_id, alternative_snapshot, vec![initial_id.into()], "named", "2026-09-15T00:02:00.000Z"),
+            ],
+            branches: vec![
+                LocalHistoryArchiveBranchInput { id: main_branch_id.into(), name: "本文".into(),
+                    head_version_id: current_id.into(), created_at: "2026-09-15T00:00:00.000Z".into(),
+                    updated_at: "2026-09-15T00:01:00.000Z".into() },
+                LocalHistoryArchiveBranchInput { id: alternative_branch_id.into(), name: "別案".into(),
+                    head_version_id: alternative_id.into(), created_at: "2026-09-15T00:02:00.000Z".into(),
+                    updated_at: "2026-09-15T00:02:00.000Z".into() },
+            ],
+            assets: vec![LocalArchiveAssetInput { asset_id: asset_id.into(),
+                media_type: "text/markdown".into(), content_hash, bytes: asset_bytes }],
+        }
+    }
+
+    #[tokio::test]
+    async fn atomically_materializes_complete_history_archive_and_replays_it() {
+        let pool = pool().await;
+        let input = local_history_archive_input();
+        let result = import_local_history_archive_transaction(&pool, &input).await
+            .expect("materialize complete History Archive");
+        assert!(!result.replayed);
+        assert_eq!((result.version_count, result.branch_count, result.asset_count), (3, 2, 1));
+        let state: (i64, i64, i64, i64, i64, String, String) = sqlx::query_as(
+            "SELECT (SELECT COUNT(*) FROM local_document_versions),
+                    (SELECT COUNT(*) FROM local_document_version_parents),
+                    (SELECT COUNT(*) FROM local_document_branches),
+                    (SELECT COUNT(*) FROM local_version_asset_references),
+                    (SELECT COUNT(*) FROM local_history_archive_imports),
+                    document.current_branch_id, document.current_version_id
+             FROM local_documents document WHERE document.id = ?")
+            .bind(&input.document.document_id).fetch_one(&pool).await.unwrap();
+        assert_eq!(state, (3, 2, 2, 2, 1,
+            input.current_branch_id.clone(), input.current_version_id.clone()));
+        let historical: (Vec<u8>, String) = sqlx::query_as(
+            "SELECT asset.bytes, version.snapshot_json FROM local_archive_assets asset
+             JOIN local_version_asset_references reference ON reference.asset_id = asset.asset_id
+             JOIN local_document_versions version ON version.id = reference.version_id
+             WHERE version.id = ? LIMIT 1")
+            .bind("00000000-0000-4000-8000-000000000302")
+            .fetch_one(&pool).await.unwrap();
+        assert_eq!(historical.0, input.assets[0].bytes);
+        assert!(historical.1.contains(&input.assets[0].asset_id));
+        let replay = import_local_history_archive_transaction(&pool, &input).await.unwrap();
+        assert!(replay.replayed);
+        assert_eq!(replay.content_json, input.document.content_json);
+    }
+
+    #[tokio::test]
+    async fn history_archive_failure_rolls_back_document_graph_assets_and_receipt() {
+        let pool = pool().await;
+        let input = local_history_archive_input();
+        sqlx::raw_sql(
+            "CREATE TRIGGER fail_history_receipt BEFORE INSERT ON local_history_archive_imports
+             BEGIN SELECT RAISE(ABORT, 'injected history failure'); END;")
+            .execute(&pool).await.unwrap();
+        assert_eq!(import_local_history_archive_transaction(&pool, &input).await,
+            Err("local_history_archive_storage_failure"));
+        let state: (i64, i64, i64, i64, i64) = sqlx::query_as(
+            "SELECT (SELECT COUNT(*) FROM local_documents),
+                    (SELECT COUNT(*) FROM local_archive_assets),
+                    (SELECT COUNT(*) FROM local_document_versions),
+                    (SELECT COUNT(*) FROM local_document_branches),
+                    (SELECT COUNT(*) FROM local_history_archive_imports)")
+            .fetch_one(&pool).await.unwrap();
+        assert_eq!(state, (0, 0, 0, 0, 0));
+    }
+
+    #[tokio::test]
+    async fn history_archive_rejects_cross_id_asset_digest_collision_without_remapping() {
+        let pool = pool().await;
+        let input = local_history_archive_input();
+        let existing_document_id = "00000000-0000-4000-8000-000000000320";
+        let existing_asset_id = "00000000-0000-4000-8000-000000000321";
+        let mut existing = local_archive_input(existing_document_id, existing_asset_id);
+        existing.assets[0].bytes = input.assets[0].bytes.clone();
+        existing.assets[0].content_hash = input.assets[0].content_hash.clone();
+        let mut content: serde_json::Value = serde_json::from_str(&existing.document.content_json).unwrap();
+        content["content"][0]["assetId"] = serde_json::Value::String(existing_asset_id.into());
+        existing.document.content_json = content.to_string();
+        import_local_archive_transaction(&pool, &existing).await.unwrap();
+
+        assert_eq!(import_local_history_archive_transaction(&pool, &input).await,
+            Err("local_history_archive_asset_identity_conflict"));
+        let state: (i64, i64, i64) = sqlx::query_as(
+            "SELECT (SELECT COUNT(*) FROM local_documents),
+                    (SELECT COUNT(*) FROM local_archive_assets),
+                    (SELECT COUNT(*) FROM local_history_archive_imports)")
+            .fetch_one(&pool).await.unwrap();
+        assert_eq!(state, (1, 1, 0));
+    }
+
+    #[tokio::test]
+    async fn restored_history_matches_exact_graph_and_bytes_after_database_reopen() {
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "komyaku-history-import-{}-{nonce}.db", std::process::id()));
+        let url = format!("sqlite://{}?mode=rwc", path.display());
+        let first = SqlitePoolOptions::new().max_connections(1).connect(&url).await.unwrap();
+        migrate_test_pool(&first).await;
+        let input = local_history_archive_input();
+        import_local_history_archive_transaction(&first, &input).await.unwrap();
+        first.close().await;
+
+        let reopened = SqlitePoolOptions::new().max_connections(1).connect(&url).await.unwrap();
+        let history = list_local_version_history_transaction(&reopened, &input.document.document_id, None, None)
+            .await.unwrap();
+        assert_eq!(history.current_branch_id.as_deref(), Some(input.current_branch_id.as_str()));
+        assert_eq!(history.current_version_id.as_deref(), Some(input.current_version_id.as_str()));
+        assert_eq!((history.versions.len(), history.branches.len()), (3, 2));
+        for original in &input.versions {
+            let stored = load_local_version_snapshot_transaction(
+                &reopened, &input.document.document_id, &original.id).await.unwrap();
+            assert_eq!(stored.snapshot_json, original.snapshot_json);
+            assert_eq!(stored.snapshot_hash, original.snapshot_hash);
+        }
+        let assets = load_local_version_assets_transaction(
+            &reopened, &input.document.document_id, "00000000-0000-4000-8000-000000000304")
+            .await.unwrap();
+        assert_eq!(assets[0].bytes, input.assets[0].bytes);
+        reopened.close().await;
+        std::fs::remove_file(path).unwrap();
     }
 
     #[tokio::test]

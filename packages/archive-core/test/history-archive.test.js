@@ -119,14 +119,10 @@ describe("open .komyaku History Archive v2", () => {
     await expect(verifyKomyakuHistoryArchive(archive)).resolves.toMatchObject({ kind: "history" });
   });
 
-  test("stores identical Asset content once while preserving both logical Asset identities", async () => {
+  test("rejects two logical Asset identities for the same content digest", async () => {
     const input = fixture();
     input.assets[1].bytes = input.assets[0].bytes.slice();
-    const archive = await createKomyakuHistoryArchive(input);
-    const verified = await verifyKomyakuHistoryArchive(archive);
-    expect(verified.assets).toHaveLength(2);
-    expect(verified.manifest.assets[0].path).toBe(verified.manifest.assets[1].path);
-    expect(verified.assets[0].bytes).toEqual(verified.assets[1].bytes);
+    await expect(createKomyakuHistoryArchive(input)).rejects.toThrow("history_duplicate_asset_content");
   });
 
   test("rejects missing closure, invalid parent graphs, unreachable Versions, and corrupt bytes", async () => {
@@ -150,7 +146,7 @@ describe("open .komyaku History Archive v2", () => {
     unreachable.versions.push({
       ...unreachable.versions[0],
       id: "00000000-0000-4000-8000-000000000012",
-      reason: "import",
+      reason: "initial",
       parentIds: [],
       label: "孤立"
     });

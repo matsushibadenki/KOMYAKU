@@ -20,7 +20,8 @@ describe("Tauri local SQLite migration", () => {
       "../../desktop/src-tauri/migrations/0005_local_archive_materialization.sql",
       "../../desktop/src-tauri/migrations/0006_local_document_library.sql",
       "../../desktop/src-tauri/migrations/0007_local_document_versions.sql",
-      "../../desktop/src-tauri/migrations/0008_local_version_history_paging.sql"
+      "../../desktop/src-tauri/migrations/0008_local_version_history_paging.sql",
+      "../../desktop/src-tauri/migrations/0009_local_history_archive_imports.sql"
     ];
     for (const relativePath of migrationPaths) {
       const migration = await Bun.file(path.resolve(import.meta.dir, relativePath)).text();
@@ -51,6 +52,7 @@ describe("Tauri local SQLite migration", () => {
       "local_document_versions",
       "local_documents",
       "local_drafts",
+      "local_history_archive_imports",
       "local_snapshots",
       "local_version_asset_references",
       "local_version_operations",
