@@ -1,0 +1,11 @@
+{
+  "productName": "KOMYAKU History Archive QA",
+  "identifier": "app.komyaku.desktop.history-archive-qa",
+  "app": {
+    "windows": [{
+      "label": "main", "title": "KOMYAKU History Archive QA",
+      "url": "/?mode=history-archive-qa", "width": 1200, "height": 900,
+      "minWidth": 320, "minHeight": 568, "resizable": true
+    }]
+  }
+}

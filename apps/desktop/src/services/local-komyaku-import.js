@@ -191,7 +191,7 @@ export async function materializeLocalHistoryImport(bytes, options = {}) {
   const verified = await verifyKomyakuHistoryArchive(bytes, {
     maxArchiveBytes: MAX_DESKTOP_IMPORT_BYTES,
     maxEntryBytes: 1024 * 1024,
-    maxEntries: 10001
+    maxEntries: 10002
   });
   return materializeVerifiedLocalHistoryImport(verified, options);
 }
@@ -203,7 +203,7 @@ export async function materializeLocalKomyakuImport(bytes, options = {}) {
       history = await verifyKomyakuHistoryArchive(bytes, {
         maxArchiveBytes: MAX_DESKTOP_IMPORT_BYTES,
         maxEntryBytes: 1024 * 1024,
-        maxEntries: 10001
+        maxEntries: 10002
       });
     } catch {}
     if (history) return materializeVerifiedLocalHistoryImport(history, options);

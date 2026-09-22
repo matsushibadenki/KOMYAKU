@@ -143,6 +143,16 @@
     "compareStatus": { "idle": "请选择两个已保存版本", "loading": "正在验证并比较版本…", "ready": "比较完成", "error": "无法比较这些版本" },
     "changes": { "added": "新增", "removed": "删除", "moved": "移动", "changed": "变更", "movedAndChanged": "移动并变更" },
     "changeSummary": "新增 {{added}}・删除 {{removed}}・移动 {{moved}}・变更 {{changed}}",
+    "integration": {
+      "title": "查看备选方案的合并预览",
+      "description": "以共同祖先为基准，比较当前版本与备选方案的修改，并在合并前查看冲突。",
+      "branch": "备选分支", "action": "预览合并", "noAlternative": "创建备选方案后，可在此比较修改。",
+      "base": "共同祖先", "ours": "当前版本", "theirs": "备选方案",
+      "conflicts": "需要检查的冲突：{{count}} 处", "noConflicts": "未发现重叠的修改。",
+      "readOnly": "此预览仅供查看，不会修改当前文稿或已保存版本。",
+      "kinds": { "delete-edit": "一侧删除，另一侧编辑", "move": "不同的移动", "text": "不同的文本", "metadata": "不同的元数据", "text-format": "不同的格式", "source": "不同的源码", "asset": "不同的 Asset 信息", "add-add": "同一 Node ID 的不同新增内容", "attributes": "不同的属性", "asset-metadata": "不同的 Asset 元数据", "type": "不同的 Node 类型", "extensions": "不同的文档扩展信息" },
+      "status": { "idle": "请选择备选方案", "loading": "正在验证完整历史和三个快照…", "ready": "预览已准备就绪", "ambiguous": "存在多个共同祖先，合并前需要手动解决。", "missing": "这些分支没有共同祖先。", "error": "无法查看备选方案。" }
+    },
     "beforeText": "变更前",
     "afterText": "变更后",
     "reasons": { "initial": "首个版本", "named": "已保存版本", "restore": "已恢复版本", "merge": "已合并版本", "import": "已导入版本" },

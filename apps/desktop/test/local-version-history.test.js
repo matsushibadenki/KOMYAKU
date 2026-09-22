@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createCanonicalNode, createEmptyDocument } from "@komyaku/document-schema";
+import { createDocumentVersion } from "@komyaku/version-engine";
 import {
   appendLocalVersionHistoryPage,
   compareLocalDocumentVersions,
@@ -9,9 +10,37 @@ import {
   listLocalVersionHistory,
   loadLocalVersionAssets,
   loadLocalVersionSnapshot,
+  reviewLocalVersionIntegration,
   restoreLocalDocumentVersion,
   saveLocalVersion
 } from "../src/services/local-version-history.js";
+
+async function mergeReviewFixture() {
+  const baseDocument = createEmptyDocument();
+  baseDocument.content[0].content = [{ type: "text", text: "原稿", marks: [], metadata: {}, extensions: {} }];
+  const oursDocument = structuredClone(baseDocument);
+  oursDocument.content[0].content[0].text = "本文";
+  const theirsDocument = structuredClone(baseDocument);
+  theirsDocument.content[0].content[0].text = "正文";
+  const ids = [0, 1, 2].map((index) => `00000000-0000-4000-8000-${(300 + index).toString(16).padStart(12, "0")}`);
+  const authorId = crypto.randomUUID();
+  const versions = await Promise.all([baseDocument, oursDocument, theirsDocument].map((document, index) =>
+    createDocumentVersion({ id: ids[index], document, parentIds: index ? [ids[0]] : [],
+      authorId, reason: index ? "named" : "initial",
+      createdAt: `2026-09-22T00:0${index}:00.000Z` })));
+  const branchIds = [crypto.randomUUID(), crypto.randomUUID()];
+  const branches = [
+    { id: branchIds[0], name: "Main", headVersionId: ids[1],
+      createdAt: "2026-09-22T00:00:00.000Z", updatedAt: "2026-09-22T00:01:00.000Z" },
+    { id: branchIds[1], name: "Alternative", headVersionId: ids[2],
+      createdAt: "2026-09-22T00:02:00.000Z", updatedAt: "2026-09-22T00:02:00.000Z" }
+  ];
+  const summary = (version) => ({ id: version.id, snapshotHash: version.snapshotHash,
+    authorId: version.authorId, reason: version.reason,
+    restoredFromVersionId: version.restoredFromVersionId, label: null,
+    createdAt: version.createdAt, parentIds: version.parentIds });
+  return { documentId: baseDocument.id, versions, branches, branchIds, ids, summary };
+}
 
 const input = {
   operationId: "00000000-0000-4000-8000-000000000010",
@@ -292,5 +321,80 @@ describe("local Version persistence adapter", () => {
       beforeVersionId, afterVersionId, locale: "ja" }, { native: true, invokeImpl });
     expect(result.summary).toEqual({ added: 0, removed: 0, moved: 0, changed: 1 });
     expect(result.changes[0].textDiff.added).toBe("変更");
+  });
+});
+
+describe("reviewing a local alternative", () => {
+  test("pages the full graph and compares only hash-verified base and branch heads", async () => {
+    const fixture = await mergeReviewFixture();
+    const { documentId, versions, branches, branchIds, ids, summary } = fixture;
+    const byId = new Map(versions.map((version) => [version.id, version]));
+    const requests = [];
+    const invokeImpl = async (command, payload) => {
+      requests.push({ command, payload });
+      if (command === "list_local_version_history") {
+        const older = Boolean(payload.cursorVersionId);
+        return { documentId, currentBranchId: branchIds[0], currentVersionId: ids[1], branches,
+          versions: older ? [summary(versions[0])] : [summary(versions[2]), summary(versions[1])],
+          nextCursor: older ? null : { createdAt: versions[1].createdAt, versionId: ids[1] } };
+      }
+      if (command === "load_local_version_snapshot") {
+        const version = byId.get(payload.versionId);
+        return { documentId, versionId: version.id, schemaVersion: version.schemaVersion,
+          snapshotEncoding: version.snapshotEncoding, snapshotJson: version.snapshotJson,
+          snapshotHash: version.snapshotHash };
+      }
+      throw new Error("unexpected command");
+    };
+    const review = await reviewLocalVersionIntegration({ documentId,
+      alternativeBranchId: branchIds[1], locale: "ja" }, { native: true, invokeImpl });
+    expect(review.baseVersionId).toBe(ids[0]);
+    expect(review.oursVersionId).toBe(ids[1]);
+    expect(review.theirsVersionId).toBe(ids[2]);
+    expect(review.comparison.conflicts).toContainEqual({
+      nodeId: JSON.parse(versions[0].snapshotJson).content[0].id, kind: "text"
+    });
+    expect(requests.filter(({ command }) => command === "list_local_version_history")).toHaveLength(3);
+    expect(requests.filter(({ command }) => command === "load_local_version_snapshot")).toHaveLength(3);
+  });
+
+  test("refuses metadata-to-snapshot mismatches before displaying a review", async () => {
+    const { documentId, versions, branches, branchIds, ids, summary } = await mergeReviewFixture();
+    const byId = new Map(versions.map((version) => [version.id, version]));
+    const invokeImpl = async (command, payload) => {
+      if (command === "list_local_version_history") {
+        return { documentId, currentBranchId: branchIds[0], currentVersionId: ids[1], branches,
+          versions: versions.map((version) => version.id === ids[1]
+            ? { ...summary(version), snapshotHash: "f".repeat(64) } : summary(version)),
+          nextCursor: null };
+      }
+      const version = byId.get(payload.versionId);
+      return { documentId, versionId: version.id, schemaVersion: version.schemaVersion,
+        snapshotEncoding: version.snapshotEncoding, snapshotJson: version.snapshotJson,
+        snapshotHash: version.snapshotHash };
+    };
+    await expect(reviewLocalVersionIntegration({ documentId, alternativeBranchId: branchIds[1] },
+      { native: true, invokeImpl })).rejects.toThrow(/local_merge_review_snapshot_changed/);
+  });
+
+  test("refuses a branch head that changes while its snapshots are being read", async () => {
+    const { documentId, versions, branches, branchIds, ids, summary } = await mergeReviewFixture();
+    const byId = new Map(versions.map((version) => [version.id, version]));
+    let listCalls = 0;
+    const invokeImpl = async (command, payload) => {
+      if (command === "list_local_version_history") {
+        listCalls += 1;
+        const listedBranches = listCalls === 2
+          ? [{ ...branches[0] }, { ...branches[1], headVersionId: ids[0] }] : branches;
+        return { documentId, currentBranchId: branchIds[0], currentVersionId: ids[1],
+          branches: listedBranches, versions: versions.map(summary), nextCursor: null };
+      }
+      const version = byId.get(payload.versionId);
+      return { documentId, versionId: version.id, schemaVersion: version.schemaVersion,
+        snapshotEncoding: version.snapshotEncoding, snapshotJson: version.snapshotJson,
+        snapshotHash: version.snapshotHash };
+    };
+    await expect(reviewLocalVersionIntegration({ documentId, alternativeBranchId: branchIds[1] },
+      { native: true, invokeImpl })).rejects.toThrow(/local_merge_review_changed/);
   });
 });

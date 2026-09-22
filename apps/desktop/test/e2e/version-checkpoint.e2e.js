@@ -26,6 +26,7 @@ async function openHistory(page, initial = false, paged = false) {
       const initialVersions = structuredClone(history.versions);
       if (window.startWithoutHistory) { history.versions = []; history.currentVersionId = null; }
       window.versionWrites = [];
+      window.integrationReviewCalls = [];
       export const localVersionHistoryAvailable = () => true;
       export const getOrCreateLocalVersionAuthorId = () => 'author';
       export const listLocalVersionHistory = async (documentId, options = {}) => {
@@ -91,6 +92,21 @@ async function openHistory(page, initial = false, paged = false) {
           window.resumeComparison = () => window.rejectComparison ? reject(new Error('old comparison failed')) : resolve();
         });
         return { summary: {}, changes: [] };
+      };
+      export const reviewLocalVersionIntegration = async ({ alternativeBranchId }) => {
+        window.integrationReviewCalls.push(alternativeBranchId);
+        if (window.holdIntegrationReview) await new Promise(resolve => { window.resumeIntegrationReview = resolve; });
+        if (window.integrationReviewFailure) {
+          const error = new Error(window.integrationReviewFailure);
+          error.code = window.integrationReviewFailure;
+          throw error;
+        }
+        return { alternativeBranchId, baseVersionId: '00000000-0000-4000-8000-000000000040',
+          oursVersionId: '00000000-0000-4000-8000-000000000041',
+          theirsVersionId: '00000000-0000-4000-8000-000000000042',
+          comparison: { ours: { summary: { added: 0, removed: 0, moved: 0, changed: 1 } },
+            theirs: { summary: { added: 0, removed: 0, moved: 0, changed: 1 } },
+            conflicts: [{ nodeId: '00000000-0000-4000-8000-000000000043', kind: 'text' }] } };
       };
       export const loadLocalVersionAssets = () => { throw new Error('unexpected assets'); };
       export const loadLocalVersionSnapshot = () => { throw new Error('unexpected snapshot'); };
@@ -254,6 +270,42 @@ test('comparison can be submitted from the keyboard and leaves focus usable', as
   await expect(page.locator('.version-compare .persistence-status')).toHaveAttribute('data-state', 'ready');
   await page.keyboard.press('Shift+Tab');
   await expect(page.locator('.version-compare select').nth(1)).toBeFocused();
+});
+
+test('alternative integration preview is read-only, translated, and fits a narrow viewport', async ({ page }) => {
+  await openHistory(page, false, true);
+  const panel = page.locator('.version-integration-review');
+  await expect(panel.getByText('別案との統合を確認')).toBeVisible();
+  await panel.getByRole('button', { name: '統合をプレビュー' }).click();
+  await expect(panel.getByText('確認が必要な競合: 1件')).toBeVisible();
+  await expect(panel.getByText('異なる文章')).toBeVisible();
+  await expect(panel.getByText('読み取り専用のプレビューです。編集中の原稿や保存版は変更されません。')).toBeVisible();
+  expect(await page.evaluate(() => window.integrationReviewCalls)).toEqual(['branch-2']);
+  expect(await page.evaluate(() => window.versionWrites)).toEqual([]);
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth
+    <= document.documentElement.clientWidth)).toBe(true);
+});
+
+test('ambiguous ancestry stops the integration preview with a specific explanation', async ({ page }) => {
+  await openHistory(page, false, true);
+  await page.evaluate(() => { window.integrationReviewFailure = 'ambiguous_merge_base'; });
+  const panel = page.locator('.version-integration-review');
+  await panel.getByRole('button', { name: '統合をプレビュー' }).click();
+  await expect(panel.getByText('共通祖先が複数あります。統合前に手動で解決する必要があります。')).toBeVisible();
+  await expect(panel.locator('.version-diff-result')).toHaveCount(0);
+  expect(await page.evaluate(() => window.versionWrites)).toEqual([]);
+});
+
+test('late integration review cannot appear after opening another document', async ({ page }) => {
+  await openHistory(page, false, true);
+  await page.evaluate(() => { window.holdIntegrationReview = true; });
+  await page.locator('.version-integration-review').getByRole('button', { name: '統合をプレビュー' }).click();
+  await expect.poll(() => page.evaluate(() => typeof window.resumeIntegrationReview)).toBe('function');
+  await page.getByRole('button', { name: '新しい文書', exact: true }).click();
+  await page.evaluate(() => window.resumeIntegrationReview());
+  await expect(page.locator('.version-integration-review .version-diff-result')).toHaveCount(0);
+  expect(await page.evaluate(() => window.versionWrites)).toEqual([]);
 });
 
 test('older Version paging appends the next native page and keeps loaded items visible', async ({ page }) => {

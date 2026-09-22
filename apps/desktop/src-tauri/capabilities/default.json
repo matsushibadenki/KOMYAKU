@@ -17,6 +17,7 @@
     "allow-store-local-png-preview-atomic",
     "allow-list-quarantined-local-assets",
     "allow-import-local-komyaku-archive-atomic",
+    "allow-import-local-history-archive-atomic",
     "allow-list-local-documents",
     "allow-mutate-local-document-atomic",
     "allow-store-cloud-session",

@@ -195,6 +195,12 @@
           "markdownDescription": "Enables the delete_provider_credential command without any pre-configured scope."
         },
         {
+          "description": "Enables the import_local_history_archive_atomic command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-import-local-history-archive-atomic",
+          "markdownDescription": "Enables the import_local_history_archive_atomic command without any pre-configured scope."
+        },
+        {
           "description": "Enables the import_local_komyaku_archive_atomic command without any pre-configured scope.",
           "type": "string",
           "const": "allow-import-local-komyaku-archive-atomic",
@@ -313,6 +319,12 @@
           "type": "string",
           "const": "deny-delete-provider-credential",
           "markdownDescription": "Denies the delete_provider_credential command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the import_local_history_archive_atomic command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-import-local-history-archive-atomic",
+          "markdownDescription": "Denies the import_local_history_archive_atomic command without any pre-configured scope."
         },
         {
           "description": "Denies the import_local_komyaku_archive_atomic command without any pre-configured scope.",

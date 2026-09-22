@@ -120,17 +120,24 @@ export function validateVersionGraph({ documentId, versions, branches = [] }) {
     }
   }
 
-  const visiting = new Set();
-  const visited = new Set();
-  function visit(versionId) {
-    if (visiting.has(versionId)) fail("cyclic_version_graph");
-    if (visited.has(versionId)) return;
-    visiting.add(versionId);
-    for (const parentId of byId.get(versionId).parentIds) visit(parentId);
-    visiting.delete(versionId);
-    visited.add(versionId);
+  const state = new Map();
+  for (const versionId of byId.keys()) {
+    if (state.get(versionId) === 2) continue;
+    const stack = [{ id: versionId, nextParent: 0 }];
+    while (stack.length) {
+      const frame = stack.at(-1);
+      if (!state.has(frame.id)) state.set(frame.id, 1);
+      const parents = byId.get(frame.id).parentIds;
+      if (frame.nextParent === parents.length) {
+        state.set(frame.id, 2);
+        stack.pop();
+        continue;
+      }
+      const parentId = parents[frame.nextParent++];
+      if (state.get(parentId) === 1) fail("cyclic_version_graph");
+      if (state.get(parentId) !== 2) stack.push({ id: parentId, nextParent: 0 });
+    }
   }
-  for (const versionId of byId.keys()) visit(versionId);
 
   if (!Array.isArray(branches)) fail("invalid_version_graph");
   const branchIds = new Set();
@@ -144,6 +151,38 @@ export function validateVersionGraph({ documentId, versions, branches = [] }) {
     branchIds.add(branch.id);
   }
   return Object.freeze({ versionCount: byId.size, branchCount: branchIds.size });
+}
+
+export function findUniqueMergeBase({ documentId, versions, oursVersionId, theirsVersionId }) {
+  if (!Array.isArray(versions) || versions.length > 5000) fail("invalid_merge_graph_size");
+  validateVersionGraph({ documentId, versions });
+  const byId = versionMap(versions, documentId);
+  if (!byId.has(oursVersionId) || !byId.has(theirsVersionId)
+    || oursVersionId === theirsVersionId) fail("invalid_merge_heads");
+  const ancestors = (headId) => {
+    const found = new Set();
+    const pending = [headId];
+    while (pending.length) {
+      const id = pending.pop();
+      if (found.has(id)) continue;
+      found.add(id);
+      pending.push(...byId.get(id).parentIds);
+    }
+    return found;
+  };
+  const ours = ancestors(oursVersionId);
+  const theirs = ancestors(theirsVersionId);
+  const common = new Set([...ours].filter((id) => theirs.has(id)));
+  if (common.size === 0) fail("missing_merge_base");
+  // A common ancestor is maximal only when no common child descends from it.
+  // The common set is ancestor-closed, so marking direct parents is sufficient.
+  const dominated = new Set();
+  for (const id of common) {
+    for (const parentId of byId.get(id).parentIds) dominated.add(parentId);
+  }
+  const best = [...common].filter((id) => !dominated.has(id));
+  if (best.length !== 1) fail("ambiguous_merge_base");
+  return best[0];
 }
 
 export function createVersionBranch({ id, documentId, name, headVersionId, versions }) {

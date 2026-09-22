@@ -3,13 +3,17 @@ import { VersionLineageGraph } from "./VersionLineageGraph.jsx";
 
 export function LocalVersionHistory({ history, available, status, onCreateInitial, onSaveNamed,
   onCreateAlternative, onRestore, onLoadOlder, onExport, exportStatus, onCompare, comparison,
-  comparisonStatus, locale, labels }) {
+  comparisonStatus, onReviewIntegration, integrationReview, integrationStatus, locale, labels }) {
   const [label, setLabel] = useState("");
   const [branchName, setBranchName] = useState("");
   const [compareFrom, setCompareFrom] = useState("");
   const [compareTo, setCompareTo] = useState("");
+  const [integrationBranchId, setIntegrationBranchId] = useState("");
   const [visibleVersionCount, setVisibleVersionCount] = useState(10);
   const currentBranch = history?.branches.find(({ id }) => id === history.currentBranchId) ?? null;
+  const alternatives = history?.branches.filter(({ id }) => id !== history.currentBranchId) ?? [];
+  const visibleIntegrationReview = integrationReview?.alternativeBranchId === integrationBranchId
+    ? integrationReview : null;
   const busy = status === "saving" || status === "loading";
 
   useEffect(() => {
@@ -19,6 +23,11 @@ export function LocalVersionHistory({ history, available, status, onCreateInitia
   }, [history]);
 
   useEffect(() => { setVisibleVersionCount(10); }, [history?.documentId]);
+
+  useEffect(() => {
+    setIntegrationBranchId((current) => alternatives.some(({ id }) => id === current)
+      ? current : alternatives[0]?.id ?? "");
+  }, [history?.documentId, history?.currentBranchId, history?.branches]);
 
   const submitNamed = async (event) => {
     event.preventDefault();
@@ -130,6 +139,51 @@ export function LocalVersionHistory({ history, available, status, onCreateInitia
                     </li>
                   ))}
                 </ol>
+              </div>
+            ) : null}
+          </div>
+          <div className="version-integration-review">
+            <div><h3>{labels.integration.title}</h3><p>{labels.integration.description}</p></div>
+            {alternatives.length ? (
+              <form onSubmit={(event) => { event.preventDefault(); void onReviewIntegration(integrationBranchId); }}>
+                <label><span>{labels.integration.branch}</span>
+                  <select value={integrationBranchId}
+                    onChange={(event) => setIntegrationBranchId(event.target.value)}>
+                    {alternatives.map((branch) => <option key={branch.id} value={branch.id}>
+                      {branch.name}
+                    </option>)}
+                  </select>
+                </label>
+                <button type="submit" disabled={busy || !integrationBranchId || integrationStatus === "loading"}>
+                  {labels.integration.action}
+                </button>
+              </form>
+            ) : <p>{labels.integration.noAlternative}</p>}
+            {alternatives.length ? <p className="persistence-status" role="status" data-state={integrationStatus}>
+              {labels.integration.status[visibleIntegrationReview ? integrationStatus
+                : integrationStatus === "ready" ? "idle" : integrationStatus] ?? labels.integration.status.error}
+            </p> : null}
+            {visibleIntegrationReview ? (
+              <div className="version-diff-result">
+                <dl className="version-current">
+                  <div><dt>{labels.integration.base}</dt><dd><code>{visibleIntegrationReview.baseVersionId.slice(0, 12)}</code></dd></div>
+                  <div><dt>{labels.integration.ours}</dt><dd><code>{visibleIntegrationReview.oursVersionId.slice(0, 12)}</code></dd></div>
+                  <div><dt>{labels.integration.theirs}</dt><dd><code>{visibleIntegrationReview.theirsVersionId.slice(0, 12)}</code></dd></div>
+                </dl>
+                <p>{labels.integration.ours}: {labels.changeSummary(visibleIntegrationReview.comparison.ours.summary)}</p>
+                <p>{labels.integration.theirs}: {labels.changeSummary(visibleIntegrationReview.comparison.theirs.summary)}</p>
+                <p>{visibleIntegrationReview.comparison.conflicts.length
+                  ? labels.integration.conflicts(visibleIntegrationReview.comparison.conflicts.length)
+                  : labels.integration.noConflicts}</p>
+                {visibleIntegrationReview.comparison.conflicts.length ? <ol>
+                  {visibleIntegrationReview.comparison.conflicts.slice(0, 50).map((conflict) => (
+                    <li key={`${conflict.nodeId}:${conflict.kind}`}>
+                      <span>{labels.integration.kinds[conflict.kind] ?? conflict.kind}</span>
+                      <code>{conflict.nodeId.slice(0, 12)}</code>
+                    </li>
+                  ))}
+                </ol> : null}
+                <p className="version-integration-note">{labels.integration.readOnly}</p>
               </div>
             ) : null}
           </div>

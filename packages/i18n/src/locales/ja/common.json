@@ -143,6 +143,16 @@
     "compareStatus": { "idle": "2つの保存版を選択してください", "loading": "保存版を検証して比較中…", "ready": "比較が完了しました", "error": "保存版を比較できませんでした" },
     "changes": { "added": "追加", "removed": "削除", "moved": "移動", "changed": "変更", "movedAndChanged": "移動と変更" },
     "changeSummary": "追加 {{added}}・削除 {{removed}}・移動 {{moved}}・変更 {{changed}}",
+    "integration": {
+      "title": "別案との統合を確認",
+      "description": "共通祖先を基準に、現在の版と別案の変更を比べます。統合前に競合を確認できます。",
+      "branch": "比較する別案", "action": "統合をプレビュー", "noAlternative": "別案を作成すると、ここで変更を比較できます。",
+      "base": "共通祖先", "ours": "現在の版", "theirs": "別案",
+      "conflicts": "確認が必要な競合: {{count}}件", "noConflicts": "重なり合う変更は見つかりませんでした。",
+      "readOnly": "読み取り専用のプレビューです。編集中の原稿や保存版は変更されません。",
+      "kinds": { "delete-edit": "一方で削除、他方で編集", "move": "異なる移動", "text": "異なる文章", "metadata": "異なるメタデータ", "text-format": "異なる書式", "source": "異なるソース", "asset": "異なるAsset情報", "add-add": "同じNode IDへの異なる追加", "attributes": "異なる属性", "asset-metadata": "異なるAssetメタデータ", "type": "異なるNode種別", "extensions": "異なる文書拡張情報" },
+      "status": { "idle": "別案を選択してください", "loading": "全履歴と3つのSnapshotを検証中…", "ready": "プレビューの準備ができました", "ambiguous": "共通祖先が複数あります。統合前に手動で解決する必要があります。", "missing": "これらの分岐には共通祖先がありません。", "error": "別案を確認できませんでした。" }
+    },
     "beforeText": "変更前",
     "afterText": "変更後",
     "reasons": { "initial": "最初の版", "named": "保存した版", "restore": "復元した版", "merge": "統合した版", "import": "取り込んだ版" },

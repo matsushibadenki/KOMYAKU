@@ -69,10 +69,12 @@ function changedKinds(before, after) {
   if (!equal(before.attrs, after.attrs)) kinds.push("attributes");
   if (!equal(before.metadata, after.metadata) || !equal(before.extensions, after.extensions)) kinds.push("metadata");
   if (!equal(before.renderArtifacts, after.renderArtifacts)) kinds.push("asset-metadata");
-  if (before.source !== after.source || before.sourceType !== after.sourceType) kinds.push("source");
+  if (before.source !== after.source || before.sourceType !== after.sourceType
+    || before.language !== after.language || before.displayMode !== after.displayMode) kinds.push("source");
   if (before.assetId !== after.assetId || before.mediaType !== after.mediaType
     || before.fileName !== after.fileName || before.altText !== after.altText
-    || before.title !== after.title || before.description !== after.description) kinds.push("asset");
+    || before.title !== after.title || before.description !== after.description
+    || before.width !== after.width || before.height !== after.height) kinds.push("asset");
   const inlineFormat = (node) => directInline(node).map((value) => ({ type: value.type, marks: value.marks ?? [] }));
   if (!equal(inlineFormat(before), inlineFormat(after))) kinds.push("text-format");
   return kinds;
@@ -122,4 +124,110 @@ export function compareCanonicalDocuments(beforeInput, afterInput, { locale } = 
     }
   }
   return Object.freeze({ documentId: before.id, summary: Object.freeze(summary), changes: Object.freeze(changes) });
+}
+
+function positionEqual(left, right) {
+  return left?.parentId === right?.parentId && left?.index === right?.index;
+}
+
+function conflictValue(node, kind) {
+  switch (kind) {
+    case "text": return inlineText(node);
+    case "text-format": return directInline(node).map(({ type, marks = [] }) => ({ type, marks }));
+    case "metadata": return [node.metadata, node.extensions];
+    case "asset-metadata": return node.renderArtifacts;
+    case "source": return [node.source, node.sourceType, node.language, node.displayMode];
+    case "asset": return [node.assetId, node.mediaType, node.fileName, node.altText,
+      node.title, node.description, node.width, node.height];
+    case "type": return node.type;
+    case "attributes": return node.attrs;
+    default: return node;
+  }
+}
+
+function removedRoots(changes, baseNodes) {
+  const removed = new Set(changes.filter(({ change }) => change === "removed")
+    .map(({ nodeId }) => nodeId));
+  return [...removed].filter((id) => !removed.has(baseNodes.get(id)?.parentId));
+}
+
+function changedSubtrees(changes, baseNodes, otherNodes, documentId) {
+  const affected = new Set();
+  for (const { nodeId, change } of changes) {
+    if (change === "removed") continue;
+    for (const nodes of [baseNodes, otherNodes]) {
+      let id = nodeId;
+      const seen = new Set();
+      while (id && id !== documentId && !seen.has(id)) {
+        affected.add(id);
+        seen.add(id);
+        id = nodes.get(id)?.parentId;
+      }
+    }
+  }
+  return affected;
+}
+
+export function compareThreeWayCanonicalDocuments(baseInput, oursInput, theirsInput, { locale } = {}) {
+  const base = parseCanonicalDocument(baseInput);
+  const ours = parseCanonicalDocument(oursInput);
+  const theirs = parseCanonicalDocument(theirsInput);
+  if (base.id !== ours.id || base.id !== theirs.id) {
+    throw new Error("document_diff_identity_mismatch");
+  }
+  const oursDiff = compareCanonicalDocuments(base, ours, { locale });
+  const theirsDiff = compareCanonicalDocuments(base, theirs, { locale });
+  const baseNodes = flatten(base);
+  const oursNodes = flatten(ours);
+  const theirsNodes = flatten(theirs);
+  const oursChanges = new Map(oursDiff.changes.map((change) => [change.nodeId, change]));
+  const theirsChanges = new Map(theirsDiff.changes.map((change) => [change.nodeId, change]));
+  const oursAffected = changedSubtrees(oursDiff.changes, baseNodes, oursNodes, base.id);
+  const theirsAffected = changedSubtrees(theirsDiff.changes, baseNodes, theirsNodes, base.id);
+  const conflicts = [];
+  const record = (nodeId, kind) => conflicts.push(Object.freeze({ nodeId, kind }));
+
+  for (const rootId of removedRoots(oursDiff.changes, baseNodes)) {
+    if (theirsAffected.has(rootId)) record(rootId, "delete-edit");
+  }
+  for (const rootId of removedRoots(theirsDiff.changes, baseNodes)) {
+    if (oursAffected.has(rootId)
+      && !conflicts.some((item) => item.nodeId === rootId && item.kind === "delete-edit")) {
+      record(rootId, "delete-edit");
+    }
+  }
+
+  for (const [nodeId, oursChange] of oursChanges) {
+    const theirsChange = theirsChanges.get(nodeId);
+    if (!theirsChange || oursChange.change === "removed" || theirsChange.change === "removed") continue;
+    const oursEntry = oursNodes.get(nodeId);
+    const theirsEntry = theirsNodes.get(nodeId);
+    if (oursChange.change === "added" && theirsChange.change === "added") {
+      if (!equal(oursEntry.node, theirsEntry.node) || !positionEqual(oursEntry, theirsEntry)) {
+        record(nodeId, "add-add");
+      }
+      continue;
+    }
+    const baseEntry = baseNodes.get(nodeId);
+    if (!baseEntry || !oursEntry || !theirsEntry) continue;
+    const oursMoved = !positionEqual(baseEntry, oursEntry);
+    const theirsMoved = !positionEqual(baseEntry, theirsEntry);
+    if (oursMoved && theirsMoved && !positionEqual(oursEntry, theirsEntry)) record(nodeId, "move");
+    const sharedKinds = (oursChange.kinds ?? []).filter((kind) =>
+      (theirsChange.kinds ?? []).includes(kind));
+    for (const kind of sharedKinds) {
+      if (!equal(conflictValue(oursEntry.node, kind), conflictValue(theirsEntry.node, kind))) {
+        record(nodeId, kind);
+      }
+    }
+  }
+  for (const kind of ["metadata", "attributes", "extensions"]) {
+    const key = kind === "attributes" ? "attrs" : kind;
+    if (!equal(base[key], ours[key]) && !equal(base[key], theirs[key])
+      && !equal(ours[key], theirs[key])) record(base.id, kind);
+  }
+  conflicts.sort((left, right) => left.nodeId.localeCompare(right.nodeId)
+    || left.kind.localeCompare(right.kind));
+  return Object.freeze({ documentId: base.id, ours: oursDiff, theirs: theirsDiff,
+    conflicts: Object.freeze(conflicts) });
 }

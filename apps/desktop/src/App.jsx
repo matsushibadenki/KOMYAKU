@@ -41,6 +41,7 @@ import {
   loadLocalVersionSnapshot,
   listLocalVersionHistory,
   localVersionHistoryAvailable,
+  reviewLocalVersionIntegration,
   restoreLocalDocumentVersion
 } from "./services/local-version-history.js";
 import {
@@ -183,9 +184,12 @@ export function App() {
   const [localExportStatus, setLocalExportStatus] = useState("idle");
   const [versionComparison, setVersionComparison] = useState(null);
   const [comparisonStatus, setComparisonStatus] = useState("idle");
+  const [integrationReview, setIntegrationReview] = useState(null);
+  const [integrationStatus, setIntegrationStatus] = useState("idle");
   const [archiveImportConflict, setArchiveImportConflict] = useState(null);
   const historyReadSequence = useRef(0);
   const comparisonReadSequence = useRef(0);
+  const integrationReadSequence = useRef(0);
   const libraryReadSequence = useRef(0);
 
   const refreshLocalDocuments = useCallback(async () => {
@@ -207,11 +211,17 @@ export function App() {
     try {
       const history = await listLocalVersionHistory(documentId);
       if (!isCurrent()) return null;
+      ++integrationReadSequence.current;
+      setIntegrationReview(null);
+      setIntegrationStatus("idle");
       setVersionHistory(history);
       setVersionStatus("ready");
       return history;
     } catch {
       if (!isCurrent()) return null;
+      ++integrationReadSequence.current;
+      setIntegrationReview(null);
+      setIntegrationStatus("idle");
       setVersionHistory(null);
       setVersionStatus("error");
       return null;
@@ -230,6 +240,9 @@ export function App() {
     try {
       const page = await listLocalVersionHistory(loadedHistory.documentId, { cursor });
       if (!isCurrent()) return false;
+      ++integrationReadSequence.current;
+      setIntegrationReview(null);
+      setIntegrationStatus("idle");
       setVersionHistory(appendLocalVersionHistoryPage(loadedHistory, page));
       setVersionStatus("ready");
       return true;
@@ -254,6 +267,9 @@ export function App() {
     setVersionStatus("idle");
     setVersionComparison(null);
     setComparisonStatus("idle");
+    ++integrationReadSequence.current;
+    setIntegrationReview(null);
+    setIntegrationStatus("idle");
   }, []);
 
   useEffect(() => {
@@ -655,6 +671,31 @@ export function App() {
     }
   }, [checkpoint?.document?.id, i18n.resolvedLanguage]);
 
+  const reviewAlternative = useCallback(async (alternativeBranchId) => {
+    const documentId = checkpoint?.document?.id;
+    if (!documentId || !localVersionHistoryAvailable()) return false;
+    const session = editSession.current;
+    if (session?.documentId !== documentId) return false;
+    const sequence = ++integrationReadSequence.current;
+    const isCurrent = () => editSession.current === session && sequence === integrationReadSequence.current;
+    setIntegrationReview(null);
+    setIntegrationStatus("loading");
+    try {
+      const review = await reviewLocalVersionIntegration({
+        documentId, alternativeBranchId, locale: i18n.resolvedLanguage
+      });
+      if (!isCurrent()) return false;
+      setIntegrationReview(review);
+      setIntegrationStatus("ready");
+      return true;
+    } catch (error) {
+      if (!isCurrent()) return false;
+      setIntegrationStatus(["ambiguous_merge_base", "missing_merge_base"].includes(error?.code)
+        ? error.code : "error");
+      return false;
+    }
+  }, [checkpoint?.document?.id, i18n.resolvedLanguage]);
+
   const createNewLocalDocument = useCallback(async () => {
     if (!await prepareForDocumentTransition()) return false;
     const locale = i18n.resolvedLanguage === "zh-Hans" ? "zh-Hans" : i18n.resolvedLanguage;
@@ -910,6 +951,9 @@ export function App() {
             onCompare={compareVersions}
             comparison={versionComparison}
             comparisonStatus={comparisonStatus}
+            onReviewIntegration={reviewAlternative}
+            integrationReview={integrationReview}
+            integrationStatus={integrationStatus}
             labels={{
               kicker: t("versionHistory.kicker"), title: t("versionHistory.title"),
               description: t("versionHistory.description"), desktopOnly: t("versionHistory.desktopOnly"),
@@ -948,6 +992,30 @@ export function App() {
               },
               changeSummary: (summary) => t("versionHistory.changeSummary", summary), beforeText: t("versionHistory.beforeText"),
               afterText: t("versionHistory.afterText"),
+              integration: {
+                title: t("versionHistory.integration.title"),
+                description: t("versionHistory.integration.description"),
+                branch: t("versionHistory.integration.branch"),
+                action: t("versionHistory.integration.action"),
+                noAlternative: t("versionHistory.integration.noAlternative"),
+                base: t("versionHistory.integration.base"),
+                ours: t("versionHistory.integration.ours"),
+                theirs: t("versionHistory.integration.theirs"),
+                conflicts: (count) => t("versionHistory.integration.conflicts", { count }),
+                noConflicts: t("versionHistory.integration.noConflicts"),
+                readOnly: t("versionHistory.integration.readOnly"),
+                kinds: Object.fromEntries(["delete-edit", "move", "text", "metadata", "text-format",
+                  "source", "asset", "add-add", "attributes", "asset-metadata", "type", "extensions"]
+                  .map((kind) => [kind, t(`versionHistory.integration.kinds.${kind}`)])),
+                status: {
+                  idle: t("versionHistory.integration.status.idle"),
+                  loading: t("versionHistory.integration.status.loading"),
+                  ready: t("versionHistory.integration.status.ready"),
+                  ambiguous_merge_base: t("versionHistory.integration.status.ambiguous"),
+                  missing_merge_base: t("versionHistory.integration.status.missing"),
+                  error: t("versionHistory.integration.status.error")
+                }
+              },
               reasons: {
                 initial: t("versionHistory.reasons.initial"), named: t("versionHistory.reasons.named"),
                 restore: t("versionHistory.reasons.restore"), merge: t("versionHistory.reasons.merge"),

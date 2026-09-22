@@ -1,8 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { parseCanonicalDocument } from "@komyaku/document-schema";
-import { compareCanonicalDocuments } from "@komyaku/diff-engine";
+import { compareCanonicalDocuments, compareThreeWayCanonicalDocuments } from "@komyaku/diff-engine";
 import {
   createDocumentVersion,
+  findUniqueMergeBase,
   VERSION_SNAPSHOT_ENCODING
 } from "@komyaku/version-engine";
 
@@ -171,6 +172,31 @@ function sameBytes(left, right) {
   return left.byteLength === right.byteLength && left.every((value, index) => value === right[index]);
 }
 
+function branchHeads(history) {
+  return history.branches.map(({ id, headVersionId }) => [id, headVersionId])
+    .sort(([left], [right]) => left.localeCompare(right));
+}
+
+export async function loadCompleteLocalVersionHistory(documentId, options = {}) {
+  if (!UUID.test(documentId)) throw new Error("invalid_local_document_id");
+  let history = await listLocalVersionHistory(documentId, options);
+  if (history.available === false) throw new Error("local_version_history_unavailable");
+  const initialBranchHeads = branchHeads(history);
+  let pageCount = 1;
+  while (history.nextCursor) {
+    if (history.versions.length >= 5000 || pageCount >= 50) {
+      throw new Error("local_history_archive_version_limit");
+    }
+    const page = await listLocalVersionHistory(documentId, { ...options, cursor: history.nextCursor });
+    if (JSON.stringify(branchHeads(page)) !== JSON.stringify(initialBranchHeads)) {
+      throw new Error("local_version_history_changed");
+    }
+    history = appendLocalVersionHistoryPage(history, page);
+    pageCount += 1;
+  }
+  return history;
+}
+
 export async function loadLocalHistoryArchiveSource(documentId, {
   concurrency = 4,
   ...options
@@ -178,16 +204,7 @@ export async function loadLocalHistoryArchiveSource(documentId, {
   if (!UUID.test(documentId) || !Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 8) {
     throw new Error("invalid_local_history_archive_request");
   }
-  let history = await listLocalVersionHistory(documentId, options);
-  let pageCount = 1;
-  while (history.nextCursor) {
-    if (history.versions.length >= 5000 || pageCount >= 50) {
-      throw new Error("local_history_archive_version_limit");
-    }
-    const page = await listLocalVersionHistory(documentId, { ...options, cursor: history.nextCursor });
-    history = appendLocalVersionHistoryPage(history, page);
-    pageCount += 1;
-  }
+  const history = await loadCompleteLocalVersionHistory(documentId, options);
   if (!history.currentBranchId || !history.currentVersionId || history.versions.length < 1) {
     throw new Error("local_history_archive_empty");
   }
@@ -259,6 +276,41 @@ export async function compareLocalDocumentVersions({ documentId, beforeVersionId
     loadLocalVersionSnapshot({ documentId, versionId: afterVersionId }, options)
   ]);
   return compareCanonicalDocuments(before.document, after.document, { locale });
+}
+
+export async function reviewLocalVersionIntegration({ documentId, alternativeBranchId, locale }, options = {}) {
+  if (!UUID.test(documentId) || !UUID.test(alternativeBranchId)) {
+    throw new Error("invalid_local_merge_review_request");
+  }
+  const history = await loadCompleteLocalVersionHistory(documentId, options);
+  const oursVersionId = history.currentVersionId;
+  const alternative = history.branches.find(({ id }) => id === alternativeBranchId);
+  if (!UUID.test(oursVersionId) || !history.currentBranchId || !alternative
+    || alternative.id === history.currentBranchId) {
+    throw new Error("invalid_local_merge_review_branch");
+  }
+  const theirsVersionId = alternative.headVersionId;
+  const baseVersionId = findUniqueMergeBase({ documentId,
+    versions: history.versions.map((version) => ({ ...version, documentId })),
+    oursVersionId, theirsVersionId });
+  const metadata = new Map(history.versions.map((version) => [version.id, version]));
+  const ids = [baseVersionId, oursVersionId, theirsVersionId];
+  const [base, ours, theirs] = await Promise.all(ids.map((versionId) =>
+    loadLocalVersionSnapshot({ documentId, versionId }, options)));
+  if ([base, ours, theirs].some((snapshot, index) =>
+    snapshot.snapshotHash !== metadata.get(ids[index])?.snapshotHash)) {
+    throw new Error("local_merge_review_snapshot_changed");
+  }
+  const comparison = compareThreeWayCanonicalDocuments(
+    base.document, ours.document, theirs.document, { locale });
+  const confirmation = await listLocalVersionHistory(documentId, options);
+  if (confirmation.currentBranchId !== history.currentBranchId
+    || confirmation.currentVersionId !== oursVersionId
+    || JSON.stringify(branchHeads(confirmation)) !== JSON.stringify(branchHeads(history))) {
+    throw new Error("local_merge_review_changed");
+  }
+  return Object.freeze({ documentId, baseVersionId, oursVersionId, theirsVersionId,
+    alternativeBranchId, alternativeBranchName: alternative.name, comparison });
 }
 
 export function parseSavedLocalVersion(value, expected) {

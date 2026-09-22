@@ -37,6 +37,29 @@ describe("Mermaid renderer privilege boundary", () => {
     expect(capability.permissions).toContain("core:window:allow-close");
   });
 
+  test("grants the full-history import only to the main window and declares its command for generation", async () => {
+    const main = await json("capabilities/default.json");
+    const renderer = await json("capabilities/mermaid-renderer.json");
+    const manifest = await Bun.file(new URL("build.rs", tauriRoot)).text();
+    expect(main.permissions).toContain("allow-import-local-history-archive-atomic");
+    expect(renderer.permissions).not.toContain("allow-import-local-history-archive-atomic");
+    expect(manifest).toContain('"import_local_history_archive_atomic"');
+  });
+
+  test("keeps every registered native command in the generated main-window ACL manifest", async () => {
+    const main = await json("capabilities/default.json");
+    const build = await Bun.file(new URL("build.rs", tauriRoot)).text();
+    const source = await Bun.file(new URL("src/lib.rs", tauriRoot)).text();
+    const commands = source.match(/\.invoke_handler\(tauri::generate_handler!\[([\s\S]*?)\]\)/)?.[1]
+      .split(",").map((value) => value.trim()).filter(Boolean);
+    const manifestCommands = [...build.matchAll(/"([a-z_]+)"/g)].map((match) => match[1]);
+    expect(commands).toBeDefined();
+    expect(new Set(manifestCommands)).toEqual(new Set(commands));
+    for (const command of commands) {
+      expect(main.permissions).toContain(`allow-${command.replaceAll("_", "-")}`);
+    }
+  });
+
   test("declares a hidden renderer window with its dedicated entry mode", async () => {
     const config = await json("tauri.conf.json");
     const renderer = config.app.windows.find(({ label }) => label === "mermaid-renderer");

@@ -5,6 +5,7 @@ import {
   createDocumentVersion,
   createVersionBranch,
   encodeVersionSnapshot,
+  findUniqueMergeBase,
   validateVersionGraph
 } from "../src/index.js";
 
@@ -16,7 +17,10 @@ const ids = {
   b: "00000000-0000-4000-8000-000000000005",
   c: "00000000-0000-4000-8000-000000000006",
   restored: "00000000-0000-4000-8000-000000000007",
-  branch: "00000000-0000-4000-8000-000000000008"
+  branch: "00000000-0000-4000-8000-000000000008",
+  d: "00000000-0000-4000-8000-000000000009",
+  e: "00000000-0000-4000-8000-00000000000a",
+  x: "00000000-0000-4000-8000-00000000000b"
 };
 
 function document(text = "原稿 / Draft / 文稿") {
@@ -95,5 +99,41 @@ describe("immutable document Version DAG", () => {
       documentId: ids.document,
       versions: [{ ...b, parentIds: [ids.c] }]
     })).toThrow(/missing_version_parent/);
+  });
+
+  test("selects the unique maximal shared ancestor without relying on timestamps", async () => {
+    const a = await version(ids.a, "A", [], "initial");
+    const b = await version(ids.b, "B", [ids.a]);
+    const c = await version(ids.c, "C", [ids.a]);
+    const d = await version(ids.d, "D", [ids.b]);
+    expect(findUniqueMergeBase({ documentId: ids.document, versions: [d, c, b, a],
+      oursVersionId: ids.d, theirsVersionId: ids.c })).toBe(ids.a);
+    expect(findUniqueMergeBase({ documentId: ids.document, versions: [a, b, c, d],
+      oursVersionId: ids.d, theirsVersionId: ids.b })).toBe(ids.b);
+  });
+
+  test("stops at criss-cross merge bases and disconnected histories", async () => {
+    const a = await version(ids.a, "A", [], "initial");
+    const b = await version(ids.b, "B", [ids.a]);
+    const c = await version(ids.c, "C", [ids.a]);
+    const d = await version(ids.d, "D", [ids.b, ids.c], "merge");
+    const e = await version(ids.e, "E", [ids.c, ids.b], "merge");
+    const versions = [a, b, c, d, e];
+    expect(() => findUniqueMergeBase({ documentId: ids.document, versions,
+      oursVersionId: ids.d, theirsVersionId: ids.e })).toThrow(/ambiguous_merge_base/);
+    const x = await version(ids.x, "X", [], "initial");
+    expect(() => findUniqueMergeBase({ documentId: ids.document, versions: [...versions, x],
+      oursVersionId: ids.d, theirsVersionId: ids.x })).toThrow(/missing_merge_base/);
+  });
+
+  test("handles the full 5000-Version boundary without recursive traversal", () => {
+    const id = (index) => `00000000-0000-4000-8000-${index.toString(16).padStart(12, "0")}`;
+    const versions = Array.from({ length: 5000 }, (_, index) => ({
+      id: id(index), documentId: ids.document,
+      parentIds: index ? [id(index - 1)] : [], reason: index ? "named" : "initial",
+      restoredFromVersionId: null
+    }));
+    expect(findUniqueMergeBase({ documentId: ids.document, versions,
+      oursVersionId: id(4999), theirsVersionId: id(4998) })).toBe(id(4998));
   });
 });

@@ -143,6 +143,16 @@
     "compareStatus": { "idle": "Choose two saved versions", "loading": "Verifying and comparing versions…", "ready": "Comparison complete", "error": "The versions could not be compared" },
     "changes": { "added": "Added", "removed": "Removed", "moved": "Moved", "changed": "Changed", "movedAndChanged": "Moved and changed" },
     "changeSummary": "Added {{added}} · removed {{removed}} · moved {{moved}} · changed {{changed}}",
+    "integration": {
+      "title": "Review an alternative",
+      "description": "Compare the current version with an alternative using their shared ancestor. Review conflicts before any integration.",
+      "branch": "Alternative branch", "action": "Preview integration", "noAlternative": "Create an alternative to compare it here.",
+      "base": "Shared ancestor", "ours": "Current version", "theirs": "Alternative",
+      "conflicts": "{{count}} conflicts need review", "noConflicts": "No overlapping changes were detected.",
+      "readOnly": "Read-only preview. No draft or saved version was changed.",
+      "kinds": { "delete-edit": "Deleted on one side, edited on the other", "move": "Different moves", "text": "Different text", "metadata": "Different metadata", "text-format": "Different formatting", "source": "Different source", "asset": "Different Asset details", "add-add": "Different additions with one Node ID", "attributes": "Different attributes", "asset-metadata": "Different Asset metadata", "type": "Different Node types", "extensions": "Different document extensions" },
+      "status": { "idle": "Choose an alternative", "loading": "Verifying the full history and three snapshots…", "ready": "Review preview is ready", "ambiguous": "Several shared ancestors are possible. This history needs manual resolution before integration.", "missing": "These branches have no shared ancestor.", "error": "The alternative could not be reviewed." }
+    },
     "beforeText": "Before",
     "afterText": "After",
     "reasons": { "initial": "First version", "named": "Saved version", "restore": "Restored version", "merge": "Merged version", "import": "Imported version" },

@@ -15,7 +15,10 @@ const MermaidRendererHost = isMermaidRenderer
     })))
   : null;
 
-if (new URLSearchParams(window.location.search).get("mode") === "history-qa") {
+if (new URLSearchParams(window.location.search).get("mode") === "history-archive-qa") {
+  void import("./services/packaged-history-archive-qa.js").then(({ mountPackagedHistoryArchiveQa }) =>
+    mountPackagedHistoryArchiveQa(document.getElementById("root")));
+} else if (new URLSearchParams(window.location.search).get("mode") === "history-qa") {
   void import("./services/packaged-history-qa.js").then(({ mountPackagedHistoryQa }) =>
     mountPackagedHistoryQa(document.getElementById("root")));
 } else ReactDOM.createRoot(document.getElementById("root")).render(
