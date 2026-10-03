@@ -167,7 +167,16 @@ pub fn registry() -> Arc<Registry> {
             words("Character", "登場人物", "人物"),
             vec![],
             vec![port("person", "story.person", false)],
-            BTreeMap::from([("role".into(), field("Role", string(500), json!("")))]),
+            BTreeMap::from([
+                ("role".into(), field("Role", string(500), json!(""))),
+                (
+                    "portrait".into(),
+                    PropertyDefinition {
+                        required: false,
+                        ..field("Portrait", string(100_000), json!(""))
+                    },
+                ),
+            ]),
         ),
         (
             RELATION,

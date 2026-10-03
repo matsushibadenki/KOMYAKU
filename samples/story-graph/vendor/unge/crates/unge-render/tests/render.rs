@@ -23,6 +23,224 @@ fn document() -> Document {
     editor.document().clone()
 }
 #[test]
+fn relationship_arrows_follow_semantic_direction_and_mutual_setting() {
+    let mut editor = Editor::new(Document::default(), 10).unwrap();
+    let port = |name: &str| Port {
+        name: name.into(),
+        data_type: DataType::Float,
+        cardinality: Cardinality::Single,
+        required: false,
+    };
+    for (id, y) in [(1, 20.), (2, 200.)] {
+        editor
+            .execute(Command::AddNode {
+                node: Node {
+                    id: Id::from_u128(id),
+                    type_id: "story.character".into(),
+                    inputs: vec![],
+                    outputs: vec![port("person")],
+                    properties: Properties::new(),
+                },
+                rect: Rect {
+                    x: 20.,
+                    y,
+                    width: 220.,
+                    height: 110.,
+                },
+            })
+            .unwrap();
+    }
+    let relation = Id::from_u128(3);
+    editor
+        .execute(Command::AddNode {
+            node: Node {
+                id: relation,
+                type_id: "story.relationship".into(),
+                inputs: vec![port("from"), port("to")],
+                outputs: vec![],
+                properties: [
+                    ("kind".into(), "trust".into()),
+                    ("mutual".into(), false.into()),
+                ]
+                .into(),
+            },
+            rect: Rect {
+                x: 350.,
+                y: 80.,
+                width: 220.,
+                height: 110.,
+            },
+        })
+        .unwrap();
+    for (id, name) in [(1, "from"), (2, "to")] {
+        editor
+            .execute(Command::Connect {
+                edge: Edge {
+                    id: Id::new_v4(),
+                    from: Endpoint {
+                        node: Id::from_u128(id),
+                        port: "person".into(),
+                    },
+                    to: Endpoint {
+                        node: relation,
+                        port: name.into(),
+                    },
+                },
+            })
+            .unwrap();
+    }
+    let view = Viewport {
+        origin: [0., 0.],
+        zoom: 1.,
+        size: [900., 400.],
+    };
+    for mutual in [false, true] {
+        editor
+            .execute(Command::SetProperty {
+                id: relation,
+                key: "mutual".into(),
+                value: Some(mutual.into()),
+            })
+            .unwrap();
+        let scene = SceneIndex::new(editor.document())
+            .scene(view, &BTreeSet::new())
+            .unwrap();
+        let arrows: Vec<_> = scene
+            .quads
+            .iter()
+            .filter(|quad| quad.params[2] < -0.5)
+            .collect();
+        assert_eq!(arrows.len(), if mutual { 4 } else { 2 });
+        assert!(
+            arrows.iter().all(
+                |quad| (quad.rect[0] - 253.).abs() < 0.01 || (quad.rect[0] - 337.).abs() < 0.01
+            ),
+            "arrows remain at connection endpoints, outside the port circles"
+        );
+        assert_eq!(
+            arrows
+                .iter()
+                .filter(|quad| quad.params[0].cos() > 0.)
+                .count(),
+            if mutual { 2 } else { 1 }
+        );
+        assert_eq!(
+            arrows
+                .iter()
+                .filter(|quad| quad.params[0].cos() < 0.)
+                .count(),
+            if mutual { 2 } else { 1 }
+        );
+        assert!(scene.quads.iter().any(|quad| quad.rect[3] == 4.));
+    }
+}
+#[test]
+fn story_portraits_roles_and_relationship_colors_survive_selection_and_zoom() {
+    let mut png = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::new_rgb8(128, 128)
+        .write_to(&mut png, image::ImageFormat::Png)
+        .unwrap();
+    let portrait = normalize_portrait(png.get_ref()).unwrap();
+    let mut editor = Editor::new(Document::default(), 10).unwrap();
+    let person = Id::from_u128(1);
+    for (id, kind, x, properties) in [
+        (
+            person,
+            "story.character",
+            20.,
+            [
+                ("title".into(), "灯".into()),
+                ("role".into(), "駅員".into()),
+                ("portrait".into(), portrait.into()),
+            ]
+            .into(),
+        ),
+        (
+            Id::from_u128(2),
+            "story.relationship",
+            280.,
+            [
+                ("title".into(), "姉妹".into()),
+                ("kind".into(), "family".into()),
+            ]
+            .into(),
+        ),
+        (
+            Id::from_u128(3),
+            "story.relationship",
+            540.,
+            [
+                ("title".into(), "親友".into()),
+                ("kind".into(), "friend".into()),
+            ]
+            .into(),
+        ),
+    ] {
+        editor
+            .execute(Command::AddNode {
+                node: Node {
+                    id,
+                    type_id: kind.into(),
+                    inputs: vec![],
+                    outputs: vec![],
+                    properties,
+                },
+                rect: Rect {
+                    x,
+                    y: 20.,
+                    width: 220.,
+                    height: 110.,
+                },
+            })
+            .unwrap();
+    }
+    let view = Viewport {
+        origin: [0., 0.],
+        zoom: 1.,
+        size: [900., 300.],
+    };
+    let index = SceneIndex::new(editor.document());
+    let scene = index.scene(view, &[person].into()).unwrap();
+    assert_eq!(scene.portraits.len(), 1);
+    assert_eq!(
+        scene
+            .quads
+            .iter()
+            .filter(|quad| quad.params[3] > 0.)
+            .count(),
+        1
+    );
+    assert!(scene.labels.iter().any(|label| label.text == "駅員"));
+    assert!(scene.labels.iter().any(|label| label.text == "Family"));
+    let colors: Vec<_> = scene
+        .quads
+        .iter()
+        .filter(|quad| quad.rect[3] == 3.)
+        .map(|quad| quad.color)
+        .collect();
+    assert_ne!(colors[1], colors[2]);
+    assert!(
+        index
+            .scene(Viewport { zoom: 0.5, ..view }, &BTreeSet::new())
+            .unwrap()
+            .labels
+            .is_empty()
+    );
+    assert!(
+        index
+            .scene(
+                Viewport {
+                    origin: [2000., 0.],
+                    ..view
+                },
+                &BTreeSet::new()
+            )
+            .unwrap()
+            .portraits
+            .is_empty()
+    );
+}
+#[test]
 fn culls_nodes_and_reduces_ports_at_low_zoom() {
     let index = SceneIndex::new(&document());
     let view = Viewport {
@@ -160,6 +378,137 @@ fn edges_crossing_viewport_survive_endpoint_culling() {
             .visible_edges,
         1
     );
+}
+#[test]
+#[ignore = "requires a working GPU adapter; run explicitly on a desktop"]
+fn gpu_portrait_atlas_renders_distinct_images_and_refreshes_reused_slots() {
+    pollster::block_on(async {
+        let adapter = wgpu::Instance::default()
+            .request_adapter(&Default::default())
+            .await
+            .unwrap();
+        let (device, queue) = adapter.request_device(&Default::default()).await.unwrap();
+        device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let mut editor = Editor::new(Document::default(), 0).unwrap();
+        for (i, color) in [[255, 0, 0, 255], [0, 0, 255, 255]].into_iter().enumerate() {
+            let image = image::RgbaImage::from_pixel(128, 128, image::Rgba(color));
+            let mut png = std::io::Cursor::new(Vec::new());
+            image::DynamicImage::ImageRgba8(image)
+                .write_to(&mut png, image::ImageFormat::Png)
+                .unwrap();
+            editor
+                .execute(Command::AddNode {
+                    node: Node {
+                        id: Id::from_u128(i as u128 + 1),
+                        type_id: "story.character".into(),
+                        inputs: vec![],
+                        outputs: vec![],
+                        properties: [
+                            ("title".into(), "Person".into()),
+                            (
+                                "portrait".into(),
+                                normalize_portrait(png.get_ref()).unwrap().into(),
+                            ),
+                        ]
+                        .into(),
+                    },
+                    rect: Rect {
+                        x: 10. + i as f32 * 130.,
+                        y: 10.,
+                        width: 120.,
+                        height: 110.,
+                    },
+                })
+                .unwrap();
+        }
+        let view = Viewport {
+            origin: [0., 0.],
+            zoom: 1.,
+            size: [256., 256.],
+        };
+        let mut scene = SceneIndex::new(editor.document())
+            .scene(view, &BTreeSet::new())
+            .unwrap();
+        let format = wgpu::TextureFormat::Rgba8UnormSrgb;
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: None,
+            size: wgpu::Extent3d {
+                width: 256,
+                height: 256,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size: 256 * 256 * 4,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut renderer = GpuRenderer::new(&device, format);
+        let error = device.pop_error_scope().await;
+        assert!(error.is_none(), "shader validation: {error:?}");
+        device.push_error_scope(wgpu::ErrorFilter::Validation);
+        for swapped in [false, true] {
+            if swapped {
+                scene.portraits.reverse();
+            }
+            renderer.prepare(&device, &queue, &scene, view).unwrap();
+            renderer.prepare(&device, &queue, &scene, view).unwrap();
+            let mut encoder = device.create_command_encoder(&Default::default());
+            renderer.render(&mut encoder, &texture.create_view(&Default::default()));
+            encoder.copy_texture_to_buffer(
+                texture.as_image_copy(),
+                wgpu::TexelCopyBufferInfo {
+                    buffer: &buffer,
+                    layout: wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(1024),
+                        rows_per_image: Some(256),
+                    },
+                },
+                wgpu::Extent3d {
+                    width: 256,
+                    height: 256,
+                    depth_or_array_layers: 1,
+                },
+            );
+            queue.submit([encoder.finish()]);
+            let (tx, rx) = std::sync::mpsc::channel();
+            buffer
+                .slice(..)
+                .map_async(wgpu::MapMode::Read, move |result| tx.send(result).unwrap());
+            device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+            rx.recv().unwrap().unwrap();
+            let pixels = buffer.slice(..).get_mapped_range();
+            let pixel = |x: usize| &pixels[(50 * 256 + x) * 4..(50 * 256 + x) * 4 + 4];
+            assert_eq!(
+                pixel(40),
+                if swapped {
+                    &[0, 0, 255, 255]
+                } else {
+                    &[255, 0, 0, 255]
+                }
+            );
+            assert_eq!(
+                pixel(170),
+                if swapped {
+                    &[255, 0, 0, 255]
+                } else {
+                    &[0, 0, 255, 255]
+                }
+            );
+            assert!(pixel(250)[0] > 200, "paper background remains visible");
+            drop(pixels);
+            buffer.unmap();
+        }
+        assert!(device.pop_error_scope().await.is_none());
+    });
 }
 #[test]
 #[ignore = "requires a working GPU adapter; run explicitly on a desktop"]

@@ -127,12 +127,12 @@ function localPersistenceErrorCode(error) {
   return codes.length > 0 ? codes.join("/") : "unexpected_local_persistence_error";
 }
 
-export function App() {
+export function App({ initialDocument = null, integrationSaveOptions } = {}) {
   const { t, i18n } = useTranslation();
   const query = new URLSearchParams(window.location.search);
   const previewQa = query.get("previewQa") === "1";
   const developmentWorkbench = previewQa || query.get("workbench") === "1";
-  const welcomeDocument = useMemo(() => createWelcomeDocument({ previewQa }), [previewQa]);
+  const welcomeDocument = useMemo(() => initialDocument ?? createWelcomeDocument({ previewQa }), [previewQa, initialDocument]);
   const [replicas, setReplicas] = useState(null);
   const primarySelection = useRef(null);
   const secondarySelection = useRef(null);
@@ -768,7 +768,7 @@ export function App() {
         throw new Error("local_merge_candidate_changed");
       }
       const merged = await adoptLocalVersionIntegration({ candidate: integrationCandidate,
-        document: submission.checkpoint.document, localRevision: submission.checkpoint.revision });
+        document: submission.checkpoint.document, localRevision: submission.checkpoint.revision }, integrationSaveOptions);
       replaceWorkingDocument(merged.document, merged.localRevision);
       setPersistenceStatus("restored");
       await refreshVersionHistory(merged.document.id);
@@ -778,7 +778,7 @@ export function App() {
       setIntegrationStatus("error");
       return false;
     }
-  }), [integrationCandidate, runDocumentMutation, prepareForDocumentTransition, replaceWorkingDocument, refreshVersionHistory]);
+  }), [integrationCandidate, runDocumentMutation, prepareForDocumentTransition, replaceWorkingDocument, refreshVersionHistory, integrationSaveOptions]);
 
   const createNewLocalDocument = useCallback(async () => {
     if (!await prepareForDocumentTransition()) return false;
@@ -1122,7 +1122,8 @@ export function App() {
                   preview: t("versionHistory.integration.status.preview"),
                   ambiguous_merge_base: t("versionHistory.integration.status.ambiguous"),
                   missing_merge_base: t("versionHistory.integration.status.missing"),
-                  error: t("versionHistory.integration.status.error")
+                  error: t("versionHistory.integration.status.error"),
+                  saveError: t("versionHistory.integration.status.saveError")
                 }
               },
               reasons: {

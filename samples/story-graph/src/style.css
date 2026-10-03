@@ -246,17 +246,17 @@ main {flex:1;min-height:0;margin:0;border:0;border-radius:0;grid-template-column
 .backup-dialog footer {gap:8px;}
 .backup-hint,.backup-details {font-size:12px;color:var(--muted);}
 .backup-dialog .workspace-list {max-height:30vh;}
-.group-manuscript {display:flex;gap:32px;flex:1;min-height:0;overflow-x:auto;overflow-y:hidden;padding:4px;overscroll-behavior:contain;}
-.group-title {display:flex;flex-direction:column;justify-content:flex-start;align-items:stretch;flex:0 0 180px;gap:12px;padding:0 24px 0 0;border:0;border-right:1px solid var(--line);}
+.group-manuscript {display:flex;flex-direction:column;gap:32px;flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;padding:4px;overscroll-behavior:contain;}
+.group-title {display:flex;flex-direction:column;justify-content:flex-start;align-items:stretch;flex:0 0 auto;gap:12px;padding:0 0 16px;border:0;border-bottom:1px solid var(--line);}
 .group-title>span {font-size:11px;color:var(--muted);}
-.group-title>textarea {width:100%;height:100%;min-height:0;resize:none;border:0;background:transparent;padding:0;font-family:var(--body-font,var(--font-writing));font-size:var(--title-size,24px);line-height:1.5;}
-.group-manuscript>.group-sequence-heading {flex:0 0 120px;margin:0;padding:0;border:0;}
-.group-manuscript>.group-scene {flex:0 0 min(600px,70vw);height:100%;margin:0;overflow-y:auto;overflow-x:hidden;padding:0 4px;}
-.vertical-writing .group-manuscript {flex-direction:row;direction:rtl;gap:24px;}
+.group-title>textarea {width:100%;height:auto;min-height:1.5em;resize:none;overflow:hidden;border:0;background:transparent;padding:0;font-family:var(--body-font,var(--font-writing));font-size:var(--title-size,24px);line-height:1.5;}
+.group-manuscript>.group-sequence-heading {flex:0 0 auto;margin:0;padding:0;border:0;}
+.group-manuscript>.group-scene {flex:0 0 auto;height:auto;width:100%;margin:0;overflow:visible;padding:0 4px;}
+.vertical-writing .group-manuscript {flex-direction:row;direction:rtl;gap:24px;overflow-x:auto;overflow-y:hidden;}
 .vertical-writing .group-title {flex:0 0 auto;width:max-content;direction:ltr;border:0;border-left:1px solid var(--line);padding:0 0 0 24px;}
-.vertical-writing .group-title>textarea {writing-mode:vertical-rl;text-orientation:mixed;width:calc(var(--title-size,24px)*1.6);}
+.vertical-writing .group-title>textarea {writing-mode:vertical-rl;text-orientation:mixed;width:calc(var(--title-size,24px)*1.6);height:100%;min-height:0;}
 .vertical-writing .group-manuscript>.group-sequence-heading {flex:0 0 auto;writing-mode:vertical-rl;text-orientation:mixed;direction:ltr;}
-.vertical-writing .group-manuscript>.group-scene {display:flex;flex-direction:row-reverse;flex:0 0 auto;width:max-content;overflow:visible;direction:ltr;gap:16px;}
+.vertical-writing .group-manuscript>.group-scene {display:flex;flex-direction:row-reverse;flex:0 0 auto;width:max-content;height:100%;overflow:visible;direction:ltr;gap:16px;}
 .vertical-writing .group-scene-title {writing-mode:vertical-rl;text-orientation:mixed;flex:0 0 auto;margin:0;}
 .vertical-writing .group-scene .manuscript {display:flex;flex-direction:column;flex:0 0 auto;height:100%;width:max-content;}
 .vertical-writing .group-scene .manuscript-heading {flex:0 0 auto;}
@@ -287,3 +287,19 @@ main {flex:1;min-height:0;margin:0;border:0;border-radius:0;grid-template-column
 .assistant-footer { gap:8px; flex-wrap:wrap; }
 .assistant-content [data-ai-phase] { font-size:12px; color:var(--muted); }
 @media(max-width:640px) { .assistant-content {padding:14px 16px;} .assistant-selectors {grid-template-columns:1fr;} }
+.manuscript textarea.paragraph-selected { background: color-mix(in srgb, Highlight 16%, transparent); }
+.paragraph-range-highlight {position:absolute;inset:0;white-space:pre-wrap;color:transparent;pointer-events:none;overflow:hidden;z-index:3;}
+.paragraph-range-highlight mark {color:transparent;background:color-mix(in srgb, Highlight 22%, transparent);}
+/* One scroll axis per writing mode; group scenes share their outer viewport. */
+.editor-content {overflow-x:hidden;overflow-y:auto;}
+.editor-content.group-writing {overflow:hidden;}
+.vertical-writing .editor-content.scene-writing {overflow:hidden;min-height:0;}
+.vertical-writing .scene-writing .manuscript-pages {height:0;min-height:0;}
+.vertical-writing .scene-notes textarea {max-height:25vh;}
+/* Character portraits share the document's restrained, warm palette. */
+.character-portrait{display:flex;align-items:center;gap:20px;padding:20px;background:#f5f4ef;border:1px solid #e5e2d9;border-radius:12px;margin:0 0 24px}
+.portrait-preview{width:96px;height:96px;flex:none;border-radius:8px;overflow:hidden;background:#dfeae7;color:#36786d;display:grid;place-items:center;font:500 36px serif}
+.portrait-preview img{display:block;width:100%;height:100%;object-fit:cover}
+.node-row.character-row{padding:9px 12px;gap:12px}.character-row .ordinal{width:32px;height:32px;display:grid;place-items:center;flex:none}.character-list-portrait{width:32px;height:32px;object-fit:cover;border-radius:5px}.character-row>span:last-child{min-width:0}.character-row small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.portrait-controls{min-width:0}.portrait-controls>strong{font-size:13px;color:#47565a}.portrait-buttons{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.portrait-controls p{font-size:11px;line-height:1.6;color:#707b80;margin:10px 0 0}
+@media(max-width:560px){.character-portrait{gap:12px;padding:12px}.portrait-preview{width:72px;height:72px}}

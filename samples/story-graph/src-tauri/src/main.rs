@@ -159,7 +159,7 @@ fn allowed(window: &tauri::WebviewWindow) -> std::result::Result<(), String> {
 }
 fn projection(engine: &Engine) -> std::result::Result<Value, String> {
     let (document, summary) = engine.snapshot_with_summary().map_err(|e| e.code)?;
-    let nodes:Vec<_>=document.graph().nodes().values().map(|node|json!({"id":node.id,"type":node.type_id,"title":node.properties["title"],"order":node.properties.get("order"),"path":node.properties.get("path"),"kind":node.properties.get("kind"),"mutual":node.properties.get("mutual"),"parent":node.properties.get("parent"),"outlineOrder":node.properties.get("outlineOrder")})).collect();
+    let nodes:Vec<_>=document.graph().nodes().values().map(|node|json!({"id":node.id,"type":node.type_id,"title":node.properties["title"],"order":node.properties.get("order"),"path":node.properties.get("path"),"kind":node.properties.get("kind"),"mutual":node.properties.get("mutual"),"parent":node.properties.get("parent"),"outlineOrder":node.properties.get("outlineOrder"),"role":node.properties.get("role"),"portraitKey":node.properties.get("portrait").and_then(Value::as_str).filter(|value|!value.is_empty()).map(|value|format!("{:x}",unge_render::portrait_key(value)))})).collect();
     let edges: Vec<_> = document
         .graph()
         .edges()
@@ -657,11 +657,23 @@ fn build_command(
             )
         }
         Action::Property { id, key, value } => {
-            if !["title", "notes", "role", "kind", "mutual", "parent"].contains(&key.as_str()) {
+            if ![
+                "title", "notes", "role", "kind", "mutual", "parent", "portrait",
+            ]
+            .contains(&key.as_str())
+            {
                 return Err("invalid_property".into());
             }
             let doc = host.engine.snapshot().map_err(|e| e.code)?;
             let node = doc.graph().nodes().get(&id).ok_or("missing_node")?;
+            if key == "portrait"
+                && (node.type_id != domain::CHARACTER
+                    || !value.as_str().is_some_and(|value| {
+                        value.is_empty() || unge_render::decode_portrait(value).is_some()
+                    }))
+            {
+                return Err("portrait_invalid".into());
+            }
             if [domain::BLOCK, domain::SEQUENCE].contains(&node.type_id.as_str()) && key != "title"
             {
                 return Err("invalid_command".into());
@@ -879,6 +891,53 @@ fn build_command(
     })
 }
 #[tauri::command]
+async fn import_portrait(
+    window: tauri::WebviewWindow,
+    host: tauri::State<'_, Host>,
+    expected_revision: u64,
+    id: Id,
+) -> std::result::Result<Option<Value>, String> {
+    allowed(&window)?;
+    if host
+        .engine
+        .inspect("controls", id)
+        .map_err(|e| e.code)?
+        .type_id
+        != domain::CHARACTER
+    {
+        return Err("invalid_command".into());
+    }
+    let host = host.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("PNG / JPEG / WebP", &["png", "jpg", "jpeg", "webp"])
+            .pick_file()
+        else {
+            return Ok(None);
+        };
+        use std::io::Read;
+        let file = std::fs::File::open(path).map_err(|_| "portrait_invalid")?;
+        let mut bytes = Vec::new();
+        file.take(8 * 1024 * 1024 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|_| "portrait_invalid")?;
+        let portrait = unge_render::normalize_portrait(&bytes)?;
+        edit_blocking(
+            window,
+            host,
+            expected_revision,
+            Action::Property {
+                id,
+                key: "portrait".into(),
+                value: json!(portrait),
+            },
+        )
+        .map(Some)
+    })
+    .await
+    .map_err(|_| "portrait_invalid".to_string())?
+}
+#[tauri::command]
 async fn edit(
     window: tauri::WebviewWindow,
     host: tauri::State<'_, Host>,
@@ -1006,6 +1065,16 @@ fn panel(
 fn canvas(window: tauri::WebviewWindow) -> std::result::Result<(), String> {
     allowed(&window)?;
     if let Some(canvas) = window.app_handle().get_window("canvas") {
+        let store = window.app_handle().state::<preferences::Store>();
+        let settings = store.value.lock().map_err(|_| "state_unavailable")?;
+        let title = match settings.language.as_str() {
+            "en" => "Character relationships",
+            "zh-CN" => "人物关系图",
+            _ => "人物相関図",
+        };
+        canvas
+            .set_title(&format!("{title} · KOMYAKU"))
+            .map_err(|_| "panel_failed")?;
         canvas
             .show()
             .and_then(|_| canvas.set_focus())
@@ -1183,6 +1252,32 @@ async fn restore_backup(
 }
 fn main() {
     tauri::Builder::default()
+        .register_uri_scheme_protocol("portrait", |context, request| {
+            // Only document-owned, normalized thumbnails are addressable; never arbitrary files.
+            use base64::Engine as _;
+            let bytes = (|| {
+                let id: Id = request.uri().path().trim_start_matches('/').parse().ok()?;
+                let host = context.app_handle().try_state::<Host>()?;
+                let node = host.engine.inspect("controls", id).ok()?;
+                if node.type_id != domain::CHARACTER {
+                    return None;
+                }
+                let encoded = node.properties.get("portrait")?.as_str()?;
+                if request.uri().query()? != format!("v={:x}", unge_render::portrait_key(encoded)) {
+                    return None;
+                }
+                base64::engine::general_purpose::STANDARD
+                    .decode(encoded.strip_prefix("data:image/png;base64,")?)
+                    .ok()
+            })();
+            tauri::http::Response::builder()
+                .status(if bytes.is_some() { 200 } else { 404 })
+                .header("Content-Type", "image/png")
+                .header("Cache-Control", "private, max-age=3600")
+                .header("X-Content-Type-Options", "nosniff")
+                .body(bytes.unwrap_or_default())
+                .unwrap()
+        })
         .invoke_handler(tauri::generate_handler![
             workspace,
             new_workspace,
@@ -1194,6 +1289,7 @@ fn main() {
             choose,
             locale,
             edit,
+            import_portrait,
             reading,
             backup,
             panel,
@@ -1278,7 +1374,7 @@ fn main() {
                     .map_err(|e| e.message)?;
             }
             let canvas = tauri::WindowBuilder::new(app, "canvas")
-                .title("Story Graph · UNGE / wgpu")
+                .title("人物相関図 · KOMYAKU")
                 .visible(false)
                 .inner_size(1100., 800.)
                 .build()?;
@@ -1606,6 +1702,119 @@ mod persistence_tests {
             )
             .is_err()
         );
+        std::fs::remove_file(&host.path).unwrap();
+    }
+    #[test]
+    fn portrait_persists_undoes_and_accepts_legacy_characters() {
+        let host = test_host();
+        let doc = host.engine.snapshot().unwrap();
+        let id = doc
+            .graph()
+            .nodes()
+            .values()
+            .find(|node| node.type_id == domain::CHARACTER)
+            .unwrap()
+            .id;
+        let scene = doc
+            .graph()
+            .nodes()
+            .values()
+            .find(|node| node.type_id == domain::SCENE)
+            .unwrap()
+            .id;
+        let mut png = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::new_rgb8(300, 200)
+            .write_to(&mut png, image::ImageFormat::Png)
+            .unwrap();
+        let portrait = unge_render::normalize_portrait(png.get_ref()).unwrap();
+        let action = |id, value| Action::Property {
+            id,
+            key: "portrait".into(),
+            value,
+        };
+        assert!(build_command(&host, action(scene, json!(portrait)), 0).is_err());
+        assert!(
+            build_command(
+                &host,
+                action(id, json!("https://example.com/portrait.png")),
+                0
+            )
+            .is_err()
+        );
+        host.engine
+            .dispatch(
+                "controls",
+                build_command(&host, action(id, json!(portrait)), 0).unwrap(),
+            )
+            .unwrap();
+        save(&host.path, &host.engine.snapshot().unwrap()).unwrap();
+        assert_eq!(
+            load(&host.path).unwrap().graph().nodes()[&id].properties["portrait"],
+            portrait
+        );
+        let projected = projection(&host.engine).unwrap();
+        let node = projected["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["id"] == id.to_string())
+            .unwrap();
+        assert!(node["portraitKey"].is_string());
+        assert!(
+            node.get("portrait").is_none(),
+            "full images must not be broadcast on every edit"
+        );
+        host.engine
+            .dispatch(
+                "controls",
+                Request::Undo {
+                    expected_revision: 1,
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            host.engine.inspect("controls", id).unwrap().properties["portrait"],
+            ""
+        );
+        host.engine
+            .dispatch(
+                "controls",
+                Request::Redo {
+                    expected_revision: 2,
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            host.engine.inspect("controls", id).unwrap().properties["portrait"],
+            portrait
+        );
+        host.engine
+            .dispatch(
+                "controls",
+                build_command(&host, action(id, json!("")), 3).unwrap(),
+            )
+            .unwrap();
+        assert!(
+            projection(&host.engine).unwrap()["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|node| node["id"] == id.to_string())
+                .unwrap()["portraitKey"]
+                .is_null()
+        );
+        // Documents created before portraits existed remain valid.
+        let mut editor = Editor::new(doc, 10)
+            .unwrap()
+            .with_validator(Arc::new(domain::Validator(host.registry.clone())))
+            .unwrap();
+        editor
+            .execute(Command::SetProperty {
+                id,
+                key: "portrait".into(),
+                value: None,
+            })
+            .unwrap();
         std::fs::remove_file(&host.path).unwrap();
     }
     fn test_host() -> Host {

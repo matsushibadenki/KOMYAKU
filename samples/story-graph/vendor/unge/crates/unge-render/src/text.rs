@@ -83,6 +83,7 @@ pub(crate) struct TextRenderer {
     pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
     metrics: wgpu::Buffer,
+    srgb_target: bool,
     instances: wgpu::Buffer,
     // One range per node, interleaved with its geometry to preserve stacking.
     pub batches: Vec<(u32, Range<u32>)>,
@@ -122,7 +123,7 @@ impl TextRenderer {
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -214,6 +215,7 @@ impl TextRenderer {
             mapped_at_creation: false,
         });
         Self {
+            srgb_target: format.is_srgb(),
             stats: TextStats::default(),
             fonts,
             swash: SwashCache::new(),
@@ -255,7 +257,11 @@ impl TextRenderer {
         buffer.set_text(
             &mut self.fonts,
             &label.text,
-            &Attrs::new(),
+            &Attrs::new().weight(if label.font_size >= 14. {
+                cosmic_text::Weight::SEMIBOLD
+            } else {
+                cosmic_text::Weight::MEDIUM
+            }),
             Shaping::Advanced,
             None,
         );
@@ -410,7 +416,12 @@ impl TextRenderer {
         queue.write_buffer(
             &self.metrics,
             0,
-            bytemuck::cast_slice(&[size[0] as f32, size[1] as f32, ATLAS_SIZE as f32, 0.0]),
+            bytemuck::cast_slice(&[
+                size[0] as f32,
+                size[1] as f32,
+                ATLAS_SIZE as f32,
+                f32::from(self.srgb_target),
+            ]),
         );
         if !instances.is_empty() {
             queue.write_buffer(&self.instances, 0, bytemuck::cast_slice(&instances));

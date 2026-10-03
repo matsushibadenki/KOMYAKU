@@ -175,6 +175,7 @@
         "ready": "Review preview is ready",
         "ambiguous": "Several shared ancestors are possible. This history needs manual resolution before integration.",
         "missing": "These branches have no shared ancestor.",
+        "saveError": "The integration save result could not be confirmed. Retry saving the same candidate.",
         "error": "The alternative could not be reviewed.",
         "preview": "Preview ready. Confirm to save."
       },

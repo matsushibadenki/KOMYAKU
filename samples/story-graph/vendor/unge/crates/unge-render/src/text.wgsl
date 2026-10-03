@@ -19,5 +19,7 @@ struct Vertex {
     return out;
 }
 @fragment fn fs(v: Vertex) -> @location(0) vec4<f32> {
-    return vec4(v.color.rgb, v.color.a * textureSample(atlas, atlas_sampler, v.uv).r);
+    let rgb=v.color.rgb;
+    let linear=select(pow((rgb+vec3(0.055))/1.055,vec3(2.4)),rgb/12.92,rgb<=vec3(0.04045));
+    return vec4(select(rgb,linear,metrics.padding>0.5), v.color.a * textureSample(atlas, atlas_sampler, v.uv).r);
 }

@@ -30,11 +30,11 @@ impl Quad {
             rect: [
                 (a[0] + b[0]) / 2.0,
                 (a[1] + b[1]) / 2.0,
-                dx.hypot(dy).max(0.001),
-                2.0,
+                dx.hypot(dy).max(0.001) + 4.0,
+                4.0,
             ],
             color: [0.32, 0.65, 0.74, 1.0],
-            params: [dy.atan2(dx), 0.8, 0.0, 0.0],
+            params: [dy.atan2(dx), 2.0, 0.0, 0.0],
         }
     }
 }
@@ -46,11 +46,19 @@ struct RenderNode {
     title: Option<String>,
     input_names: Vec<String>,
     output_names: Vec<String>,
+    role: String,
+    relation: String,
+    accent: [f32; 4],
+    portrait: Option<std::sync::Arc<crate::Portrait>>,
+    mutual: bool,
 }
 struct RenderEdge {
     points: [[f32; 2]; 4],
     from: (Id, usize),
     to: (Id, usize),
+    color: Option<[f32; 4]>,
+    arrow_start: bool,
+    arrow_end: bool,
 }
 /// Build once per document revision, not once per animation frame.
 pub struct SceneIndex {
@@ -59,6 +67,7 @@ pub struct SceneIndex {
     node_index: SpatialIndex,
     edge_index: SpatialIndex,
     incident: BTreeMap<Id, BTreeSet<Id>>,
+    story: bool,
 }
 #[derive(Debug, Default)]
 pub struct Scene {
@@ -66,20 +75,58 @@ pub struct Scene {
     pub labels: Vec<TextLabel>,
     pub visible_nodes: usize,
     pub visible_edges: usize,
+    pub portraits: Vec<std::sync::Arc<crate::Portrait>>,
+}
+/// Relationship colors are shared by badges, connectors and the character accent palette.
+fn relation_color(kind: &str) -> [f32; 4] {
+    match kind {
+        "family" => [0.80, 0.31, 0.23, 1.],
+        "friend" => [0.20, 0.51, 0.78, 1.],
+        "rival" => [0.73, 0.51, 0.13, 1.],
+        "love" => [0.76, 0.34, 0.53, 1.],
+        _ => [0.20, 0.57, 0.48, 1.],
+    }
+}
+fn relation_name(kind: &str, locale: Locale) -> &str {
+    match (kind, locale) {
+        ("family", Locale::Ja) => "家族",
+        ("friend", Locale::Ja) => "友人",
+        ("rival", Locale::Ja) => "ライバル",
+        ("love", Locale::Ja) => "恋愛",
+        (_, Locale::Ja) => "信頼",
+        ("family", Locale::ZhCn) => "家人",
+        ("friend", Locale::ZhCn) => "朋友",
+        ("rival", Locale::ZhCn) => "对手",
+        ("love", Locale::ZhCn) => "恋爱",
+        (_, Locale::ZhCn) => "信任",
+        ("family", _) => "Family",
+        ("friend", _) => "Friends",
+        ("rival", _) => "Rivals",
+        ("love", _) => "Love",
+        _ => "Trust",
+    }
+}
+fn tint(color: [f32; 4]) -> [f32; 4] {
+    [
+        0.94 + color[0] * 0.06,
+        0.94 + color[1] * 0.06,
+        0.94 + color[2] * 0.06,
+        1.,
+    ]
 }
 fn curve(a: [f32; 2], b: [f32; 2]) -> [[f32; 2]; 4] {
     let dx = ((b[0] - a[0]).abs() * 0.5).max(50.0);
     [a, [a[0] + dx, a[1]], [b[0] - dx, b[1]], b]
 }
 fn curve_bounds(points: [[f32; 2]; 4]) -> Rect {
-    let min_x = points.iter().map(|p| p[0]).fold(f32::INFINITY, f32::min) - 2.0;
+    let min_x = points.iter().map(|p| p[0]).fold(f32::INFINITY, f32::min) - 14.0;
     let max_x = points
         .iter()
         .map(|p| p[0])
         .fold(f32::NEG_INFINITY, f32::max)
-        + 2.0;
-    let min_y = points[0][1].min(points[3][1]) - 2.0;
-    let max_y = points[0][1].max(points[3][1]) + 2.0;
+        + 14.0;
+    let min_y = points[0][1].min(points[3][1]) - 14.0;
+    let max_y = points[0][1].max(points[3][1]) + 14.0;
     Rect {
         x: min_x,
         y: min_y,
@@ -107,6 +154,33 @@ fn push_curve(scene: &mut Scene, points: [[f32; 2]; 4], zoom: f32, color: Option
         previous = next;
     }
 }
+fn push_arrow(
+    scene: &mut Scene,
+    points: [[f32; 2]; 4],
+    zoom: f32,
+    color: Option<[f32; 4]>,
+    reverse: bool,
+) {
+    // Anchor the tip at the cable endpoint, just outside the connection circle.
+    let (tip, control) = if reverse {
+        (points[0], points[1])
+    } else {
+        (points[3], points[2])
+    };
+    let tangent = [tip[0] - control[0], tip[1] - control[1]];
+    let length = tangent[0].hypot(tangent[1]);
+    if length < 0.001 {
+        return;
+    }
+    let scale = zoom.clamp(0.6, 1.5);
+    let inset = 7. / scale + 6. / zoom;
+    let center = [0, 1].map(|axis| tip[axis] - tangent[axis] / length * inset);
+    scene.quads.push(Quad {
+        rect: [center[0], center[1], 14. / scale, 12. / scale],
+        color: color.unwrap_or([0.32, 0.65, 0.74, 1.]),
+        params: [tangent[1].atan2(tangent[0]), 0., -1., 0.],
+    });
+}
 impl SceneIndex {
     pub fn new(doc: &Document) -> Self {
         let nodes: BTreeMap<_, _> = doc
@@ -128,6 +202,46 @@ impl SceneIndex {
                             .map(|s| s.chars().take(200).collect()),
                         input_names: node.inputs.iter().map(|p| p.name.clone()).collect(),
                         output_names: node.outputs.iter().map(|p| p.name.clone()).collect(),
+                        role: node
+                            .properties
+                            .get("role")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .chars()
+                            .take(200)
+                            .collect(),
+                        relation: node
+                            .properties
+                            .get("kind")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("trust")
+                            .into(),
+                        accent: if node.type_id == "story.relationship" {
+                            relation_color(
+                                node.properties
+                                    .get("kind")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("trust"),
+                            )
+                        } else {
+                            relation_color(
+                                ["trust", "friend", "love", "rival", "family"]
+                                    [(node.id.as_u128() % 5) as usize],
+                            )
+                        },
+                        portrait: if node.type_id == "story.character" {
+                            node.properties
+                                .get("portrait")
+                                .and_then(|v| v.as_str())
+                                .and_then(crate::decode_portrait)
+                        } else {
+                            None
+                        },
+                        mutual: node
+                            .properties
+                            .get("mutual")
+                            .and_then(|value| value.as_bool())
+                            .unwrap_or(false),
                     },
                 )
             })
@@ -166,6 +280,12 @@ impl SceneIndex {
                     points,
                     from: (edge.from.node, i),
                     to: (edge.to.node, j),
+                    color: (to.type_id == "story.relationship").then_some(to.accent),
+                    arrow_start: to.type_id == "story.relationship"
+                        && (to.mutual || edge.to.port == "to"),
+                    arrow_end: to.type_id != "story.relationship"
+                        || to.mutual
+                        || edge.to.port != "to",
                 },
             );
             for id in [edge.from.node, edge.to.node] {
@@ -174,6 +294,9 @@ impl SceneIndex {
         }
 
         Self {
+            story: nodes
+                .values()
+                .any(|node| node.type_id.starts_with("story.")),
             nodes,
             edges,
             incident,
@@ -230,7 +353,15 @@ impl SceneIndex {
         }
         let area = viewport.world_rect();
         let mut scene = Scene::default();
-        let mut grid = Quad::rectangle(area, [0.04, 0.052, 0.075, 1.0], 0.0);
+        let mut grid = Quad::rectangle(
+            area,
+            if self.story {
+                [0.965, 0.956, 0.937, 1.]
+            } else {
+                [0.04, 0.052, 0.075, 1.0]
+            },
+            0.0,
+        );
         grid.params[2] = 1.0;
         scene.quads.push(grid);
         let mut edges: BTreeSet<_> = self.edge_index.query(area).into_iter().collect();
@@ -272,7 +403,13 @@ impl SceneIndex {
             if !curve_bounds(points).intersects(area) {
                 continue;
             }
-            push_curve(&mut scene, points, viewport.zoom, None);
+            push_curve(&mut scene, points, viewport.zoom, edge.color);
+            if edge.arrow_start {
+                push_arrow(&mut scene, points, viewport.zoom, edge.color, true);
+            }
+            if edge.arrow_end {
+                push_arrow(&mut scene, points, viewport.zoom, edge.color, false);
+            }
             scene.visible_edges += 1;
         }
         // Include ports/selection borders protruding from the node bounds.
@@ -291,6 +428,19 @@ impl SceneIndex {
                 continue;
             }
             let selected = selection.contains(&id);
+            if self.story && rect.width >= 80. && rect.height >= 60. {
+                Self::story_card(
+                    &mut scene,
+                    node,
+                    rect,
+                    selected,
+                    viewport.zoom,
+                    catalog,
+                    locale,
+                );
+                scene.visible_nodes += 1;
+                continue;
+            }
             let border = if selected {
                 [0.2, 0.8, 0.72, 1.0]
             } else {
@@ -426,5 +576,176 @@ impl SceneIndex {
             }
         }
         Ok(scene)
+    }
+    fn story_card(
+        scene: &mut Scene,
+        node: &RenderNode,
+        rect: Rect,
+        selected: bool,
+        zoom: f32,
+        catalog: &LabelCatalog,
+        locale: Locale,
+    ) {
+        let character = node.type_id == "story.character";
+        let relation = node.type_id == "story.relationship";
+        let accent = node.accent;
+        // Soft offset shadow, clean white paper and a restrained colored accent.
+        scene.quads.push(Quad::rectangle(
+            Rect {
+                x: rect.x + 2.,
+                y: rect.y + 4.,
+                ..rect
+            },
+            [0.27, 0.24, 0.19, 0.09],
+            10.,
+        ));
+        scene.quads.push(Quad::rectangle(
+            rect,
+            if selected {
+                accent
+            } else {
+                [0.81, 0.82, 0.79, 1.]
+            },
+            10.,
+        ));
+        scene.quads.push(Quad::rectangle(
+            Rect {
+                x: rect.x + 2.,
+                y: rect.y + 2.,
+                width: rect.width - 4.,
+                height: rect.height - 4.,
+            },
+            if relation {
+                tint(accent)
+            } else {
+                [1., 1., 0.995, 1.]
+            },
+            8.,
+        ));
+        scene.quads.push(Quad::rectangle(
+            Rect {
+                x: rect.x + 10.,
+                y: rect.y + 10.,
+                width: rect.width - 20.,
+                height: 3.,
+            },
+            accent,
+            1.5,
+        ));
+        let mut text_x = rect.x + 14.;
+        if character {
+            let side = (rect.height - 34.)
+                .min(72.)
+                .min((rect.width - 44.) * 0.45)
+                .max(20.);
+            let photo_rect = Rect {
+                x: rect.x + 14.,
+                y: rect.y + 22.,
+                width: side,
+                height: side,
+            };
+            let mut photo = Quad::rectangle(photo_rect, tint(accent), 6.);
+            if let Some(portrait) = &node.portrait
+                && scene.portraits.len() < crate::PORTRAIT_SLOTS
+            {
+                scene.portraits.push(portrait.clone());
+                photo.params[3] = scene.portraits.len() as f32;
+            }
+            scene.quads.push(photo);
+            if photo.params[3] == 0. && zoom >= 0.6 {
+                scene.labels.push(TextLabel {
+                    text: node
+                        .title
+                        .as_deref()
+                        .unwrap_or("?")
+                        .chars()
+                        .take(1)
+                        .collect(),
+                    rect: Rect {
+                        x: photo_rect.x + side * 0.3,
+                        y: photo_rect.y + side * 0.25,
+                        width: side * 0.6,
+                        height: side * 0.65,
+                    },
+                    font_size: side * 0.4,
+                    right_aligned: false,
+                    color: accent,
+                    after_quad: scene.quads.len(),
+                });
+            }
+            text_x = photo_rect.x + side + 12.;
+        }
+        if zoom >= PORT_LOD_ZOOM {
+            for (count, output) in [(node.inputs, false), (node.outputs, true)] {
+                for i in 0..count {
+                    let p = port_anchor(rect, i, count, output);
+                    scene.quads.push(Quad::rectangle(
+                        Rect {
+                            x: p[0] - 4.,
+                            y: p[1] - 4.,
+                            width: 8.,
+                            height: 8.,
+                        },
+                        accent,
+                        4.,
+                    ));
+                }
+            }
+        }
+        if zoom < 0.6 {
+            return;
+        }
+        let title = label_text(
+            catalog
+                .get(&node.type_id)
+                .filter(|_| node.title.is_none())
+                .map(|labels| &labels.title),
+            node.title.as_deref().unwrap_or(&node.type_id),
+            locale,
+        );
+        let after_quad = scene.quads.len();
+        scene.labels.push(TextLabel {
+            text: title,
+            rect: Rect {
+                x: text_x,
+                y: rect.y + 25.,
+                width: (rect.x + rect.width - text_x - 14.).max(1.),
+                height: 23.,
+            },
+            font_size: if character { 16. } else { 14. },
+            right_aligned: false,
+            color: [0.06, 0.09, 0.11, 1.],
+            after_quad,
+        });
+        let subtitle = if character {
+            label_text(None, &node.role, locale)
+        } else if relation {
+            relation_name(&node.relation, locale).to_owned()
+        } else {
+            label_text(
+                catalog.get(&node.type_id).map(|labels| &labels.title),
+                &node.type_id,
+                locale,
+            )
+        };
+        if !subtitle.is_empty() {
+            scene.labels.push(TextLabel {
+                text: subtitle,
+                rect: Rect {
+                    x: text_x,
+                    y: rect.y + 56.,
+                    width: (rect.x + rect.width - text_x - 14.).max(1.),
+                    height: (rect.height - 66.).clamp(1., 34.),
+                },
+                font_size: 12.,
+                right_aligned: false,
+                color: if relation {
+                    [accent[0] * 0.72, accent[1] * 0.72, accent[2] * 0.72, 1.]
+                } else {
+                    [0.25, 0.30, 0.32, 1.]
+                },
+                after_quad,
+            });
+        }
     }
 }

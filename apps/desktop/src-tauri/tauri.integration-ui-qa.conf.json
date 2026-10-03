@@ -1,0 +1,18 @@
+{
+  "productName": "KOMYAKU Integration UI QA",
+  "identifier": "app.komyaku.desktop.integration-ui-qa",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "KOMYAKU Integration UI QA",
+        "url": "/?mode=integration-ui-qa",
+        "width": 1000,
+        "height": 900,
+        "minWidth": 320,
+        "minHeight": 568,
+        "resizable": true
+      }
+    ]
+  }
+}

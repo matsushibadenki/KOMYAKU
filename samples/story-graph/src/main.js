@@ -1,5 +1,6 @@
 import './style.css';
-import { fragments, textDifference, characters } from './text-performance.js';
+import { fragments, inputPatch, characters, graphemeStep, canonicalPosition } from './text-performance.js';
+import {selectionRange,extendSelection,fragmentSelection,replaceSelectionFragments} from './paragraph-selection.js';
 import { paragraphText, insertDialogue, updateParagraph, setDialogueWidth, paragraphById } from './dialogue.js';
 import { messages, languages } from './locales.js';
 import { canonicalText, routeNodes, relatedPeople, outlineNodes, outlineDrop, containedScenes } from './adapter.js';
@@ -7,6 +8,7 @@ import preview from './preview.json';
 import { defaultPreferences, applyPreferences } from './preferences.js';
 import { installAssistant } from './assistant.js';
 import './ai-locales.js';
+import './character-locales.js';
 let preferences = {...defaultPreferences};
 let chatgpt = {pending:false,accounts:[],error:null}, authBusy=false;
 let preferenceTimer, pendingPreferences = null;
@@ -27,7 +29,9 @@ const expandedNotes = new Set();
 let draggingOutlineId=null;
 let renderedDetailId;
 const pendingParagraphs=new Map();
-const inputValues=new WeakMap();
+let paragraphSelection=null,reflowing=false;
+const selectionReplacements=new WeakMap(),compositionReflow=new WeakSet();
+let paintingSelection=false;
 let wholeCanonicalDraft=false, manuscriptObserver=null;
 let groupDetails=[], groupFocus=null;
 const groupEdits=new Map();
@@ -52,12 +56,14 @@ async function loadDetail(id) {
 }
 async function refresh() { model = native ? await invoke('workspace') : preview; await loadDetail(model.selected); pendingRemote=null; render(); }
 function render() {
+  clearParagraphSelection();
   closeOutlineMenu();manuscriptObserver?.disconnect();manuscriptObserver=null;
   const reopenPreferences = preferencesOpen;
   applyPreferences(preferences);
   const preserveScroll=renderedDetailId===detail?.id;
   const editorScroll=preserveScroll?document.querySelector('.editor-content')?.scrollTop||0:0;
-  const groupScroll=preserveScroll?document.querySelector('.group-manuscript')?.scrollLeft||0:0;
+  const groupViewportBefore=preserveScroll?document.querySelector('.group-manuscript'):null;
+  const groupScroll={left:groupViewportBefore?.scrollLeft||0,top:groupViewportBefore?.scrollTop||0};
   const listScroll=document.querySelector('.node-list')?.scrollTop||0;
   renderedDetailId=detail?.id;
   const active=document.activeElement;
@@ -102,18 +108,18 @@ ${escape(latestDetail.properties.notes||'')}</pre><div>${button('applyDraft','ap
     <main>
       <nav class="navigator" id="story-navigator" aria-label="${escape(t('view'))}"><div class="navtabs">${['scenes','characters','relationships'].map(key=>`<button data-tab="${key}" aria-pressed="${tab===key}">${escape(t(key))}</button>`).join('')}</div>
       ${tab==='scenes'?`<label class="route-label">${escape(t('route'))}<select id="path">${['main','alternative'].map(key=>`<option value="${key}" ${path===key?'selected':''}>${escape(t(key))}</option>`).join('')}</select></label>`:`<h2>${escape(t('people'))}</h2>`}
-      <div class="node-list" ${tab==='scenes'?'role="tree"':''}>${tab==='scenes'?`<label class="project-title-field"><span>${escape(t('workTitle'))}</span><input data-field="projectTitle" aria-label="${escape(t('workTitle'))}" value="${escape(draft?.projectTitle??model.projectTitle??'')}" placeholder="${escape(projectTitle)}" maxlength="200" ${native?'':'readonly'}></label>`:''}${list.map((node,i)=>`<div class="outline-row" ${tab==='scenes'?`role="treeitem" aria-level="${(node.depth||0)+1}" ${node.container?`aria-expanded="${!collapsedOutline.has(node.id)}"`:''}`:''}>${node.container?`<button class="outline-toggle" data-collapse="${node.id}" aria-label="${escape(t(collapsedOutline.has(node.id)?'expand':'collapse'))}" aria-expanded="${!collapsedOutline.has(node.id)}">${collapsedOutline.has(node.id)?'▸':'▾'}</button>`:''}<button class="node-row ${node.id===selected?'active':''}" data-select="${node.id}" ${tab==='scenes'&&native?'draggable="true"':''} ${busy?'disabled':''}><span class="ordinal">${tab==='scenes'?icon(node.type==='story.block'?'block':node.type==='story.sequence'?'sequence':'scene'):icon('person')}</span><span><strong>${escape(node.title)}</strong><small>${escape(tab==='scenes'?t(node.type==='story.block'?'block':node.type==='story.sequence'?'sequence':node.path==='both'?'scene':node.path):tab==='characters'?t('role'):t(node.kind))}</small></span></button></div>`).join('')||`<p class="empty">${escape(t(tab==='scenes'?'noScenes':'noRelations'))}</p>`}</div>
+      <div class="node-list" ${tab==='scenes'?'role="tree"':''}>${tab==='scenes'?`<label class="project-title-field"><span>${escape(t('workTitle'))}</span><input data-field="projectTitle" aria-label="${escape(t('workTitle'))}" value="${escape(draft?.projectTitle??model.projectTitle??'')}" placeholder="${escape(projectTitle)}" maxlength="200" ${native?'':'readonly'}></label>`:''}${list.map((node,i)=>`<div class="outline-row" ${tab==='scenes'?`role="treeitem" aria-level="${(node.depth||0)+1}" ${node.container?`aria-expanded="${!collapsedOutline.has(node.id)}"`:''}`:''}>${node.container?`<button class="outline-toggle" data-collapse="${node.id}" aria-label="${escape(t(collapsedOutline.has(node.id)?'expand':'collapse'))}" aria-expanded="${!collapsedOutline.has(node.id)}">${collapsedOutline.has(node.id)?'▸':'▾'}</button>`:''}<button class="node-row ${tab==='characters'?'character-row ':''}${node.id===selected?'active':''}" data-select="${node.id}" ${tab==='scenes'&&native?'draggable="true"':''} ${busy?'disabled':''}><span class="ordinal">${tab==='scenes'?icon(node.type==='story.block'?'block':node.type==='story.sequence'?'sequence':'scene'):tab==='characters'?characterIcon(node):icon('person')}</span><span><strong>${escape(node.title)}</strong><small>${escape(tab==='scenes'?t(node.type==='story.block'?'block':node.type==='story.sequence'?'sequence':node.path==='both'?'scene':node.path):tab==='characters'?(node.role||t('role')):t(node.kind))}</small></span></button></div>`).join('')||`<p class="empty">${escape(t(tab==='scenes'?'noScenes':'noRelations'))}</p>`}</div>
       <div class="navbottom">${tab==='scenes'?`<div class="structure-actions">${[['newBlock','block'],['newSequence','sequence'],['newScene','scene']].map(([action,ico])=>`<button data-action="${action}" title="${escape(t(action))}" aria-label="${escape(t(action))}" ${!native||busy||(action==='newSequence'&&!model.nodes.some(n=>n.type==='story.block'))||(action==='newScene'&&!model.nodes.some(n=>n.type==='story.sequence'))?'disabled':''}>${icon(ico)}</button>`).join('')}</div>`:button(tab==='characters'?'newCharacter':'newRelation',tab==='characters'?'newCharacter':'createRelation','add',!native||busy||(tab==='relationships'&&people.length<2),'primary')}</div></nav>
       <section class="writing"><div class="editor-toolbar"><div class="viewtabs"><button data-action="write" aria-pressed="${!reading}">${escape(t('editor'))}</button><button data-action="read" aria-pressed="${reading}">${escape(t('reading'))}</button></div><div class="editor-actions"><select data-writing-mode aria-label="${escape(t('writingMode'))}">${['horizontal','vertical'].map(key=>`<option value="${key}" ${preferences.writingMode===key?'selected':''}>${escape(t(key))}</option>`).join('')}</select>${button('dialogue','dialogue',null,!native||busy||reading||!writingScene()||(floating&&!floatingWindow))}${button(floatingWindow?'dock':'float',floatingWindow?'dock':'float','float',!native||busy)}</div></div>
       <div class="editor-content ${reading?'reading-content ':''}${!reading&&isContainer()&&(!floating||floatingWindow)?'group-writing ':''}${!reading&&detail?.type_id==='story.scene'&&(!floating||floatingWindow)?'scene-writing':''}">${reading?`<div class="reading-viewport"><article class="reading" id="reading"><h2>${escape(t(path))}</h2></article></div>`:floating&&!floatingWindow?`<div class="empty floating-message">${icon('float')}<p>${escape(t('floating'))}</p>${button('dock','dock',null,!native)}</div>`:detail?`
       ${isContainer()?'':detail.type_id==='story.scene'?sceneBreadcrumb(values):`<div class="selection-label">${escape(t(detail.type_id==='story.character'?'characters':'relationships'))}</div>${field('title',detail.type_id==='story.character'?'name':'title',values.title)}`}
-      ${isContainer()?groupBody():detail.type_id==='story.scene'?sceneBody(values.canonical??props.canonical):detail.type_id==='story.character'?field('role','role',values.role,true):`<div class="relation-inspector">${relatedPeople(model,detail).map(n=>`<span>${escape(n?.title||'—')}</span>`).join(`<span class="connection">${props.mutual?'↔':'→'}</span>`)}<label class="field">${escape(t('kind'))}<select data-field="kind" ${native?'':'disabled'}>${['family','friend','rival','trust','love'].map(k=>`<option value="${k}" ${values.kind===k?'selected':''}>${escape(t(k))}</option>`).join('')}</select></label><label class="check"><input data-field="mutual" type="checkbox" ${values.mutual?'checked':''} ${native?'':'disabled'}>${escape(t('mutual'))}</label></div>`}
+      ${isContainer()?groupBody():detail.type_id==='story.scene'?sceneBody(values.canonical??props.canonical):detail.type_id==='story.character'?characterBody(values):`<div class="relation-inspector">${relatedPeople(model,detail).map(n=>`<span>${escape(n?.title||'—')}</span>`).join(`<span class="connection">${props.mutual?'↔':'→'}</span>`)}<label class="field">${escape(t('kind'))}<select data-field="kind" ${native?'':'disabled'}>${['family','friend','rival','trust','love'].map(k=>`<option value="${k}" ${values.kind===k?'selected':''}>${escape(t(k))}</option>`).join('')}</select></label><label class="check"><input data-field="mutual" type="checkbox" ${values.mutual?'checked':''} ${native?'':'disabled'}>${escape(t('mutual'))}</label></div>`}
       ${['story.block','story.sequence'].includes(detail.type_id)?'':detail.type_id==='story.scene'?`<details class="scene-notes" data-notes-id="${detail.id}" ${expandedNotes.has(detail.id)?'open':''}><summary>${escape(t('notes'))}</summary><textarea data-field="notes" aria-label="${escape(t('notes'))}" rows="4" ${native?'':'readonly'}>${escape(values.notes)}</textarea></details>`:field('notes','notes',values.notes,true)}${detail.type_id==='story.scene'||isContainer()?'':`<div class="editor-footer">${button('remove','remove','trash',!native||busy,'danger')}</div>`}`:`<p class="empty">${escape(t('select'))}</p>`}</div>
       <footer class="native-hint">${icon('graph')}<span>${escape(t('native'))}</span></footer></section>
       <aside class="relations" id="story-relations"><h2>${escape(t('relationships'))}</h2><p>${escape(t('relationDescription'))}</p>${relations.map(node=>{const [a,b]=relatedPeople(model,node);return `<button class="relation-row ${node.id===selected?'active':''}" data-select="${node.id}"><span class="relation-names">${escape(a?.title||'—')} <span>${node.mutual?'↔':'→'}</span> ${escape(b?.title||'—')}</span><strong>${escape(node.title)}</strong><small>${escape(t(node.kind))}</small></button>`;}).join('')}${button('newRelation','createRelation','add',!native||busy||people.length<2)}</aside>
     </main></div><footer class="notice" role="status">${error?`<span class="error">${escape(t(error))}</span>${button('refresh','refresh',null,busy)}`:`<span>${status?escape(t(status)):''}</span>`}${backupPath?`<span class="backup-path" title="${escape(backupPath)}">${escape(t('savedCopy'))}: ${escape(backupPath)}</span>`:''}<span class="status-selection">${escape(detail?.properties.title||'')}</span></footer><dialog id="create-dialog"></dialog>
   </div>`;
-  shell.querySelector('.editor-content').scrollTop=editorScroll;
+  shell.querySelector('.editor-content').scrollTop=preferences.writingMode==='vertical'&&(reading||detail?.type_id==='story.scene'||isContainer())?0:editorScroll;
   shell.querySelector('.node-list').scrollTop=listScroll;
   if(cursor) {
     const scope=cursor.scene?shell.querySelector(`[data-scene="${cursor.scene}"]`):shell;
@@ -122,7 +128,7 @@ ${escape(latestDetail.properties.notes||'')}</pre><div>${button('applyDraft','ap
   }
   shell.querySelector('.editor-actions').insertAdjacentHTML('afterbegin',button('writingAssist','writingAssist',null,!native||busy||reading||detail?.type_id!=='story.scene'||(floating&&!floatingWindow)));
   resizeManuscript();
-  const groupViewport=shell.querySelector('.group-manuscript');if(groupViewport)groupViewport.scrollLeft=groupScroll;
+  const groupViewport=shell.querySelector('.group-manuscript');if(groupViewport){groupViewport.scrollLeft=preferences.writingMode==='vertical'?groupScroll.left:0;groupViewport.scrollTop=preferences.writingMode==='horizontal'?groupScroll.top:0;}
   if(reading) renderReading();
   if(reopenPreferences) showPreferences();
 }
@@ -249,16 +255,35 @@ async function mutate(action) {
     status='saved';await loadDetail(model.selected); }
   catch(e){error=String(e);status='unsaved';}finally{busy=false;render();}
 }
+function characterBody(values) {
+  const portrait=detail.properties.portrait;
+  return `<section class="character-portrait" aria-label="${escape(t('portrait'))}"><div class="portrait-preview">${portrait?`<img src="${escape(portrait)}" alt="${escape(values.title||'')}" width="96" height="96">`:`<span aria-hidden="true">${escape(Array.from(values.title||'?')[0])}</span>`}</div><div class="portrait-controls"><strong>${escape(t('portrait'))}</strong><div class="portrait-buttons">${button('importPortrait',portrait?'replacePortrait':'addPortrait','person',!native||busy)}${portrait?button('removePortrait','removePortrait',null,!native||busy):''}</div><p>${escape(t('portraitHint'))}</p></div></section>${field('role','role',values.role,true)}`;
+}
+function characterIcon(node) {
+  return node.portraitKey&&native?`<img class="character-list-portrait" src="${escape(window.__TAURI__.core.convertFileSrc(node.id,'portrait')+'?v='+node.portraitKey)}" alt="" width="32" height="32">`:icon('person');
+}
+async function importPortrait() {
+  if(!await commitDraft()||detail?.type_id!=='story.character')return;
+  const id=detail.id;
+  busy=true;error='';render();
+  try {
+    const updated=await invoke('import_portrait',{id,expectedRevision:model.revision});
+    if(updated){model=updated;status='saved';await loadDetail(id);}
+  }catch(e){error=String(e);}finally{busy=false;render();}
+}
 async function choose(id) {
   if(!await commitDraft()) return;
   if(native) model=await invoke('choose',{id});else model={...model,selected:id};
   await loadDetail(id);render();
 }
+function paragraphMarkup(node) {
+  return fragments(paragraphText(node)).map((part,index)=>`<div class="manuscript-block" data-manuscript-block="${node.id}-${index}"><textarea class="manuscript-text" data-block="${node.id}" data-start="${part.start}" data-length="${part.text.length}" data-fragment="${index}" aria-label="${escape(t('body'))}" rows="1" ${native?'':'readonly'}>${escape(part.text)}</textarea></div>`).join('');
+}
 function sceneBody(doc) {
   const editable=native?'':'readonly';
-  const input=(node,label,actor=false,part={start:0,text:paragraphText(node)},index=0)=>`<textarea class="${actor?'dialogue-actor':'manuscript-text'}" data-block="${node.id}" data-start="${part.start}" data-fragment="${index}" aria-label="${escape(t(label))}" placeholder="${label==='body'?'':escape(t(label))}" rows="1" ${editable}>${escape(part.text)}</textarea>`;
+  const input=(node,label,actor=false,part={start:0,text:paragraphText(node)},index=0)=>`<textarea class="${actor?'dialogue-actor':'manuscript-text'}" data-block="${node.id}" data-start="${part.start}" data-length="${part.text.length}" data-fragment="${index}" aria-label="${escape(t(label))}" placeholder="${label==='body'?'':escape(t(label))}" rows="1" ${editable}>${escape(part.text)}</textarea>`;
   const blocks=doc.content.flatMap(node=>{
-    if(node.type==='paragraph')return fragments(paragraphText(node)).map((part,index)=>`<div class="manuscript-block" data-manuscript-block="${node.id}-${index}">${input(node,'body',false,part,index)}</div>`);
+    if(node.type==='paragraph')return [paragraphMarkup(node)];
     return [`<div class="manuscript-block" data-manuscript-block="${node.id}"><table class="dialogue-sheet" data-sheet="${node.id}" data-width="${node.extensions?.['komyaku.dialogue']?.actorWidth??''}" aria-label="${escape(t('dialogue'))}"><tbody><tr><td>${input(node.content[0].content[0].content[0],'actorName',true)}${native?`<span class="dialogue-divider" data-divider="${node.id}" role="separator" aria-orientation="vertical" aria-label="${escape(t('resizeActor'))}" tabindex="0"></span>`:''}</td><td>${input(node.content[0].content[1].content[0],'dialogueText')}</td></tr></tbody></table></div>`];
   });
   return `<div class="manuscript"><div class="manuscript-pages">${blocks.join('')}</div></div>`;
@@ -300,6 +325,8 @@ document.addEventListener('focusin',updateEmptyColumnCaret);
 document.addEventListener('focusout',()=>requestAnimationFrame(updateEmptyColumnCaret));
 function resizeManuscript(scope=null) {
   if(!scope) {
+    const heading=document.querySelector('.group-title>textarea');
+    if(heading&&preferences.writingMode==='horizontal'){heading.style.height='0px';heading.style.height=`${heading.scrollHeight}px`;}
     const blocks=[...document.querySelectorAll('.manuscript-block')];
     if(blocks.length>80) {
       if(!manuscriptObserver)observeManuscript();
@@ -387,39 +414,150 @@ document.addEventListener('dblclick',async event=>{
   storeSheetWidth(handle.dataset.divider,null,inputScene(handle));await commitDraft();
 });
 window.addEventListener('resize',()=>resizeManuscript());
-document.addEventListener('wheel',event=>{const group=event.target.closest('.group-manuscript');const pages=group??event.target.closest('.manuscript-pages,.reading-viewport');if((!group&&preferences.writingMode!=='vertical')||!pages||pages.scrollWidth<=pages.clientWidth||event.ctrlKey||Math.abs(event.deltaX)>Math.abs(event.deltaY))return;if(group&&preferences.writingMode!=='vertical'&&event.target.closest('.group-scene'))return;event.preventDefault();pages.scrollLeft+=preferences.writingMode==='vertical'?-event.deltaY:event.deltaY;},{passive:false});
+document.addEventListener('wheel',event=>{if(preferences.writingMode!=='vertical')return;const pages=event.target.closest('.group-manuscript')??event.target.closest('.manuscript-pages,.reading-viewport');if(!pages||pages.scrollWidth<=pages.clientWidth||event.ctrlKey||Math.abs(event.deltaX)>Math.abs(event.deltaY))return;event.preventDefault();pages.scrollLeft-=event.deltaY;},{passive:false});
 document.addEventListener('toggle',event=>{if(event.target.matches?.('.scene-notes')){const id=event.target.dataset.notesId;event.target.open?expandedNotes.add(id):expandedNotes.delete(id);}},true);
+function paragraphInputs(input) {return [...input.closest('.manuscript').querySelectorAll('textarea[data-block]')].filter(next=>next.dataset.block===input.dataset.block);}
+function paragraphDocument(input) {const scene=inputScene(input);return scene?(groupEdits.get(scene)?.canonical??groupDetails.find(item=>item.id===scene).properties.canonical):(draft?.canonical??detail.properties.canonical);}
+function paragraphValue(input) {return paragraphText(paragraphById(paragraphDocument(input),input.dataset.block));}
+function rawFragment(input) {return paragraphValue(input).slice(Number(input.dataset.start),Number(input.dataset.start)+Number(input.dataset.length));}
+function caretPosition(input,position=input.selectionStart) {return Number(input.dataset.start)+canonicalPosition(rawFragment(input),position);}
+function clearParagraphSelection() {paragraphSelection=null;document.querySelectorAll('.paragraph-selected').forEach(input=>input.classList.remove('paragraph-selected'));document.querySelectorAll('.paragraph-range-highlight').forEach(el=>el.remove());}
+function selectedParagraph(input) {return paragraphSelection?.id===input.dataset.block&&paragraphSelection.scene===inputScene(input);}
+function paragraphOverlay(input) {
+  const overlay=document.createElement('div');overlay.className='paragraph-range-highlight';overlay.setAttribute('aria-hidden','true');
+  const style=getComputedStyle(input);for(const key of ['font','lineHeight','letterSpacing','wordSpacing','padding','writingMode','textOrientation','textAlign','wordBreak','overflowWrap','tabSize'])overlay.style[key]=style[key];
+  overlay.style.width=`${input.offsetWidth}px`;overlay.style.height=`${input.offsetHeight}px`;return overlay;
+}
+function revealParagraphCaret(input,local) {
+  // A textarea can be taller than the viewport; reveal the caret, not its top.
+  const mirror=paragraphOverlay(input),caret=document.createElement('span');caret.textContent='\u200b';
+  mirror.append(document.createTextNode(input.value.slice(0,local)),caret,document.createTextNode(input.value.slice(local)));input.after(mirror);
+  caret.scrollIntoView({block:'nearest',inline:'nearest'});mirror.remove();
+}
+function paintParagraphSelection(input) {
+  paintingSelection=true;
+  document.querySelectorAll('.paragraph-range-highlight').forEach(el=>el.remove());
+  const peers=paragraphInputs(input),{start,end}=selectionRange(paragraphSelection);
+  for(const peer of peers){
+    const part={start:Number(peer.dataset.start),text:rawFragment(peer)},range=fragmentSelection(part,paragraphSelection);
+    peer.classList.toggle('paragraph-selected',peer!==input&&range.start===0&&range.end===part.text.length&&range.end>range.start);
+    if(peer!==input&&range.end>range.start&&(range.start>0||range.end<part.text.length)){
+      const overlay=paragraphOverlay(peer);
+      const mark=document.createElement('mark');mark.textContent=part.text.slice(range.start,range.end).replace(/\r\n?/g,'\n');
+      overlay.append(document.createTextNode(part.text.slice(0,range.start).replace(/\r\n?/g,'\n')),mark,document.createTextNode(part.text.slice(range.end).replace(/\r\n?/g,'\n')));peer.after(overlay);
+    }
+  }
+  const raw=rawFragment(input),offset=Number(input.dataset.start),local=fragmentSelection({start:offset,text:raw},paragraphSelection);
+  input.setSelectionRange(raw.slice(0,local.start).replace(/\r\n?/g,'\n').length,raw.slice(0,local.end).replace(/\r\n?/g,'\n').length,paragraphSelection.focus<paragraphSelection.anchor?'backward':'forward');
+  paintingSelection=false;
+  if(start===end)clearParagraphSelection();
+}
+function selectParagraphPosition(input,selection) {
+  const peers=paragraphInputs(input);reflowing=true;focusParagraphPosition(peers,selection.focus);reflowing=false;
+  paragraphSelection={id:input.dataset.block,scene:inputScene(input),...selection};paintParagraphSelection(document.activeElement);
+}
+function queueParagraphPatch(input,change) {
+  const id=input.dataset.block,scene=inputScene(input),old=paragraphValue(input),text=old.slice(0,change.start)+change.text+old.slice(change.end),delta=characters(change.text)-characters(change.removed);
+  if(scene){const edit=groupEdit(scene);edit.canonical=updateParagraph(edit.canonical,id,text,delta);edit.changes.set(id,[...(edit.changes.get(id)||[]),{start:change.start,end:change.end,text:change.text}]);edit.version++;}
+  else {draft??={};draft.canonical=updateParagraph(draft.canonical??detail.properties.canonical,id,text,delta);pendingParagraphs.set(id,[...(pendingParagraphs.get(id)||[]),{start:change.start,end:change.end,text:change.text}]);draftVersion++;}
+  status='unsaved';clearTimeout(autosaveTimer);if(!composing)autosaveTimer=setTimeout(()=>commitDraft(),900);
+  const notice=document.querySelector('.notice span');if(notice)notice.textContent=t('unsaved');
+}
+function focusParagraphPosition(inputs,position) {
+  const input=inputs.find(next=>position>=Number(next.dataset.start)&&position<=Number(next.dataset.start)+Number(next.dataset.length))??inputs.find(next=>Number(next.dataset.start)>position)??inputs.at(-1);
+  if(!input)return;
+  const raw=rawFragment(input),local=raw.slice(0,Math.max(0,position-Number(input.dataset.start))).replace(/\r\n?/g,'\n').length;
+  resizeManuscript(input.closest('.manuscript-block'));input.focus({preventScroll:true});input.setSelectionRange(local,local);revealParagraphCaret(input,local);updateEmptyColumnCaret();
+}
+function reflowParagraph(input,position) {
+  if(input.closest('.dialogue-sheet'))return;
+  const peers=paragraphInputs(input),node=paragraphById(paragraphDocument(input),input.dataset.block),template=document.createElement('template');template.innerHTML=paragraphMarkup(node);
+  const wrappers=[...template.content.children],first=peers[0].closest('.manuscript-block');
+  reflowing=true;clearParagraphSelection();first.before(template.content);
+  for(const peer of peers){const block=peer.closest('.manuscript-block');manuscriptObserver?.unobserve(block);block.remove();}
+  for(const block of wrappers){manuscriptObserver?.observe(block);if(wrappers.length<=80)resizeManuscript(block);}
+  focusParagraphPosition(wrappers.map(block=>block.querySelector('textarea')),position);reflowing=false;
+}
+document.addEventListener('pointerdown',event=>{if(event.shiftKey&&paragraphSelection&&event.target.dataset.block&&selectedParagraph(event.target))return;clearParagraphSelection();});
+// macOS Edit > Select All can select the native textarea without a DOM keydown.
+document.addEventListener('select',event=>{
+  const input=event.target;if(reflowing||paintingSelection||paragraphSelection||composing||!native||!input.dataset.block||input.closest('.dialogue-sheet')||!input.value.length||input.selectionStart!==0||input.selectionEnd!==input.value.length)return;
+  const peers=paragraphInputs(input);if(peers.length<2)return;
+  paragraphSelection={id:input.dataset.block,scene:inputScene(input),anchor:0,focus:paragraphValue(input).length};paintParagraphSelection(input);
+},true);
+document.addEventListener('selectionchange',()=>{
+  if(paintingSelection||reflowing)return;
+  const input=document.activeElement;if(!paragraphSelection)return;
+  if(!input?.dataset.block||!selectedParagraph(input)){clearParagraphSelection();return;}
+  const local=fragmentSelection({start:Number(input.dataset.start),text:rawFragment(input)},paragraphSelection);
+  if(caretPosition(input)!==Number(input.dataset.start)+local.start||caretPosition(input,input.selectionEnd)!==Number(input.dataset.start)+local.end)clearParagraphSelection();
+});
+function captureSelectionReplacement(input) {
+  if(!input.dataset.block||!selectedParagraph(input)||selectionReplacements.has(input))return;
+  selectionReplacements.set(input,{selection:{...paragraphSelection},before:input.value,start:input.selectionStart,end:input.selectionEnd,parts:paragraphInputs(input).map(peer=>({input:peer,start:Number(peer.dataset.start),text:rawFragment(peer)}))});
+}
+document.addEventListener('beforeinput',event=>captureSelectionReplacement(event.target));
+document.addEventListener('keydown',event=>{
+  const input=event.target;if(!native||!input.dataset.block||composing||event.isComposing||event.keyCode===229||input.closest('.dialogue-sheet'))return;
+  const peers=paragraphInputs(input);if(peers.length<2)return;
+  if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='a'){event.preventDefault();selectParagraphPosition(input,{anchor:0,focus:paragraphValue(input).length});return;}
+  const backward=preferences.writingMode==='vertical'?'ArrowUp':'ArrowLeft',forward=preferences.writingMode==='vertical'?'ArrowDown':'ArrowRight';
+  if(event.shiftKey&&!event.metaKey&&!event.ctrlKey&&!event.altKey&&[backward,forward].includes(event.key)){
+    event.preventDefault();const direction=event.key===forward?1:-1;
+    const selection=selectedParagraph(input)?paragraphSelection:{anchor:caretPosition(input,input.selectionDirection==='backward'?input.selectionEnd:input.selectionStart),focus:caretPosition(input,input.selectionDirection==='backward'?input.selectionStart:input.selectionEnd)};
+    selectParagraphPosition(input,extendSelection(paragraphValue(input),selection,direction));return;
+  }
+  if(event.shiftKey||event.metaKey||event.ctrlKey||event.altKey)return;
+  if(selectedParagraph(input)&&['Backspace','Delete'].includes(event.key)){
+    event.preventDefault();const text=paragraphValue(input),{start,end}=selectionRange(paragraphSelection);clearParagraphSelection();queueParagraphPatch(input,{start,end,text:'',removed:text.slice(start,end)});reflowParagraph(input,start);return;
+  }
+  if(selectedParagraph(input)&&[backward,forward].includes(event.key)){event.preventDefault();const range=selectionRange(paragraphSelection),position=event.key===forward?range.end:range.start;clearParagraphSelection();focusParagraphPosition(peers,position);return;}
+  if(input.selectionStart!==input.selectionEnd)return;
+  const start=input.selectionStart===0,end=input.selectionStart===input.value.length,pos=caretPosition(input),text=paragraphValue(input);
+  const direction=(start&&[backward,'Backspace'].includes(event.key))?-1:(end&&[forward,'Delete'].includes(event.key))?1:0;
+  if(!direction)return;
+  const target=graphemeStep(text,pos,direction);if(target===pos)return;
+  event.preventDefault();clearParagraphSelection();
+  if(event.key==='Backspace'||event.key==='Delete'){const from=Math.min(pos,target),to=Math.max(pos,target);queueParagraphPatch(input,{start:from,end:to,text:'',removed:text.slice(from,to)});reflowParagraph(input,from);}
+  else focusParagraphPosition(peers,target);
+});
+for(const type of ['copy','cut'])document.addEventListener(type,event=>{
+  const input=document.activeElement;if(!input?.dataset.block||!selectedParagraph(input)||!event.clipboardData)return;
+  const text=paragraphValue(input),{start,end}=selectionRange(paragraphSelection);event.preventDefault();event.clipboardData.setData('text/plain',text.slice(start,end));
+  if(type==='cut'){clearParagraphSelection();queueParagraphPatch(input,{start,end,text:'',removed:text.slice(start,end)});reflowParagraph(input,start);}
+});
 document.addEventListener('input',event=>{
   if(event.target.dataset.block) {
-    const input=event.target,id=input.dataset.block,start=Number(input.dataset.start||0),before=inputValues.get(input)??input.defaultValue;
-    const change=textDifference(before,input.value,start);inputValues.set(input,input.value);
+    const input=event.target,start=Number(input.dataset.start||0),replacement=selectionReplacements.get(input);
+    selectionReplacements.delete(input);
+    const range=replacement?selectionRange(replacement.selection):null;
+    const inserted=replacement?input.value.slice(replacement.start,Math.max(replacement.start,input.value.length-(replacement.before.length-replacement.end))):null;
+    const change=replacement?{...range,text:inserted,removed:paragraphValue(input).slice(range.start,range.end)}:inputPatch(rawFragment(input),input.value,start);
     if(change.start===change.end&&!change.text)return;
-    const scene=inputScene(input);
-    if(scene){
-      const edit=groupEdit(scene),old=paragraphText(paragraphById(edit.canonical,id));
-      edit.canonical=updateParagraph(edit.canonical,id,old.slice(0,change.start)+change.text+old.slice(change.end),characters(change.text)-characters(change.removed));
-      edit.changes.set(id,[...(edit.changes.get(id)||[]),{start:change.start,end:change.end,text:change.text}]);edit.version++;
-      const delta=input.value.length-before.length;
-      for(const next of input.closest('[data-scene]').querySelectorAll(`[data-block="${id}"]`))if(next!==input&&Number(next.dataset.start)>start)next.dataset.start=String(Number(next.dataset.start)+delta);
-      status='unsaved';clearTimeout(autosaveTimer);if(!composing)autosaveTimer=setTimeout(()=>commitDraft(),900);
-      resizeManuscript(input.closest('.manuscript-block'));updateEmptyColumnCaret();
-      return;
+    queueParagraphPatch(input,change);
+    const position=replacement?range.start+inserted.length:start+canonicalPosition(paragraphValue(input).slice(start,start+Number(input.dataset.length)+change.text.length-(change.end-change.start)),input.selectionStart);
+    if(replacement){
+      clearParagraphSelection();
+      if(!composing){reflowParagraph(input,position);return;}
+      const retained=replaceSelectionFragments(replacement.parts,replacement.parts.findIndex(part=>part.input===input),replacement.selection,inserted);
+      retained.forEach((part,index)=>{const peer=replacement.parts[index].input;if(!part){const block=peer.closest('.manuscript-block');manuscriptObserver?.unobserve(block);block.remove();return;}peer.dataset.start=String(part.start);peer.dataset.length=String(part.text.length);if(peer!==input)peer.value=part.text.replace(/\r\n?/g,'\n');});
+      compositionReflow.add(input);
+    }else {
+      const delta=change.text.length-(change.end-change.start);input.dataset.length=String(Number(input.dataset.length)+delta);
+      for(const next of paragraphInputs(input))if(next!==input&&Number(next.dataset.start)>start)next.dataset.start=String(Number(next.dataset.start)+delta);
+      if(!composing&&Number(input.dataset.length)>16384&&!input.closest('.dialogue-sheet')){reflowParagraph(input,position);return;}
     }
-    draft??={};const current=draft.canonical??detail.properties.canonical,old=paragraphText(paragraphById(current,id));
-    draft.canonical=updateParagraph(current,id,old.slice(0,change.start)+change.text+old.slice(change.end),characters(change.text)-characters(change.removed));
-    pendingParagraphs.set(id,[...(pendingParagraphs.get(id)||[]),{start:change.start,end:change.end,text:change.text}]);
-    const delta=input.value.length-before.length;
-    for(const next of document.querySelectorAll(`[data-block="${id}"]`))if(next!==input&&Number(next.dataset.start)>start)next.dataset.start=String(Number(next.dataset.start)+delta);
-    draftVersion++;status='unsaved';clearTimeout(autosaveTimer);if(!composing)autosaveTimer=setTimeout(()=>commitDraft(),900);resizeManuscript(event.target.closest('.manuscript-block'));updateEmptyColumnCaret();return;
+    resizeManuscript(input.closest('.manuscript-block'));updateEmptyColumnCaret();return;
   }
   const key=event.target.dataset.field;if(!key||(!detail&&key!=='projectTitle'))return;
   draft??={};draft[key]=event.target.type==='checkbox'?event.target.checked:event.target.value;draftVersion++;status='unsaved';clearTimeout(autosaveTimer);if(!composing)autosaveTimer=setTimeout(()=>commitDraft(),900);
+  if(event.target.closest('.group-title')&&preferences.writingMode==='horizontal'){event.target.style.height='0px';event.target.style.height=`${event.target.scrollHeight}px`;}
   const notice=document.querySelector('.notice span');if(notice)notice.textContent=t('unsaved');
 });
-document.addEventListener('compositionstart',()=>{composing=true;updateEmptyColumnCaret();clearTimeout(autosaveTimer);});
-document.addEventListener('compositionend',event=>{composing=false;updateEmptyColumnCaret();clearTimeout(autosaveTimer);autosaveTimer=setTimeout(()=>commitDraft(),900);});
+document.addEventListener('compositionstart',event=>{captureSelectionReplacement(event.target);composing=true;updateEmptyColumnCaret();clearTimeout(autosaveTimer);});
+document.addEventListener('compositionend',event=>{composing=false;selectionReplacements.delete(event.target);if(event.target.dataset.block&&(compositionReflow.has(event.target)||Number(event.target.dataset.length)>16384)){compositionReflow.delete(event.target);reflowParagraph(event.target,caretPosition(event.target));}updateEmptyColumnCaret();clearTimeout(autosaveTimer);autosaveTimer=setTimeout(()=>commitDraft(),900);});
 document.addEventListener('focusin',event=>{const scene=inputScene(event.target);if(scene)groupFocus=scene;});
-document.addEventListener('focusout',event=>{if(event.target.dataset.block){bodyCaret={scene:inputScene(event.target)??detail.id,id:event.target.dataset.block,start:Number(event.target.dataset.start||0)+event.target.selectionStart,end:Number(event.target.dataset.start||0)+event.target.selectionEnd};if(!busy&&!composing&&!widthDrag)commitDraft();}if(event.target.dataset.field&&!busy&&!composing)commitDraft();});
+document.addEventListener('focusout',event=>{if(reflowing)return;if(event.target.dataset.block){bodyCaret={scene:inputScene(event.target)??detail.id,id:event.target.dataset.block,start:caretPosition(event.target),end:caretPosition(event.target,event.target.selectionEnd)};if(!busy&&!composing&&!widthDrag)commitDraft();}if(event.target.dataset.field&&!busy&&!composing)commitDraft();});
 document.addEventListener('change',async event=>{
   if(event.target.matches('[data-writing-mode]')){if(!await commitDraft())return;await savePreferences({...preferences,writingMode:event.target.value});return;}
   if(event.target.id==='language'){if(!await commitDraft())return;await savePreferences({...preferences,language:event.target.value});}
@@ -526,6 +664,8 @@ document.addEventListener('click',async event=>{
     if(action==='openWorkspace'){if(await commitDraft())await showWorkspaces();return;}
     if(action==='restoreBackup'){if(await commitDraft())await showBackups();return;}
     if(action==='preferences'){showPreferences();return;}
+    if(action==='importPortrait'){await importPortrait();return;}
+    if(action==='removePortrait'){await mutate({kind:'property',id:detail.id,key:'portrait',value:''});return;}
     if(action==='writingAssist'){if(await commitDraft())await openAssistant();return;}
     if(action==='dialogue') {
       if(!await commitDraft())return;

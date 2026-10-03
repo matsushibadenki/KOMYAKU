@@ -1,26 +1,33 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { VersionLineageGraph } from "./VersionLineageGraph.jsx";
 
 function IntegrationParagraphEditor({ candidate, disabled, onRevise, labels, onDirty }) {
   const [edits, setEdits] = useState({});
+  const composing = useRef(false);
+  const [compositionActive, setCompositionActive] = useState(false);
   const paragraphs = candidate.editableParagraphs ?? [];
   const changed = paragraphs.filter(({ nodeId, text }) => Object.hasOwn(edits, nodeId) && edits[nodeId] !== text);
   const changeText = (nodeId, text) => {
     const next = { ...edits, [nodeId]: text };
     setEdits(next);
-    onDirty(paragraphs.some((item) => Object.hasOwn(next, item.nodeId) && next[item.nodeId] !== item.text));
+    onDirty(composing.current || paragraphs.some((item) => Object.hasOwn(next, item.nodeId) && next[item.nodeId] !== item.text));
   };
   return <form className="integration-paragraph-editor" onSubmit={(event) => {
     event.preventDefault();
+    if (composing.current || disabled || !changed.length) return;
     void onRevise(changed.map(({ nodeId }) => ({ nodeId, text: edits[nodeId] })));
   }}>
     <h4>{labels.edit}</h4><p>{labels.editDescription}</p>
     {paragraphs.length ? paragraphs.slice(0, 100).map(({ nodeId, text }, index) => <label key={nodeId}>
       <span>{labels.editParagraph(index + 1)}</span>
       <textarea disabled={disabled} maxLength={100_000} rows={3}
+        onCompositionStart={() => { composing.current = true; setCompositionActive(true); onDirty(true); }}
+        onCompositionEnd={(event) => { composing.current = false; setCompositionActive(false);
+          changeText(nodeId, event.currentTarget.value); }}
+        onKeyDown={(event) => { if (event.key === "Enter" && (composing.current || event.nativeEvent.isComposing)) event.stopPropagation(); }}
         value={edits[nodeId] ?? text} onChange={(event) => changeText(nodeId, event.target.value)} />
     </label>) : <p>{labels.noEditable}</p>}
-    <button type="submit" disabled={disabled || !changed.length}>{labels.reviewEdits}</button>
+    <button type="submit" disabled={disabled || compositionActive || !changed.length}>{labels.reviewEdits}</button>
   </form>;
 }
 
@@ -185,7 +192,8 @@ export function LocalVersionHistory({ history, available, status, onCreateInitia
               </form>
             ) : <p>{labels.integration.noAlternative}</p>}
             {alternatives.length ? <p className="persistence-status" role="status" data-state={integrationStatus}>
-              {labels.integration.status[visibleIntegrationReview ? integrationStatus
+              {integrationStatus === "error" && integrationSubmitted ? labels.integration.status.saveError
+                : labels.integration.status[visibleIntegrationReview ? integrationStatus
                 : integrationStatus === "ready" ? "idle" : integrationStatus] ?? labels.integration.status.error}
             </p> : null}
             {visibleIntegrationReview ? (

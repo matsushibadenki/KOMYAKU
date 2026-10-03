@@ -11,6 +11,9 @@ pub struct GpuRenderer {
     capacity: usize,
     count: u32,
     prepared: bool,
+    portraits: wgpu::Texture,
+    portrait_keys: [Option<u64>; crate::PORTRAIT_SLOTS],
+    srgb_target: bool,
 }
 impl GpuRenderer {
     pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
@@ -30,24 +33,73 @@ impl GpuRenderer {
         });
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: None,
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+        // 16 × 16 normalized portraits: bounded 16 MiB GPU atlas, uploaded only on change.
+        let portraits = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Story portrait atlas"),
+            size: wgpu::Extent3d {
+                width: 2048,
+                height: 2048,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let portrait_view = portraits.create_view(&Default::default());
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
         });
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: camera.as_entire_binding(),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: camera.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&portrait_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
@@ -98,6 +150,9 @@ impl GpuRenderer {
             capacity,
             count: 0,
             prepared: false,
+            portraits,
+            portrait_keys: [None; crate::PORTRAIT_SLOTS],
+            srgb_target: format.is_srgb(),
         }
     }
     pub fn text_stats(&self) -> crate::TextStats {
@@ -150,6 +205,43 @@ impl GpuRenderer {
             return Err(unge_core::Error::Invalid("invalid text target size".into()));
         }
         self.text.prepare(queue, scene, viewport, size)?;
+        if scene.portraits.len() > crate::PORTRAIT_SLOTS {
+            return Err(unge_core::Error::Invalid(
+                "portrait atlas limit exceeded".into(),
+            ));
+        }
+        for (slot, portrait) in scene.portraits.iter().enumerate() {
+            if portrait.rgba.len() != (crate::PORTRAIT_SIZE * crate::PORTRAIT_SIZE * 4) as usize {
+                return Err(unge_core::Error::Invalid("invalid portrait pixels".into()));
+            }
+            if self.portrait_keys[slot] == Some(portrait.key) {
+                continue;
+            }
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &self.portraits,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d {
+                        x: (slot as u32 % 16) * 128,
+                        y: (slot as u32 / 16) * 128,
+                        z: 0,
+                    },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &portrait.rgba,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(128 * 4),
+                    rows_per_image: Some(128),
+                },
+                wgpu::Extent3d {
+                    width: 128,
+                    height: 128,
+                    depth_or_array_layers: 1,
+                },
+            );
+            self.portrait_keys[slot] = Some(portrait.key);
+        }
         let bytes = scene
             .quads
             .len()
@@ -179,7 +271,7 @@ impl GpuRenderer {
                 viewport.origin[0],
                 viewport.origin[1],
                 viewport.zoom,
-                0.0,
+                f32::from(self.srgb_target),
                 viewport.size[0],
                 viewport.size[1],
                 0.0,

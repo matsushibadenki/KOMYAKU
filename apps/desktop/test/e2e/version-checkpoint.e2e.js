@@ -133,6 +133,21 @@ async function openHistory(page, initial = false, paged = false) {
         window.integrationAdoptCalls ??= [];
         window.integrationAdoptCalls.push({ localRevision, draft: localStorage.getItem('komyaku:local-draft:' + candidate.document.id) });
         if (window.failIntegrationSave) throw new Error('injected merge failure');
+        if (window.loseIntegrationResponse) {
+          const key = 'komyaku:local-draft:' + candidate.document.id;
+          if (!window.committedIntegration) {
+            const record = JSON.parse(localStorage.getItem(key));
+            const document = structuredClone(candidate.document);
+            document.content[0].content = [{ type: 'text', text: '応答喪失後も保持する統合本文', marks: [], metadata: {}, extensions: {} }];
+            const committed = { ...record, contentJson: JSON.stringify(document), localRevision: localRevision + 1 };
+            localStorage.setItem(key, JSON.stringify(committed));
+            window.committedIntegration = { document, record: JSON.stringify(committed), localRevision: localRevision + 1 };
+            window.versionWrites.push({ kind: 'merge', choice: candidate.choice });
+            throw new Error('injected response loss after commit');
+          }
+          if (localStorage.getItem(key) !== window.committedIntegration.record) throw new Error('committed draft overwritten');
+          return window.committedIntegration;
+        }
         window.versionWrites.push({ kind: 'merge', choice: candidate.choice });
         return { document: candidate.document, localRevision: localRevision + 1 };
       };
@@ -479,4 +494,61 @@ test('integration attachment details distinguish verified result bytes from remo
   await page.screenshot({ path: '/tmp/komyaku-integration-assets-narrow.png' });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   expect(errors).toEqual([]);
+});
+
+
+test('ordinary integration save-only retry preserves the committed draft after response loss', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+  await openHistory(page, false, true);
+  const panel = page.locator('.version-integration-review');
+  await panel.getByRole('button', { name: '統合をプレビュー' }).click();
+  await panel.getByRole('button', { name: '別案の版を採用して差分確認' }).click();
+  await page.evaluate(() => { window.loseIntegrationResponse = true; });
+  await panel.getByRole('button', { name: '確認して統合版を保存' }).click();
+  await expect(panel.locator('.persistence-status')).toHaveAttribute('data-state', 'error');
+  await expect(panel.getByText('統合版の保存結果を確認できませんでした。同じ候補で保存を再試行してください。')).toBeVisible();
+  await expect(panel.getByText('作業中本文に対する最終差分')).toBeVisible();
+  await page.screenshot({ path: '/tmp/komyaku-response-loss-desktop.png' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: '/tmp/komyaku-response-loss-narrow.png' });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  const committed = await page.evaluate(() => window.committedIntegration.record);
+  expect(JSON.parse(committed).contentJson).toContain('応答喪失後も保持する統合本文');
+  // Keyboard activation of the actual retry button, with real App checkpoint code.
+  const retry = panel.getByRole('button', { name: '確認して統合版を保存' });
+  await retry.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.ProseMirror').first()).toContainText('応答喪失後も保持する統合本文');
+  await expect(retry).toHaveCount(0);
+  expect(await page.evaluate(() => window.versionWrites)).toEqual([{ kind: 'merge', choice: 'theirs' }]);
+  const attempts = await page.evaluate(() => window.integrationAdoptCalls);
+  expect(attempts).toHaveLength(2);
+  expect(attempts[1].localRevision).toBe(attempts[0].localRevision);
+  expect(attempts[1].draft).toBe(committed);
+  await page.reload();
+  await expect(page.locator('.ProseMirror').first()).toContainText('応答喪失後も保持する統合本文');
+  expect(errors).toEqual([]);
+  await expect(page.locator('vite-error-overlay')).toHaveCount(0);
+});
+
+
+test('integration paragraph composition blocks diff submission and adoption until confirmed', async ({ page }) => {
+  await openHistory(page, false, true);
+  const panel = page.locator('.version-integration-review');
+  await panel.getByRole('button', { name: '統合をプレビュー' }).click();
+  await panel.getByRole('button', { name: '別案の版を採用して差分確認' }).click();
+  const input = panel.locator('.integration-paragraph-editor textarea').first();
+  await input.dispatchEvent('compositionstart');
+  await input.fill('変換中の文章');
+  await expect(panel.getByRole('button', { name: '編集結果の差分を確認' })).toBeDisabled();
+  await expect(panel.getByRole('button', { name: '確認して統合版を保存' })).toBeDisabled();
+  await input.evaluate(element => element.closest('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(await page.evaluate(() => window.integrationEdits)).toBeUndefined();
+  await input.dispatchEvent('compositionend');
+  await input.press('Tab');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => page.evaluate(() => window.integrationEdits)).toEqual([{ nodeId: 'preview-node', text: '変換中の文章' }]);
+  await expect(panel.getByRole('button', { name: '確認して統合版を保存' })).toBeEnabled();
 });

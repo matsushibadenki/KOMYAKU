@@ -18,6 +18,9 @@ serde_json = "1"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 base64 = "0.22"
 ring = "0.17"
+rfd = "=0.16.0"
 tokio = { version = "1", features = ["time", "sync", "macros"] }
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+[dev-dependencies]
+image = { version = "=0.25.10", default-features = false, features = ["png"] }

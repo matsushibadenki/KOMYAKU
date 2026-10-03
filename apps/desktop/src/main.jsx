@@ -15,7 +15,13 @@ const MermaidRendererHost = isMermaidRenderer
     })))
   : null;
 
-if (["integration-qa", "integration-retry-qa"].includes(new URLSearchParams(window.location.search).get("mode"))) {
+if (new URLSearchParams(window.location.search).get("mode") === "integration-ui-qa") {
+  void import("./services/packaged-integration-ui-qa.js").then(async ({ prepareIntegrationUiQa }) => {
+    const props = await prepareIntegrationUiQa();
+    ReactDOM.createRoot(document.getElementById("root")).render(
+      <I18nextProvider i18n={i18n}><App {...props} /></I18nextProvider>);
+  }).catch(error => { document.getElementById("root").textContent = `QA failed: ${error.message}`; });
+} else if (["integration-qa", "integration-retry-qa"].includes(new URLSearchParams(window.location.search).get("mode"))) {
   void import("./services/packaged-integration-qa.js").then(({ mountPackagedIntegrationQa }) =>
     mountPackagedIntegrationQa(document.getElementById("root"), {
       lostResponse: new URLSearchParams(window.location.search).get("mode") === "integration-retry-qa" }));

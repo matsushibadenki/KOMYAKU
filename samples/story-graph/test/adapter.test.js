@@ -2,6 +2,7 @@ import { describe, test, expect } from 'bun:test';
 import { canonicalText, routeNodes, relatedPeople, outlineNodes, outlineDrop, containedScenes } from '../src/adapter.js';
 import { messages } from '../src/locales.js';
 import '../src/ai-locales.js';
+import '../src/character-locales.js';
 import preview from '../src/preview.json';
 describe('KOMYAKU authoring projections',()=>{
   test('every seeded body is canonical and preserves its Unicode text',()=>{

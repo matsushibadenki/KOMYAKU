@@ -9,5 +9,7 @@ unge-core = { path = "../unge-core" }
 wgpu = "27.0.1"
 bytemuck = { version = "1", features = ["derive"] }
 cosmic-text = "=0.15.0"
+image = { version = "=0.25.10", default-features = false, features = ["png", "jpeg", "webp"] }
+base64 = "0.22"
 [dev-dependencies]
 pollster = "0.4"
