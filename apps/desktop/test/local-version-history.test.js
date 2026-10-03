@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createCanonicalNode, createEmptyDocument } from "@komyaku/document-schema";
 import { createDocumentVersion } from "@komyaku/version-engine";
 import {
+  reviseLocalVersionIntegration,
   prepareLocalVersionIntegration,
   adoptLocalVersionIntegration,
   appendLocalVersionHistoryPage,
@@ -492,4 +493,100 @@ test("integration candidate binds exact draft, selected snapshot and retry reque
   expect(writes[0].version.snapshotHash).toBe(versions[2].snapshotHash);
   expect(saved.localRevision).toBe(8);
   expect(saved.document).toEqual(JSON.parse(versions[2].snapshotJson));
+});
+
+
+test("manual integration preserves node identity, validates edits and requires a new candidate", async () => {
+  const { documentId, versions, branches, branchIds, ids, summary } = await mergeReviewFixture();
+  const chosenDocument = JSON.parse(versions[2].snapshotJson);
+  const formatted = createCanonicalNode("paragraph", { content: [{ type: "text", text: "Keep bold",
+    marks: [{ type: "bold" }], metadata: {}, extensions: {} }] });
+  chosenDocument.content.push(formatted);
+  versions[2] = await createDocumentVersion({ ...versions[2], document: chosenDocument });
+  let savedInput;
+  const options = { native: true, invokeImpl: async (command, payload) => {
+    if (command === "list_local_version_history") return { documentId, currentBranchId: branchIds[0],
+      currentVersionId: ids[1], branches, versions: versions.map(summary), nextCursor: null };
+    if (command === "load_local_version_assets") return [];
+    if (command === "load_local_version_snapshot") {
+      const version = versions.find(({ id }) => id === payload.versionId);
+      return { documentId, versionId: version.id, schemaVersion: version.schemaVersion,
+        snapshotEncoding: version.snapshotEncoding, snapshotJson: version.snapshotJson, snapshotHash: version.snapshotHash };
+    }
+    savedInput = structuredClone(payload.input);
+    return { operationId: savedInput.operationId, documentId, versionId: savedInput.version.id,
+      branchId: savedInput.branchId, snapshotHash: savedInput.version.snapshotHash, replayed: false };
+  } };
+  const review = await reviewLocalVersionIntegration({ documentId, alternativeBranchId: branchIds[1] }, options);
+  const document = JSON.parse(versions[1].snapshotJson);
+  const candidate = await prepareLocalVersionIntegration({ review, document, choice: "theirs",
+    authorId: versions[0].authorId }, options);
+  expect(candidate.editableParagraphs).toHaveLength(1);
+  const nodeId = candidate.editableParagraphs[0].nodeId;
+  expect(candidate.editableParagraphs[0].text).toBe("正文");
+  for (const edits of [[], [{ nodeId: formatted.id, text: "remove formatting" }], [{ nodeId: crypto.randomUUID(), text: "wrong" }],
+    [{ nodeId, text: "a" }, { nodeId, text: "b" }], [{ nodeId, text: "x".repeat(100001) }]]) {
+    await expect(reviseLocalVersionIntegration({ candidate, edits })).rejects.toThrow(/invalid_local_merge_edits/);
+  }
+  const revised = await reviseLocalVersionIntegration({ candidate, edits: [{ nodeId, text: "統合した本文" }] });
+  expect(revised.choice).toBe("manual");
+  expect(revised.snapshotHash).not.toBe(candidate.snapshotHash);
+  expect(revised.editableParagraphs[0]).toEqual({ nodeId, text: "統合した本文" });
+  expect(candidate.editableParagraphs[0].text).toBe("正文");
+  expect(revised.comparison.changes.find((change) => change.nodeId === nodeId).textDiff.added).toBe("統合した");
+  expect(savedInput).toBeUndefined();
+  const saved = await adoptLocalVersionIntegration({ candidate: revised, document, localRevision: 10 }, options);
+  expect(saved.document.content[1]).toEqual(JSON.parse(versions[2].snapshotJson).content[1]);
+  expect(saved.document.content[0].id).toBe(nodeId);
+  expect(saved.document.content[0].content[0].text).toBe("統合した本文");
+  expect(savedInput.version.parentIds).toEqual([ids[1], ids[2]]);
+  await expect(reviseLocalVersionIntegration({ candidate: revised, edits: [{ nodeId, text: "again" }] }))
+    .rejects.toThrow(/invalid_local_merge_edits/);
+});
+
+
+test("integration attachment review verifies the exact result closure and describes removed draft assets", async () => {
+  const { documentId, versions, branches, branchIds, ids, summary } = await mergeReviewFixture();
+  const [retainedId, addedId, removedId] = Array.from({ length: 3 }, () => crypto.randomUUID());
+  const file = (assetId, fileName) => createCanonicalNode("file", { assetId, fileName, mediaType: "text/plain" });
+  const document = JSON.parse(versions[1].snapshotJson);
+  document.content.push(file(retainedId, "retained.txt"), file(removedId, "removed.txt"));
+  const chosen = JSON.parse(versions[2].snapshotJson);
+  chosen.content.push(file(retainedId, "retained.txt"), file(retainedId, "another-reference.txt"), file(addedId, "added.txt"));
+  versions[2] = await createDocumentVersion({ ...versions[2], document: chosen });
+  const asset = async (id, text) => {
+    const bytes = [...new TextEncoder().encode(text)];
+    const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", new Uint8Array(bytes)));
+    return { id, mediaType: "text/plain", bytes, contentHash: [...hash].map(b => b.toString(16).padStart(2, "0")).join("") };
+  };
+  const assets = await Promise.all([asset(retainedId, "retained bytes"), asset(addedId, "added bytes")]);
+  let returnedAssets = assets;
+  const options = { native: true, invokeImpl: async (command, payload) => {
+    if (command === "list_local_version_history") return { documentId, currentBranchId: branchIds[0],
+      currentVersionId: ids[1], branches, versions: versions.map(summary), nextCursor: null };
+    if (command === "load_local_version_assets") return returnedAssets;
+    const version = versions.find(({ id }) => id === payload.versionId);
+    return { documentId, versionId: version.id, schemaVersion: version.schemaVersion,
+      snapshotEncoding: version.snapshotEncoding, snapshotJson: version.snapshotJson, snapshotHash: version.snapshotHash };
+  } };
+  const review = await reviewLocalVersionIntegration({ documentId, alternativeBranchId: branchIds[1] }, options);
+  const prepare = () => prepareLocalVersionIntegration({ review, document, choice: "theirs",
+    authorId: versions[0].authorId }, options);
+  const candidate = await prepare();
+  const rows = new Map(candidate.assetReview.map((row) => [row.id, row]));
+  expect(rows.get(retainedId)).toMatchObject({ action: "retained", verified: true,
+    byteLength: assets[0].bytes.length, contentHash: assets[0].contentHash, references: 2 });
+  expect(rows.get(addedId)).toMatchObject({ action: "added", verified: true, name: "added.txt" });
+  expect(rows.get(removedId)).toMatchObject({ action: "removed", verified: false, name: "removed.txt",
+    byteLength: null, contentHash: null });
+  const revised = await reviseLocalVersionIntegration({ candidate, edits: [{
+    nodeId: candidate.editableParagraphs[0].nodeId, text: "Manual with same attachments"
+  }] });
+  expect(revised.assetReview).toEqual(candidate.assetReview);
+  returnedAssets = assets.slice(1);
+  await expect(prepare()).rejects.toThrow(/local_merge_asset_closure_mismatch/);
+  returnedAssets = [assets[0], { ...assets[1], mediaType: "application/octet-stream" }];
+  await expect(prepare()).rejects.toThrow(/local_merge_asset_media_type_mismatch/);
+  returnedAssets = [assets[0], { ...assets[1], bytes: [0] }];
+  await expect(prepare()).rejects.toThrow(/invalid_local_version_assets/);
 });

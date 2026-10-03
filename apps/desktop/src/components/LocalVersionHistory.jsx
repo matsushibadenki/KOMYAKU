@@ -1,9 +1,34 @@
 import { useEffect, useState } from "react";
 import { VersionLineageGraph } from "./VersionLineageGraph.jsx";
 
+function IntegrationParagraphEditor({ candidate, disabled, onRevise, labels, onDirty }) {
+  const [edits, setEdits] = useState({});
+  const paragraphs = candidate.editableParagraphs ?? [];
+  const changed = paragraphs.filter(({ nodeId, text }) => Object.hasOwn(edits, nodeId) && edits[nodeId] !== text);
+  const changeText = (nodeId, text) => {
+    const next = { ...edits, [nodeId]: text };
+    setEdits(next);
+    onDirty(paragraphs.some((item) => Object.hasOwn(next, item.nodeId) && next[item.nodeId] !== item.text));
+  };
+  return <form className="integration-paragraph-editor" onSubmit={(event) => {
+    event.preventDefault();
+    void onRevise(changed.map(({ nodeId }) => ({ nodeId, text: edits[nodeId] })));
+  }}>
+    <h4>{labels.edit}</h4><p>{labels.editDescription}</p>
+    {paragraphs.length ? paragraphs.slice(0, 100).map(({ nodeId, text }, index) => <label key={nodeId}>
+      <span>{labels.editParagraph(index + 1)}</span>
+      <textarea disabled={disabled} maxLength={100_000} rows={3}
+        value={edits[nodeId] ?? text} onChange={(event) => changeText(nodeId, event.target.value)} />
+    </label>) : <p>{labels.noEditable}</p>}
+    <button type="submit" disabled={disabled || !changed.length}>{labels.reviewEdits}</button>
+  </form>;
+}
+
 export function LocalVersionHistory({ history, available, status, onCreateInitial, onSaveNamed,
   onCreateAlternative, onRestore, onLoadOlder, onExport, exportStatus, onCompare, comparison,
-  comparisonStatus, onPreviewIntegration, onAdoptIntegration, integrationCandidate, onReviewIntegration, integrationReview, integrationStatus, locale, labels }) {
+  comparisonStatus, onReviseIntegration, integrationSubmitted, onPreviewIntegration, onAdoptIntegration, integrationCandidate, onReviewIntegration, integrationReview, integrationStatus, locale, labels }) {
+  const [integrationDirty, setIntegrationDirty] = useState(false);
+  useEffect(() => { setIntegrationDirty(false); }, [integrationCandidate]);
   const [label, setLabel] = useState("");
   const [branchName, setBranchName] = useState("");
   const [compareFrom, setCompareFrom] = useState("");
@@ -191,9 +216,27 @@ export function LocalVersionHistory({ history, available, status, onCreateInitia
                     onClick={() => onPreviewIntegration("theirs")}>{labels.integration.chooseTheirs}</button>
                 </div>
                 {integrationCandidate ? <div>
+                  <IntegrationParagraphEditor key={integrationCandidate.snapshotHash} candidate={integrationCandidate}
+                    disabled={busy || integrationSubmitted || integrationStatus === "loading"}
+                    onRevise={onReviseIntegration} onDirty={setIntegrationDirty} labels={labels.integration} />
                   <h4>{labels.integration.preview}</h4>
                   <p>{labels.changeSummary(integrationCandidate.comparison.summary)}</p>
                   <p>{labels.integration.assets(integrationCandidate.assetIds.length)}</p>
+                  {integrationCandidate.assetReview?.length ? <details className="integration-assets">
+                    <summary>{labels.integration.assetDetails}</summary>
+                    <p>{labels.integration.assetExplanation}</p>
+                    {integrationCandidate.assetReview.length > 100
+                      ? <p>{labels.integration.assetLimit}</p> : null}
+                    <ol>{integrationCandidate.assetReview.slice(0, 100).map((asset) => <li key={asset.id}>
+                      <strong>{labels.integration.assetActions[asset.action]} · {asset.name}</strong>
+                      <p>{asset.mediaType} · {labels.integration.assetReferences(asset.references)}</p>
+                      <code>{asset.id}</code>
+                      {asset.verified ? <div>
+                        <p>{labels.integration.assetBytes(asset.byteLength)}</p>
+                        <p>{labels.integration.assetHash}: <code>{asset.contentHash}</code></p>
+                      </div> : <p>{labels.integration.removedAsset}</p>}
+                    </li>)}</ol>
+                  </details> : null}
                   <ol>{integrationCandidate.comparison.changes.slice(0, 50).map((change) => <li key={change.nodeId}>
                     <span>{labels.changeLabels[change.change]} · {change.type}</span>
                     {change.textDiff ? <div className="version-text-diff">
@@ -201,7 +244,7 @@ export function LocalVersionHistory({ history, available, status, onCreateInitia
                       {change.textDiff.added ? <ins>{change.textDiff.added}</ins> : null}
                     </div> : null}
                   </li>)}</ol>
-                  <button type="button" disabled={busy || integrationStatus === "loading"}
+                  <button type="button" disabled={busy || integrationDirty || integrationStatus === "loading"}
                     onClick={() => onAdoptIntegration()}>{labels.integration.adopt}</button>
                 </div> : null}
               </div>

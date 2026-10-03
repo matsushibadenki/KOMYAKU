@@ -111,9 +111,23 @@ async function openHistory(page, initial = false, paged = false) {
       export const prepareLocalVersionIntegration = async ({ choice, document }) => {
         window.integrationCandidateCalls ??= [];
         window.integrationCandidateCalls.push(choice);
-        return { choice, document, comparison: { summary: { added: 0, removed: 0, moved: 0, changed: 1 },
+        return { choice, document, assetReview: window.showIntegrationAssets ? [
+          { id: '00000000-0000-4000-8000-000000000601', action: 'added', name: 'added.txt', references: 1,
+            mediaType: 'text/plain', verified: true, byteLength: 11, contentHash: 'a'.repeat(64) },
+          { id: '00000000-0000-4000-8000-000000000602', action: 'retained', name: 'retained.txt', references: 2,
+            mediaType: 'text/plain', verified: true, byteLength: 14, contentHash: 'b'.repeat(64) },
+          { id: '00000000-0000-4000-8000-000000000603', action: 'removed', name: 'removed.txt', references: 1,
+            mediaType: 'text/plain', verified: false, byteLength: null, contentHash: null }
+        ] : [], snapshotHash: "preview", editableParagraphs: [{ nodeId: "preview-node", text: "別案の本文" }], comparison: { summary: { added: 0, removed: 0, moved: 0, changed: 1 },
           changes: [{ nodeId: "preview-node", change: "changed", type: "paragraph",
-            textDiff: { removed: "原稿", added: "別案の本文" } }] }, assetIds: [] };
+            textDiff: { removed: "原稿", added: "別案の本文" } }] }, assetIds: window.showIntegrationAssets ? ["added", "retained"] : [] };
+      };
+      export const reviseLocalVersionIntegration = async ({ candidate, edits }) => {
+        window.integrationEdits = edits;
+        return { ...candidate, choice: 'manual', snapshotHash: 'revised', editableParagraphs: edits,
+          comparison: { summary: { added: 0, removed: 0, moved: 0, changed: 1 },
+            changes: [{ nodeId: 'preview-node', change: 'changed', type: 'paragraph',
+              textDiff: { removed: '原稿', added: edits[0].text } }] } };
       };
       export const adoptLocalVersionIntegration = async ({ candidate, localRevision }) => {
         window.integrationAdoptCalls ??= [];
@@ -409,4 +423,60 @@ test('integration requires final preview and explicit adoption; failed saves pre
   expect(attempts).toHaveLength(2);
   expect(attempts[1]).toEqual(attempts[0]);
   await expect(panel.getByRole('button', { name: '確認して統合版を保存' })).toHaveCount(0);
+});
+
+
+test('manual integration edits require a refreshed final diff before saving', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await openHistory(page, false, true);
+  const panel = page.locator('.version-integration-review');
+  await panel.getByRole('button', { name: '統合をプレビュー' }).click();
+  await panel.getByRole('button', { name: '別案の版を採用して差分確認' }).click();
+  await panel.getByRole('textbox', { name: '段落 1', exact: true }).fill('両方の案を取り入れた本文');
+  const save = panel.getByRole('button', { name: '確認して統合版を保存' });
+  await expect(save).toBeDisabled();
+  expect(await page.evaluate(() => window.versionWrites)).toEqual([]);
+  await panel.getByRole('button', { name: '編集結果の差分を確認' }).click();
+  await expect(panel.locator('ins')).toHaveText('両方の案を取り入れた本文');
+  await expect(save).toBeEnabled();
+  await panel.locator('textarea').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: '/tmp/komyaku-manual-integration-desktop.png' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await panel.locator('textarea').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: '/tmp/komyaku-manual-integration-narrow.png' });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  expect(errors).toEqual([]);
+  await save.click();
+  await expect.poll(() => page.evaluate(() => window.versionWrites)).toEqual([{ kind: 'merge', choice: 'manual' }]);
+});
+
+
+test('integration attachment details distinguish verified result bytes from removed draft references', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+  await openHistory(page, false, true);
+  await page.evaluate(() => { window.showIntegrationAssets = true; });
+  const panel = page.locator('.version-integration-review');
+  await panel.getByRole('button', { name: '統合をプレビュー' }).click();
+  await panel.getByRole('button', { name: '別案の版を採用して差分確認' }).click();
+  await expect(panel.getByText('検証済み添付: 2件')).toBeVisible();
+  const details = panel.locator('.integration-assets');
+  await details.locator('summary').click();
+  await expect(details.getByText('追加 · added.txt')).toBeVisible();
+  await expect(details.getByText('保持 · retained.txt')).toBeVisible();
+  await expect(details.getByText('除外 · removed.txt')).toBeVisible();
+  await expect(details.getByText('検証済みサイズ: 11 bytes')).toBeVisible();
+  await expect(details.getByText('text/plain · 参照数: 2件')).toBeVisible();
+  await expect(details.getByText('統合結果から外れます。この画面では保存済みbytesを再検証していません。')).toBeVisible();
+  await expect(details.getByText('a'.repeat(64), { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.versionWrites)).toEqual([]);
+  await details.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: '/tmp/komyaku-integration-assets-desktop.png' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await details.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: '/tmp/komyaku-integration-assets-narrow.png' });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  expect(errors).toEqual([]);
 });

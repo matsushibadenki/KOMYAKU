@@ -15,7 +15,11 @@ const MermaidRendererHost = isMermaidRenderer
     })))
   : null;
 
-if (new URLSearchParams(window.location.search).get("mode") === "history-archive-qa") {
+if (["integration-qa", "integration-retry-qa"].includes(new URLSearchParams(window.location.search).get("mode"))) {
+  void import("./services/packaged-integration-qa.js").then(({ mountPackagedIntegrationQa }) =>
+    mountPackagedIntegrationQa(document.getElementById("root"), {
+      lostResponse: new URLSearchParams(window.location.search).get("mode") === "integration-retry-qa" }));
+} else if (new URLSearchParams(window.location.search).get("mode") === "history-archive-qa") {
   void import("./services/packaged-history-archive-qa.js").then(({ mountPackagedHistoryArchiveQa }) =>
     mountPackagedHistoryArchiveQa(document.getElementById("root")));
 } else if (new URLSearchParams(window.location.search).get("mode") === "history-qa") {

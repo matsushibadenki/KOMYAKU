@@ -83,7 +83,7 @@ function render() {
     ${!floatingWindow?`<header class="window-titlebar" data-tauri-drag-region><span class="window-title" data-tauri-drag-region>${escape(projectTitle)}</span><div class="panel-toggles"><button data-action="toggleLeftPanel" title="${escape(t(leftOpen?'hideLeftPanel':'showLeftPanel'))}" aria-label="${escape(t(leftOpen?'hideLeftPanel':'showLeftPanel'))}" aria-pressed="${leftOpen}" aria-controls="left-icon-menu story-navigator">${icon('leftPanel')}</button><button data-action="toggleRightPanel" title="${escape(t(rightOpen?'hideRightPanel':'showRightPanel'))}" aria-label="${escape(t(rightOpen?'hideRightPanel':'showRightPanel'))}" aria-pressed="${rightOpen}" aria-controls="story-relations">${icon('rightPanel')}</button></div></header>`:''}
     <nav class="menubar" aria-label="${escape(t('appMenu'))}">
       <details class="app-menu logo-menu"><summary class="menu-logo" aria-label="KOMYAKU Story Graph">${icon('graph')}</summary><div class="menu-popup">${button('preferences','preferences',null)}</div></details>
-      ${menu('file',[button('newWorkspace','newWorkspace',null,!native||busy),button('save','save',null,!native||busy),button('backup','backup',null,!native||busy)])}
+      ${menu('file',[button('newWorkspace','newWorkspace',null,!native||busy),button('openWorkspace','openWorkspace',null,!native||busy),button('save','save',null,!native||busy),button('backup','backup',null,!native||busy),button('restoreBackup','restoreBackup',null,!native||busy)])}
       ${menu('edit',[button('undo','undo','undo',!native||busy),button('redo','redo','redo',!native||busy),button('remove','remove',null,!native||busy||!detail)])}
       ${menu('insert',[button('newBlock','newBlock',null,!native||busy),button('newSequence','newSequence',null,!native||busy||!model.nodes.some(n=>n.type==='story.block')),button('newScene','newScene',null,!native||busy||!model.nodes.some(n=>n.type==='story.sequence')),button('newCharacter','newCharacter',null,!native||busy),button('newRelation','createRelation',null,!native||busy||people.length<2)])}
       ${menu('view',[button('write','editor',null),button('read','reading',null),button('graph','graph',null,!native)])}
@@ -180,6 +180,51 @@ async function saveGroupDrafts() {
     if(rebuild||error)render();else {const notice=document.querySelector('.notice span');if(notice)notice.textContent=t(status);}
     if(dirty()&&!error){clearTimeout(autosaveTimer);autosaveTimer=setTimeout(()=>commitDraft(),900);}
   }
+}
+async function showWorkspaces() {
+  if(document.querySelector('.workspace-dialog'))return;
+  const dialog=document.createElement('dialog');dialog.className='workspace-dialog';
+  dialog.innerHTML=`<h2>${escape(t('openWorkspace'))}</h2><label class="workspace-search">${escape(t('findWork'))}<input type="search" autofocus></label><div class="workspace-list" aria-live="polite">${escape(t('loadingWorkspaces'))}</div><p class="workspace-error" role="status"></p><footer><button data-work-close>${escape(t('close'))}</button></footer>`;
+  document.body.append(dialog);dialog.showModal();dialog.addEventListener('close',()=>dialog.remove(),{once:true});
+  dialog.querySelector('[data-work-close]').onclick=()=>dialog.close();
+  const list=dialog.querySelector('.workspace-list'),search=dialog.querySelector('input');let entries=[];
+  const draw=()=>{
+    const rows=entries.filter(item=>(item.title||t(item.default?'project':'untitledProject')).toLocaleLowerCase().includes(search.value.toLocaleLowerCase()));
+    list.innerHTML=rows.map(item=>`<button class="workspace-row" data-work-id="${escape(item.id)}" ${item.current||item.opened||item.issue?'disabled':''}><strong>${escape(item.title||t(item.default?'project':'untitledProject'))}</strong><small>${escape(item.issue?t(item.issue):item.current?t('currentWorkspace'):item.opened?t('workspace_already_open'):item.modified?new Date(item.modified*1000).toLocaleString(language):'')}</small></button>`).join('')||`<p class="empty">${escape(t('noWorkspaces'))}</p>`;
+  };
+  search.oninput=draw;
+  list.onclick=async event=>{
+    const row=event.target.closest('[data-work-id]');if(!row||row.disabled)return;
+    list.querySelectorAll('button').forEach(button=>button.disabled=true);search.disabled=true;
+    try{await invoke('open_workspace',{id:row.dataset.workId});dialog.close();}
+    catch(e){dialog.querySelector('.workspace-error').textContent=t(String(e));search.disabled=false;draw();}
+  };
+  try{entries=await invoke('saved_workspaces');if(dialog.isConnected)draw();}
+  catch(e){list.textContent='';dialog.querySelector('.workspace-error').textContent=t(String(e));}
+}
+async function showBackups() {
+  if(document.querySelector('.workspace-dialog'))return;
+  const dialog=document.createElement('dialog');dialog.className='workspace-dialog backup-dialog';
+  dialog.innerHTML=`<h2>${escape(t('restoreBackup'))}</h2><p class="backup-hint">${escape(t('restoreHint'))}</p><div class="workspace-list" aria-live="polite">${escape(t('loadingBackups'))}</div><p class="backup-details"></p><label class="workspace-search">${escape(t('restoredTitle'))}<input maxlength="200" required disabled></label><p class="workspace-error" role="status"></p><footer><button data-backup-close>${escape(t('close'))}</button><button class="primary" data-backup-restore disabled>${escape(t('restoreAndOpen'))}</button></footer>`;
+  document.body.append(dialog);dialog.showModal();dialog.addEventListener('close',()=>dialog.remove(),{once:true});
+  dialog.querySelector('[data-backup-close]').onclick=()=>dialog.close();
+  const list=dialog.querySelector('.workspace-list'),title=dialog.querySelector('input'),restore=dialog.querySelector('[data-backup-restore]');let entries=[],selected=null;
+  const draw=()=>{list.innerHTML=entries.map(item=>`<button class="workspace-row" data-backup-id="${escape(item.id)}" aria-pressed="${selected?.id===item.id}" ${item.issue?'disabled':''}><strong>${escape(item.title||model.projectTitle||t('untitledProject'))}</strong><small>${escape(item.modified?new Date(item.modified*1000).toLocaleString(language):'')}${item.issue?` · ${escape(t(item.issue))}`:''}</small></button>`).join('')||`<p class="empty">${escape(t('noBackups'))}</p>`;};
+  list.onclick=event=>{
+    const row=event.target.closest('[data-backup-id]');if(!row||row.disabled)return;selected=entries.find(item=>item.id===row.dataset.backupId);draw();
+    title.disabled=false;title.value=`${[...(selected.title||model.projectTitle||t('untitledProject'))].slice(0,170).join('')}${t('restoredSuffix')}`;
+    dialog.querySelector('.backup-details').textContent=t('backupDetails').replace('{scenes}',selected.scenes).replace('{nodes}',selected.nodes);
+    restore.disabled=false;title.focus();title.select();
+  };
+  title.oninput=()=>{restore.disabled=!selected||!title.value.trim();};
+  restore.onclick=async()=>{
+    if(!selected||!title.reportValidity())return;
+    restore.disabled=true;title.disabled=true;list.querySelectorAll('button').forEach(row=>row.disabled=true);
+    try{await invoke('restore_backup',{id:selected.id,title:title.value});dialog.close();}
+    catch(e){dialog.querySelector('.workspace-error').textContent=t(String(e));title.disabled=false;restore.disabled=false;draw();}
+  };
+  try{entries=await invoke('saved_backups');if(dialog.isConnected)draw();}
+  catch(e){list.textContent='';dialog.querySelector('.workspace-error').textContent=t(String(e));}
 }
 function groupEdit(id) {
   if(!groupEdits.has(id))groupEdits.set(id,{canonical:groupDetails.find(scene=>scene.id===id).properties.canonical,changes:new Map(),whole:false,version:0});
@@ -469,7 +514,7 @@ window.addEventListener('resize',()=>closeOutlineMenu());
 document.addEventListener('scroll',()=>closeOutlineMenu(),true);
 document.addEventListener('dragend',()=>{draggingOutlineId=null;clearDropMarks();});
 document.addEventListener('click',async event=>{
-  if(event.target.closest('#preferences-dialog,.assistant-dialog,.rename-dialog'))return;
+  if(event.target.closest('#preferences-dialog,.assistant-dialog,.rename-dialog,.workspace-dialog'))return;
   const element=event.target.closest('button');if(!element||element.disabled)return;
   try {
     if(element.dataset.collapse){if(!await commitDraft())return;const id=element.dataset.collapse;collapsedOutline.has(id)?collapsedOutline.delete(id):collapsedOutline.add(id);render();return;}
@@ -478,6 +523,8 @@ document.addEventListener('click',async event=>{
     const action=element.dataset.action;closeMenus();
     if(action==='toggleLeftPanel'||action==='toggleRightPanel'){const key=action==='toggleLeftPanel'?'leftPanelOpen':'rightPanelOpen';await savePreferences({...preferences,[key]:!preferences[key]});return;}
     if(action==='newWorkspace'){if(await commitDraft())await invoke('new_workspace');return;}
+    if(action==='openWorkspace'){if(await commitDraft())await showWorkspaces();return;}
+    if(action==='restoreBackup'){if(await commitDraft())await showBackups();return;}
     if(action==='preferences'){showPreferences();return;}
     if(action==='writingAssist'){if(await commitDraft())await openAssistant();return;}
     if(action==='dialogue') {
@@ -509,6 +556,7 @@ document.addEventListener('click',event=>{if(!event.target.closest('.app-menu'))
 document.addEventListener('toggle',event=>{if(event.target.matches?.('.app-menu')&&event.target.open)document.querySelectorAll('.app-menu[open]').forEach(menu=>{if(menu!==event.target)menu.open=false;});},true);
 document.addEventListener('keydown',event=>{if(event.key==='Escape')closeMenus();if(event.key==='ArrowDown'&&event.target.matches('.app-menu>summary')){event.preventDefault();event.target.parentElement.open=true;event.target.parentElement.querySelector('button:not(:disabled)')?.focus();}});
 document.addEventListener('keydown',async event=>{if(native&&(event.metaKey||event.ctrlKey)&&event.key==='n'){event.preventDefault();try {if(await commitDraft())await invoke('new_workspace');}catch(e){error=String(e);render();}return;}if((event.metaKey||event.ctrlKey)&&event.key==='s'){event.preventDefault();await commitDraft();}});
+document.addEventListener('keydown',async event=>{if(native&&(event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='o'){event.preventDefault();if(await commitDraft())await showWorkspaces();}});
 window.addEventListener('beforeunload',event=>{if(dirty()){event.preventDefault();event.returnValue='';}});
 function authSettings() {
   const disabled=!native||authBusy||chatgpt.pending;

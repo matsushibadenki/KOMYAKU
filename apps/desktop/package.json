@@ -11,9 +11,11 @@
     "test:preview:package": "tauri build --debug --bundles app --config src-tauri/tauri.preview-qa.conf.json",
     "test:history:package": "tauri build --debug --bundles app --config src-tauri/tauri.history-qa.conf.json",
     "test:editing:package": "tauri build --debug --bundles app --config src-tauri/tauri.editing-qa.conf.json",
+    "test:integration:package": "tauri build --debug --bundles app --config src-tauri/tauri.integration-qa.conf.json",
     "test:history-archive:package": "tauri build --debug --bundles app --config src-tauri/tauri.history-archive-qa.conf.json",
     "benchmark:startup:macos": "swift scripts/benchmark-packaged-startup.swift 'src-tauri/target/debug/bundle/macos/KOMYAKU Editing QA.app'",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test:integration-retry:package": "tauri build --debug --bundles app --config src-tauri/tauri.integration-retry-qa.conf.json"
   },
   "dependencies": {
     "@komyaku/archive-core": "workspace:*",

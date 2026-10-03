@@ -1305,3 +1305,18 @@ select:disabled,
   border: 1px solid #c7c4ba;
   border-radius: 8px;
 }
+
+.version-integration-review form.integration-paragraph-editor {
+  grid-template-columns: minmax(0, 1fr);
+  margin-block: var(--space-md);
+}
+.integration-paragraph-editor textarea {
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+  padding: var(--space-sm);
+  resize: vertical;
+}
+
+.integration-assets code { overflow-wrap: anywhere; word-break: break-all; }
+.integration-assets strong { overflow-wrap: anywhere; }

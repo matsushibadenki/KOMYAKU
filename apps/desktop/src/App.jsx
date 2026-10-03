@@ -44,6 +44,7 @@ import {
   reviewLocalVersionIntegration,
   prepareLocalVersionIntegration,
   adoptLocalVersionIntegration,
+  reviseLocalVersionIntegration,
   restoreLocalDocumentVersion
 } from "./services/local-version-history.js";
 import {
@@ -732,6 +733,24 @@ export function App() {
     }
   }), [integrationReview, runDocumentMutation, prepareForDocumentTransition, i18n.resolvedLanguage, t]);
 
+  const reviseIntegration = useCallback((edits) => runDocumentMutation(async () => {
+    if (!integrationCandidate || integrationSubmission.current?.candidate === integrationCandidate) return false;
+    const candidate = integrationCandidate;
+    const session = editSession.current;
+    const sequence = ++integrationReadSequence.current;
+    setIntegrationStatus("loading");
+    try {
+      const revised = await reviseLocalVersionIntegration({ candidate, edits });
+      if (editSession.current !== session || sequence !== integrationReadSequence.current) return false;
+      setIntegrationCandidate(revised);
+      setIntegrationStatus("preview");
+      return true;
+    } catch {
+      if (editSession.current === session && sequence === integrationReadSequence.current) setIntegrationStatus("error");
+      return false;
+    }
+  }), [integrationCandidate, runDocumentMutation]);
+
   const adoptIntegration = useCallback(() => runDocumentMutation(async () => {
     if (!integrationCandidate) return false;
     setVersionStatus("saving");
@@ -1019,6 +1038,8 @@ export function App() {
             onReviewIntegration={reviewAlternative}
             onPreviewIntegration={previewIntegration}
             onAdoptIntegration={adoptIntegration}
+            onReviseIntegration={reviseIntegration}
+            integrationSubmitted={integrationSubmission.current?.candidate === integrationCandidate}
             integrationCandidate={integrationCandidate}
             integrationReview={integrationReview}
             integrationStatus={integrationStatus}
@@ -1072,6 +1093,20 @@ export function App() {
                 conflicts: (count) => t("versionHistory.integration.conflicts", { count }),
                 noConflicts: t("versionHistory.integration.noConflicts"),
                 readOnly: t("versionHistory.integration.readOnly"),
+                assetDetails: t("versionHistory.integration.assetDetails"),
+                assetExplanation: t("versionHistory.integration.assetExplanation"),
+                assetLimit: t("versionHistory.integration.assetLimit"),
+                assetHash: t("versionHistory.integration.assetHash"),
+                removedAsset: t("versionHistory.integration.removedAsset"),
+                assetBytes: (count) => t("versionHistory.integration.assetBytes", { count }),
+                assetReferences: (count) => t("versionHistory.integration.assetReferences", { count }),
+                assetActions: Object.fromEntries(["added", "retained", "removed"].map((action) =>
+                  [action, t(`versionHistory.integration.assetActions.${action}`)])),
+                edit: t("versionHistory.integration.edit"),
+                editDescription: t("versionHistory.integration.editDescription"),
+                editParagraph: (index) => t("versionHistory.integration.editParagraph", { index }),
+                reviewEdits: t("versionHistory.integration.reviewEdits"),
+                noEditable: t("versionHistory.integration.noEditable"),
                 chooseOurs: t("versionHistory.integration.chooseOurs"),
                 chooseTheirs: t("versionHistory.integration.chooseTheirs"),
                 adopt: t("versionHistory.integration.adopt"),

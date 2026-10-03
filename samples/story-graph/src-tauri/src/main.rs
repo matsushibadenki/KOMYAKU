@@ -2,6 +2,7 @@ mod ai;
 mod chatgpt;
 mod domain;
 mod input;
+mod library;
 mod preferences;
 const ICON_RAIL_WIDTH: f64 = 48.0;
 use serde::{Deserialize, Serialize};
@@ -173,7 +174,7 @@ fn projection(engine: &Engine) -> std::result::Result<Value, String> {
         .next()
         .copied();
     Ok(
-        json!({"projectTitle":engine.snapshot().map_err(|e|e.code)?.title,"revision":summary.revision,"selected":selected,"nodes":nodes,"edges":edges,"untitled":std::env::var_os("STORY_GRAPH_NEW_WORKSPACE").is_some()}),
+        json!({"projectTitle":engine.snapshot().map_err(|e|e.code)?.title,"revision":summary.revision,"selected":selected,"nodes":nodes,"edges":edges,"untitled":std::env::var_os("STORY_GRAPH_NEW_WORKSPACE").is_some_and(|value|value=="1")}),
     )
 }
 #[tauri::command]
@@ -939,19 +940,24 @@ fn reading(
     Ok(json!(domain::compile(&doc, &path)?))
 }
 #[tauri::command]
-fn backup(
+async fn backup(
     window: tauri::WebviewWindow,
-    host: tauri::State<Host>,
+    host: tauri::State<'_, Host>,
 ) -> std::result::Result<String, String> {
     allowed(&window)?;
-    let _lock = host.gate.lock().map_err(|_| "state_unavailable")?;
-    let path = host
-        .path
-        .parent()
-        .unwrap()
-        .join(format!("backup-{}.story.json", Id::new_v4()));
-    save(&path, &host.engine.snapshot().map_err(|e| e.code)?)?;
-    Ok(path.to_string_lossy().into())
+    let host = host.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _lock = host.gate.lock().map_err(|_| "state_unavailable")?;
+        let path = host
+            .path
+            .parent()
+            .unwrap()
+            .join(format!("backup-{}.story.json", Id::new_v4()));
+        save(&path, &host.engine.snapshot().map_err(|e| e.code)?)?;
+        Ok(path.to_string_lossy().into())
+    })
+    .await
+    .map_err(|_| "backup_restore_failed".to_owned())?
 }
 #[tauri::command]
 fn panel(
@@ -1012,16 +1018,15 @@ fn new_workspace(
     window: tauri::WebviewWindow,
     host: tauri::State<Host>,
     store: tauri::State<preferences::Store>,
+    library: tauri::State<library::Library>,
 ) -> std::result::Result<(), String> {
     allowed(&window)?;
     let mut settings = store.value.lock().map_err(|_| "state_unavailable")?.clone();
     settings.left_panel_open = true;
     settings.right_panel_open = false;
-    let directory = window
-        .app_handle()
-        .path()
-        .app_data_dir()
-        .map_err(|_| "new_workspace_failed")?
+    let directory = library
+        .root
+        .clone()
         .join("workspaces")
         .join(Id::new_v4().to_string());
     std::fs::create_dir_all(&directory).map_err(|_| "new_workspace_failed")?;
@@ -1029,6 +1034,13 @@ fn new_workspace(
         .map_err(|_| "new_workspace_failed")?;
     save(&directory.join("workspace.story.json"), &doc)?;
     preferences::Store::load(directory.join("preferences.json"))?.save(settings)?;
+    launch_workspace(&directory, &library.root, true).map_err(|_| "new_workspace_failed".to_owned())
+}
+fn launch_workspace(
+    directory: &std::path::Path,
+    root: &std::path::Path,
+    untitled: bool,
+) -> std::result::Result<(), String> {
     // Each document host owns its Rust Engine, renderer and save path. UI windows
     // remain projections; no document or undo history is shared between projects.
     let executable = std::env::current_exe().map_err(|_| "new_workspace_failed")?;
@@ -1041,14 +1053,26 @@ fn new_workspace(
         .and_then(|p| p.parent())
         .filter(|bundle| bundle.extension().is_some_and(|ext| ext == "app"))
     {
-        let status = std::process::Command::new("/usr/bin/open")
+        let mut command = std::process::Command::new("/usr/bin/open");
+        command
             .args(["-n", "-a"])
             .arg(bundle)
             .arg("--env")
             .arg(format!("STORY_GRAPH_DATA_DIR={}", directory.display()))
-            .args(["--env", "STORY_GRAPH_NEW_WORKSPACE=1"])
-            .status()
-            .map_err(|_| "new_workspace_failed")?;
+            .arg("--env")
+            .arg(format!("STORY_GRAPH_LIBRARY_DIR={}", root.display()))
+            .arg("--env")
+            .arg(format!(
+                "STORY_GRAPH_NEW_WORKSPACE={}",
+                if untitled { "1" } else { "0" }
+            ));
+        if let Some(auth) = std::env::var_os("STORY_GRAPH_AUTH_DIR") {
+            command.arg("--env").arg(format!(
+                "STORY_GRAPH_AUTH_DIR={}",
+                PathBuf::from(auth).display()
+            ));
+        }
+        let status = command.status().map_err(|_| "new_workspace_failed")?;
         return if status.success() {
             Ok(())
         } else {
@@ -1057,7 +1081,11 @@ fn new_workspace(
     }
     let mut child = std::process::Command::new(executable)
         .env("STORY_GRAPH_DATA_DIR", directory)
-        .env("STORY_GRAPH_NEW_WORKSPACE", "1")
+        .env("STORY_GRAPH_LIBRARY_DIR", root)
+        .env(
+            "STORY_GRAPH_NEW_WORKSPACE",
+            if untitled { "1" } else { "0" },
+        )
         .spawn()
         .map_err(|_| "new_workspace_failed")?;
     std::thread::spawn(move || {
@@ -1065,11 +1093,103 @@ fn new_workspace(
     });
     Ok(())
 }
+#[tauri::command]
+async fn saved_workspaces(
+    window: tauri::WebviewWindow,
+    host: tauri::State<'_, Host>,
+    library: tauri::State<'_, library::Library>,
+) -> std::result::Result<Vec<library::Entry>, String> {
+    allowed(&window)?;
+    let root = library.root.clone();
+    let current = host
+        .path
+        .parent()
+        .ok_or("workspace_open_failed")?
+        .to_path_buf();
+    let registry = host.registry.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        library::Library { root }.entries(&current, registry)
+    })
+    .await
+    .map_err(|_| "workspace_open_failed".to_owned())?
+}
+#[tauri::command]
+async fn open_workspace(
+    window: tauri::WebviewWindow,
+    host: tauri::State<'_, Host>,
+    library: tauri::State<'_, library::Library>,
+    id: String,
+) -> std::result::Result<(), String> {
+    allowed(&window)?;
+    let root = library.root.clone();
+    let registry = host.registry.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let library = library::Library { root };
+        library.validated(&id, registry)?;
+        let directory = library.directory(&id)?;
+        // The child also acquires a lifetime lease, closing the check/launch race.
+        let lease = library::WorkspaceLock::acquire(&directory)?;
+        drop(lease);
+        launch_workspace(&directory, &library.root, id != "default")
+            .map_err(|_| "workspace_open_failed".to_owned())
+    })
+    .await
+    .map_err(|_| "workspace_open_failed".to_owned())?
+}
+#[tauri::command]
+async fn saved_backups(
+    window: tauri::WebviewWindow,
+    host: tauri::State<'_, Host>,
+) -> std::result::Result<Vec<library::BackupEntry>, String> {
+    allowed(&window)?;
+    let directory = host
+        .path
+        .parent()
+        .ok_or("backup_restore_failed")?
+        .to_path_buf();
+    let registry = host.registry.clone();
+    tauri::async_runtime::spawn_blocking(move || library::backups(&directory, registry))
+        .await
+        .map_err(|_| "backup_restore_failed".to_owned())?
+}
+#[tauri::command]
+async fn restore_backup(
+    window: tauri::WebviewWindow,
+    host: tauri::State<'_, Host>,
+    library: tauri::State<'_, library::Library>,
+    store: tauri::State<'_, preferences::Store>,
+    id: String,
+    title: String,
+) -> std::result::Result<(), String> {
+    allowed(&window)?;
+    let source = host
+        .path
+        .parent()
+        .ok_or("backup_restore_failed")?
+        .to_path_buf();
+    let root = library.root.clone();
+    let registry = host.registry.clone();
+    let mut settings = store.value.lock().map_err(|_| "state_unavailable")?.clone();
+    settings.left_panel_open = true;
+    settings.right_panel_open = false;
+    tauri::async_runtime::spawn_blocking(move || {
+        let library = library::Library { root };
+        let directory = library.restore_backup(&source, &id, title, settings, registry)?;
+        launch_workspace(&directory, &library.root, true)
+            .map_err(|_| "backup_open_failed".to_owned())
+    })
+    .await
+    .map_err(|_| "backup_restore_failed".to_owned())?
+}
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             workspace,
             new_workspace,
+            saved_workspaces,
+            open_workspace,
+            saved_backups,
+            restore_backup,
             selected,
             choose,
             locale,
@@ -1105,6 +1225,11 @@ fn main() {
                 .map(PathBuf::from)
                 .unwrap_or(app.path().app_data_dir()?);
             std::fs::create_dir_all(&directory)?;
+            let library_root = std::env::var_os("STORY_GRAPH_LIBRARY_DIR")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| directory.clone());
+            app.manage(library::Library { root: library_root });
+            app.manage(library::WorkspaceLock::acquire(&directory).map_err(std::io::Error::other)?);
             app.manage(
                 preferences::Store::load(directory.join("preferences.json"))
                     .map_err(std::io::Error::other)?,

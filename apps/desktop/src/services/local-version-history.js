@@ -164,7 +164,7 @@ export async function loadLocalVersionAssets({ documentId, versionId }, {
     const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
     const actualHash = [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("");
     if (actualHash !== value.contentHash) throw new Error("invalid_local_version_assets");
-    assets.push(Object.freeze({ id: value.id, mediaType: value.mediaType, bytes }));
+    assets.push(Object.freeze({ id: value.id, mediaType: value.mediaType, bytes, contentHash: actualHash }));
   }
   return Object.freeze(assets);
 }
@@ -430,6 +430,40 @@ export async function restoreLocalDocumentVersion({
 
 const integrationCandidates = new WeakMap();
 
+function integrationAssetReview(before, after, verifiedAssets) {
+  const verified = new Map(verifiedAssets.map((asset) => [asset.id, asset]));
+  const describe = (document, verify = false) => {
+    const values = new Map();
+    const pending = [...document.content];
+    while (pending.length) {
+      const node = pending.pop();
+      if (["image", "file"].includes(node.type)) {
+        if (verify && verified.get(node.assetId)?.mediaType !== node.mediaType) {
+          throw new Error("local_merge_asset_media_type_mismatch");
+        }
+        const entry = values.get(node.assetId) ?? { id: node.assetId, name: node.fileName || node.title || node.altText || node.assetId,
+          mediaType: node.mediaType, references: 0 };
+        entry.references += 1;
+        values.set(node.assetId, entry);
+      }
+      pending.push(...(node.content ?? []).filter((child) => child?.id));
+      pending.push(...(node.caption ?? []).filter((child) => child?.id));
+    }
+    return values;
+  };
+  const previous = describe(before);
+  const next = describe(after, true);
+  return Object.freeze([...new Set([...previous.keys(), ...next.keys()])].sort().map((id) => {
+    const asset = verified.get(id);
+    const present = next.has(id);
+    return Object.freeze({ ...((present ? next : previous).get(id)),
+      action: present ? previous.has(id) ? "retained" : "added" : "removed",
+      verified: present, mediaType: present ? asset.mediaType : previous.get(id).mediaType,
+      byteLength: present ? asset.bytes.byteLength : null,
+      contentHash: present ? asset.contentHash : null });
+  }));
+}
+
 export async function prepareLocalVersionIntegration({ review, choice, document, authorId,
   locale, label = null, now = () => new Date(), idFactory = () => crypto.randomUUID()
 }, options = {}) {
@@ -464,8 +498,10 @@ export async function prepareLocalVersionIntegration({ review, choice, document,
     parentIds: [fresh.oursVersionId, fresh.theirsVersionId], authorId,
     createdAt: now().toISOString(), reason: "merge" });
   const candidate = Object.freeze({ choice, comparison: compareCanonicalDocuments(document, chosen.document, { locale }),
-    assetIds: Object.freeze(assets.map(({ id }) => id)), snapshotHash: version.snapshotHash });
-  integrationCandidates.set(candidate, { document: chosen.document,
+    assetIds: Object.freeze(assets.map(({ id }) => id)), snapshotHash: version.snapshotHash,
+    editableParagraphs: editableIntegrationParagraphs(chosen.document),
+    assetReview: integrationAssetReview(document, chosen.document, assets) });
+  integrationCandidates.set(candidate, { document: chosen.document, locale,
     draftJson: encodeVersionSnapshot(document).json,
     input: { operationId: idFactory(), branchId: branch.id, branchName: branch.name,
       expectedHeadVersionId: fresh.oursVersionId, mergeSourceBranchId: fresh.alternativeBranchId,
@@ -485,4 +521,55 @@ export async function adoptLocalVersionIntegration({ candidate, document, localR
   const receipt = await saveLocalVersion(prepared.input, options);
   return Object.freeze({ receipt, document: prepared.document,
     localRevision: prepared.input.restoreDraftRevision });
+}
+
+function editableIntegrationParagraphs(document) {
+  const pending = [...document.content].reverse();
+  const paragraphs = [];
+  while (pending.length) {
+    const node = pending.pop();
+    if (node.type === "paragraph" && node.content.length <= 1
+      && node.content.every((child) => child.type === "text" && child.marks.length === 0)) {
+      paragraphs.push(Object.freeze({ nodeId: node.id, text: node.content[0]?.text ?? "" }));
+    }
+    pending.push(...[...(node.content ?? []), ...(node.caption ?? [])]
+      .filter((child) => child?.id).reverse());
+  }
+  return Object.freeze(paragraphs);
+}
+
+export async function reviseLocalVersionIntegration({ candidate, edits,
+  now = () => new Date(), idFactory = () => crypto.randomUUID() }) {
+  const prepared = integrationCandidates.get(candidate);
+  if (!prepared || prepared.input.restoreDraftRevision !== null || !Array.isArray(edits)
+    || edits.length < 1 || edits.length > 100) throw new Error("invalid_local_merge_edits");
+  const allowed = new Map(editableIntegrationParagraphs(prepared.document).map((item) => [item.nodeId, item]));
+  const updates = new Map();
+  for (const edit of edits) {
+    if (!edit || Object.keys(edit).some((key) => !["nodeId", "text"].includes(key))
+      || !allowed.has(edit.nodeId) || updates.has(edit.nodeId)
+      || typeof edit.text !== "string" || edit.text.length > 100_000) {
+      throw new Error("invalid_local_merge_edits");
+    }
+    updates.set(edit.nodeId, edit.text);
+  }
+  const document = structuredClone(prepared.document);
+  const pending = [...document.content];
+  while (pending.length) {
+    const node = pending.pop();
+    if (updates.has(node.id)) {
+      const text = updates.get(node.id);
+      node.content = text ? [{ ...(node.content[0] ?? { type: "text", marks: [], metadata: {}, extensions: {} }), text }] : [];
+    }
+    pending.push(...(node.content ?? []).filter((child) => child?.id));
+    pending.push(...(node.caption ?? []).filter((child) => child?.id));
+  }
+  const version = await createDocumentVersion({ ...prepared.input.version, id: idFactory(), document,
+    createdAt: now().toISOString() });
+  const revised = Object.freeze({ ...candidate, choice: "manual", snapshotHash: version.snapshotHash,
+    editableParagraphs: editableIntegrationParagraphs(document),
+    comparison: compareCanonicalDocuments(JSON.parse(prepared.draftJson), document, { locale: prepared.locale }) });
+  integrationCandidates.set(revised, { ...prepared, document,
+    input: { ...prepared.input, operationId: idFactory(), version: { ...version, label: prepared.input.version.label } } });
+  return revised;
 }

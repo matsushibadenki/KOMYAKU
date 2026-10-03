@@ -21,7 +21,7 @@ const ids = Object.freeze({
 });
 const createdAt = "2026-09-22T00:04:00.000Z";
 
-function fixture() {
+export function createHistoryArchiveQaFixture() {
   const initial = createEmptyDocument({ id: ids.document, language: "ja",
     nodeIdFactory: () => ids.paragraph });
   initial.metadata.title = "初稿 / Initial / 初稿";
@@ -74,7 +74,7 @@ export async function runPackagedHistoryArchiveQa({
   if (await identifier() !== HISTORY_ARCHIVE_QA_IDENTIFIER) {
     throw new Error("history_archive_qa_profile_required");
   }
-  const expected = fixture();
+  const expected = createHistoryArchiveQaFixture();
   const originalBytes = await makeArchive(expected);
   const original = await verifyKomyakuHistoryArchive(originalBytes);
   const existing = await loadDraft(ids.document);
