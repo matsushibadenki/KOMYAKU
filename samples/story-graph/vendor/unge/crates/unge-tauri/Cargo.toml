@@ -1,0 +1,22 @@
+[package]
+name = "unge-tauri"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+[dependencies]
+unge-interaction = { path = "../unge-interaction" }
+unge-core = { path = "../unge-core" }
+unge-render = { path = "../unge-render" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", default-features = false }
+
+[features]
+acx = ["dep:unge-acx"]
+
+[dependencies.unge-acx]
+path = "../unge-acx"
+optional = true
+
+[dev-dependencies]
+unge-executor = { path = "../unge-executor" }

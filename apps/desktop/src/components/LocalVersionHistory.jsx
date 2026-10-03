@@ -3,7 +3,7 @@ import { VersionLineageGraph } from "./VersionLineageGraph.jsx";
 
 export function LocalVersionHistory({ history, available, status, onCreateInitial, onSaveNamed,
   onCreateAlternative, onRestore, onLoadOlder, onExport, exportStatus, onCompare, comparison,
-  comparisonStatus, onReviewIntegration, integrationReview, integrationStatus, locale, labels }) {
+  comparisonStatus, onPreviewIntegration, onAdoptIntegration, integrationCandidate, onReviewIntegration, integrationReview, integrationStatus, locale, labels }) {
   const [label, setLabel] = useState("");
   const [branchName, setBranchName] = useState("");
   const [compareFrom, setCompareFrom] = useState("");
@@ -184,6 +184,26 @@ export function LocalVersionHistory({ history, available, status, onCreateInitia
                   ))}
                 </ol> : null}
                 <p className="version-integration-note">{labels.integration.readOnly}</p>
+                <div className="library-actions">
+                  <button type="button" disabled={busy || integrationStatus === "loading"}
+                    onClick={() => onPreviewIntegration("ours")}>{labels.integration.chooseOurs}</button>
+                  <button type="button" disabled={busy || integrationStatus === "loading"}
+                    onClick={() => onPreviewIntegration("theirs")}>{labels.integration.chooseTheirs}</button>
+                </div>
+                {integrationCandidate ? <div>
+                  <h4>{labels.integration.preview}</h4>
+                  <p>{labels.changeSummary(integrationCandidate.comparison.summary)}</p>
+                  <p>{labels.integration.assets(integrationCandidate.assetIds.length)}</p>
+                  <ol>{integrationCandidate.comparison.changes.slice(0, 50).map((change) => <li key={change.nodeId}>
+                    <span>{labels.changeLabels[change.change]} · {change.type}</span>
+                    {change.textDiff ? <div className="version-text-diff">
+                      {change.textDiff.removed ? <del>{change.textDiff.removed}</del> : null}
+                      {change.textDiff.added ? <ins>{change.textDiff.added}</ins> : null}
+                    </div> : null}
+                  </li>)}</ol>
+                  <button type="button" disabled={busy || integrationStatus === "loading"}
+                    onClick={() => onAdoptIntegration()}>{labels.integration.adopt}</button>
+                </div> : null}
               </div>
             ) : null}
           </div>

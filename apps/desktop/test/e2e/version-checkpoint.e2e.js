@@ -108,6 +108,20 @@ async function openHistory(page, initial = false, paged = false) {
             theirs: { summary: { added: 0, removed: 0, moved: 0, changed: 1 } },
             conflicts: [{ nodeId: '00000000-0000-4000-8000-000000000043', kind: 'text' }] } };
       };
+      export const prepareLocalVersionIntegration = async ({ choice, document }) => {
+        window.integrationCandidateCalls ??= [];
+        window.integrationCandidateCalls.push(choice);
+        return { choice, document, comparison: { summary: { added: 0, removed: 0, moved: 0, changed: 1 },
+          changes: [{ nodeId: "preview-node", change: "changed", type: "paragraph",
+            textDiff: { removed: "原稿", added: "別案の本文" } }] }, assetIds: [] };
+      };
+      export const adoptLocalVersionIntegration = async ({ candidate, localRevision }) => {
+        window.integrationAdoptCalls ??= [];
+        window.integrationAdoptCalls.push({ localRevision, draft: localStorage.getItem('komyaku:local-draft:' + candidate.document.id) });
+        if (window.failIntegrationSave) throw new Error('injected merge failure');
+        window.versionWrites.push({ kind: 'merge', choice: candidate.choice });
+        return { document: candidate.document, localRevision: localRevision + 1 };
+      };
       export const loadLocalVersionAssets = () => { throw new Error('unexpected assets'); };
       export const loadLocalVersionSnapshot = () => { throw new Error('unexpected snapshot'); };
       export const restoreLocalDocumentVersion = async () => {
@@ -168,13 +182,14 @@ test('composition beginning during history lookup cancels the version write', as
 
 for (const rejected of [false, true]) {
   test(`old history ${rejected ? 'failure' : 'success'} cannot replace a new document history`, async ({ page }) => {
-    await openHistory(page);
+    await openHistory(page, false, true);
     await page.evaluate(rejected => {
       window.holdOldDocument = true;
       window.rejectOldHistory = rejected;
     }, rejected);
-    await page.getByRole('button', { name: '新しい文書', exact: true }).click();
+    await page.getByRole('button', { name: '古い版を10件表示', exact: true }).click();
     await expect.poll(() => page.evaluate(() => typeof window.resumeOldHistory)).toBe('function');
+    await page.getByRole('button', { name: '新しい文書', exact: true }).click();
     await expect(page.locator('.version-current')).toHaveCount(0);
     await expect(page.locator('.version-history-heading .persistence-status')).toHaveAttribute('data-state', 'ready');
     await page.evaluate(async () => {
@@ -279,7 +294,7 @@ test('alternative integration preview is read-only, translated, and fits a narro
   await panel.getByRole('button', { name: '統合をプレビュー' }).click();
   await expect(panel.getByText('確認が必要な競合: 1件')).toBeVisible();
   await expect(panel.getByText('異なる文章')).toBeVisible();
-  await expect(panel.getByText('読み取り専用のプレビューです。編集中の原稿や保存版は変更されません。')).toBeVisible();
+  await expect(panel.getByText(/結果としてどちらかの版全体を選びます/)).toBeVisible();
   expect(await page.evaluate(() => window.integrationReviewCalls)).toEqual(['branch-2']);
   expect(await page.evaluate(() => window.versionWrites)).toEqual([]);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -357,4 +372,41 @@ test('full-history export verifies v2 and initiates a local download', async ({ 
   expect(artifact.suggestedFilename()).toMatch(/\.komyaku$/);
   await expect(page.locator('.version-export .persistence-status'))
     .toHaveText('検証済みファイルのダウンロードを開始しました');
+});
+
+
+test('integration requires final preview and explicit adoption; failed saves preserve the candidate', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+  await openHistory(page, false, true);
+  expect(page.url()).toContain('127.0.0.1:1420');
+  await expect(page).toHaveTitle(/KOMYAKU/i);
+  const panel = page.locator('.version-integration-review');
+  await panel.getByRole('button', { name: '統合をプレビュー' }).click();
+  await expect(panel.getByRole('button', { name: '確認して統合版を保存' })).toHaveCount(0);
+  await panel.getByRole('button', { name: '別案の版を採用して差分確認' }).click();
+  await expect(panel.getByText('作業中本文に対する最終差分')).toBeVisible();
+  await expect(panel.getByText('検証済み添付: 0件')).toBeVisible();
+  expect(await page.evaluate(() => window.versionWrites)).toEqual([]);
+  await panel.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: '/tmp/komyaku-integration-desktop.png' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await panel.getByText('作業中本文に対する最終差分').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: '/tmp/komyaku-integration-narrow.png' });
+  expect(errors).toEqual([]);
+  await expect(page.locator('vite-error-overlay')).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.evaluate(() => { window.failIntegrationSave = true; });
+  await panel.getByRole('button', { name: '確認して統合版を保存' }).click();
+  await expect(panel.locator('.persistence-status')).toHaveAttribute('data-state', 'error');
+  await expect(panel.getByText('作業中本文に対する最終差分')).toBeVisible();
+  expect(await page.evaluate(() => window.versionWrites)).toEqual([]);
+  await page.evaluate(() => { window.failIntegrationSave = false; });
+  await panel.getByRole('button', { name: '確認して統合版を保存' }).click();
+  await expect.poll(() => page.evaluate(() => window.versionWrites)).toEqual([{ kind: 'merge', choice: 'theirs' }]);
+  const attempts = await page.evaluate(() => window.integrationAdoptCalls);
+  expect(attempts).toHaveLength(2);
+  expect(attempts[1]).toEqual(attempts[0]);
+  await expect(panel.getByRole('button', { name: '確認して統合版を保存' })).toHaveCount(0);
 });

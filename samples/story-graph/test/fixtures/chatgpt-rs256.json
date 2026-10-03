@@ -1,0 +1,16 @@
+{
+  "note": "Offline test-only signed JWT. Not an OpenAI credential. Signing key discarded.",
+  "jwt": "eyJhbGciOiJSUzI1NiIsImtpZCI6InRlc3Qtb25seSJ9.eyJpc3MiOiJodHRwczovL2F1dGgub3BlbmFpLmNvbSIsInN1YiI6InRlc3Qtc3ViamVjdCIsImF1ZCI6Im9haWFwcF90ZXN0Iiwibm9uY2UiOiJub25jZSIsImV4cCI6MjAwLCJpYXQiOjkwLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5pbnZhbGlkIn0.M29ftEjNvQFgN7RmvFiLwV8D737gREjq_9i5B32VsPufC4G1Ed70aNJQLAHy1iqOwVt938bKOTdwSrHigIccNxEQGC9rztuwjJfB4fZgEAHs6BPxGTSwZlDsLlc4atal3GmWmwffNySnqQdgH4uSUgKyGL58eJy8InN8N0_uSTBymVukqQAmrm_TXPjFwdjqoMyV79GP6-jfLQcFGqWEzgnjFPW2wYJfPXeCwHbIcohqwIg-JqkOXoEQUbz9fp8J6HcvcP8USSlr4FZc1Xarn_47StND_17EBUiIpFQ7gWn6QRczYhdGTaK17C0BlkEH2GWzIcyEUMhfBe0dVDaSAQ",
+  "jwks": {
+    "keys": [
+      {
+        "kid": "test-only",
+        "kty": "RSA",
+        "use": "sig",
+        "alg": "RS256",
+        "n": "vncOK4Ds-KSOr_Fs-C91RsQk_U1kJBi-NJ0fGZAJJSRuO2AzZaoS_XVwooMpjLLmn8PLQvCE8yj3ijxbftbjAtcexQjL_x03oOcJLnv7PKjbK5Zzohm08-LtJ66Xxnc8GhWX2Yf_IlLMfBCFz92E2RsiUVm0NoE8y7ApFCEUsxRRqstcy_u-aPgpynfJZEzawaOceCMQYT3iKSLtMGZavRdH9q36gtoVWroYLVcZ4Gtuish9BneVRKGjabungXjwTpPG_ozciiV87Ui_V8VdVO2R-tSRf-BC2B86YjQqjjQAzvK4xsJzJjYlYw1FvxM6-BQbkKuzujVTI_9wuyMlQQ",
+        "e": "AQAB"
+      }
+    ]
+  }
+}

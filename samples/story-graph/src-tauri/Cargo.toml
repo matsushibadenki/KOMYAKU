@@ -1,0 +1,23 @@
+[package]
+name = "komyaku-story-graph"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+[dependencies]
+unge-core = { path = "../vendor/unge/crates/unge-core" }
+unge-executor = { path = "../vendor/unge/crates/unge-executor" }
+unge-interaction = { path = "../vendor/unge/crates/unge-interaction" }
+unge-render = { path = "../vendor/unge/crates/unge-render" }
+unge-tauri = { path = "../vendor/unge/crates/unge-tauri" }
+tauri = { version = "=2.11.6", features = ["unstable"] }
+tauri-runtime-wry = "=2.11.4"
+pollster = "0.4"
+futures = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+base64 = "0.22"
+ring = "0.17"
+tokio = { version = "1", features = ["time", "sync", "macros"] }
+[build-dependencies]
+tauri-build = { version = "2", features = [] }

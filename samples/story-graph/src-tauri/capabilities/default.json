@@ -1,0 +1,15 @@
+{
+  "identifier": "story-controls",
+  "description": "Local authoring panels",
+  "windows": [
+    "controls",
+    "editor"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-close",
+    "core:window:allow-destroy",
+    "core:window:allow-set-title",
+    "core:window:allow-start-dragging"
+  ]
+}

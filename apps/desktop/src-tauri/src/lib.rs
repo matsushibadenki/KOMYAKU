@@ -130,6 +130,8 @@ struct SaveLocalVersionInput {
     branch_name: String,
     expected_head_version_id: Option<String>,
     restore_draft_revision: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    merge_source_branch_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, PartialEq)]
@@ -1832,14 +1834,17 @@ async fn save_local_version_transaction(
         "initial" => parent_count == 0 && version.restored_from_version_id.is_none()
             && input.restore_draft_revision.is_none(),
         "merge" => parent_count == 2 && version.restored_from_version_id.is_none()
-            && input.restore_draft_revision.is_none(),
+            && input.restore_draft_revision.is_some_and(|revision| revision > 0)
+            && input.merge_source_branch_id.as_deref().is_some_and(valid_lower_uuid),
         "restore" => parent_count == 1 && version.restored_from_version_id.as_deref().is_some_and(valid_lower_uuid)
             && input.restore_draft_revision.is_some_and(|revision| revision > 0),
         "named" | "import" => parent_count == 1 && version.restored_from_version_id.is_none()
             && input.restore_draft_revision.is_none(),
         _ => false,
     };
-    if !reason_valid { return Err("invalid_local_version"); }
+    if !reason_valid || (version.reason != "merge" && input.merge_source_branch_id.is_some()) {
+        return Err("invalid_local_version");
+    }
     let snapshot: serde_json::Value = serde_json::from_str(&version.snapshot_json)
         .map_err(|_| "invalid_local_version")?;
     if snapshot.get("id").and_then(serde_json::Value::as_str) != Some(&version.document_id)
@@ -1906,6 +1911,32 @@ async fn save_local_version_transaction(
         (None, Some(expected)) if version.parent_ids.contains(expected) => {}
         (Some(_), _) => return Err("stale_local_branch_head"),
         _ => return Err("invalid_local_branch_base"),
+    }
+    if version.reason == "merge" {
+        let source_branch = input.merge_source_branch_id.as_deref().unwrap();
+        if source_branch == input.branch_id
+            || input.expected_head_version_id.as_deref() != Some(version.parent_ids[0].as_str())
+            || current_head.is_none()
+        { return Err("invalid_local_merge_base"); }
+        let selected: (Option<String>, Option<String>) = sqlx::query_as(
+            "SELECT current_branch_id, current_version_id FROM local_documents WHERE id = ?")
+            .bind(&version.document_id).fetch_one(&mut *transaction).await
+            .map_err(|_| "local_version_storage_failure")?;
+        if selected.0.as_deref() != Some(input.branch_id.as_str())
+            || selected.1 != input.expected_head_version_id
+        { return Err("stale_local_merge_selection"); }
+        let composing: Option<i64> = sqlx::query_scalar(
+            "SELECT is_composing FROM local_drafts WHERE document_id = ?")
+            .bind(&version.document_id).fetch_optional(&mut *transaction).await
+            .map_err(|_| "local_version_storage_failure")?;
+        if composing != Some(0) { return Err("local_merge_draft_not_ready"); }
+        let source_head: Option<String> = sqlx::query_scalar(
+            "SELECT head_version_id FROM local_document_branches WHERE id = ? AND document_id = ?")
+            .bind(source_branch).bind(&version.document_id).fetch_optional(&mut *transaction).await
+            .map_err(|_| "local_version_storage_failure")?;
+        if source_head.as_deref() != Some(version.parent_ids[1].as_str()) {
+            return Err("stale_local_merge_source_head");
+        }
     }
     sqlx::query(
         "INSERT INTO local_document_versions
@@ -2628,7 +2659,82 @@ mod tests {
             },
             branch_id: "00000000-0000-4000-8000-000000000091".into(),
             branch_name: "本文".into(), expected_head_version_id, restore_draft_revision: None,
+            merge_source_branch_id: None,
         }
+    }
+
+    #[test]
+    fn non_merge_requests_preserve_existing_receipt_encoding() {
+        let request = local_version_input(
+            "00000000-0000-4000-8000-000000000400",
+            "00000000-0000-4000-8000-000000000401", vec![], None, "initial");
+        let encoded = serde_json::to_value(&request).unwrap();
+        assert!(encoded.get("mergeSourceBranchId").is_none());
+        let decoded: SaveLocalVersionInput = serde_json::from_value(encoded.clone()).unwrap();
+        assert_eq!(serde_json::to_value(decoded).unwrap(), encoded);
+    }
+
+    #[tokio::test]
+    async fn reviewed_merge_checks_both_heads_and_adopts_draft_atomically() {
+        let pool = SqlitePoolOptions::new().max_connections(1)
+            .connect("sqlite::memory:").await.unwrap();
+        migrate_test_pool(&pool).await;
+        let archive = local_history_archive_input();
+        import_local_history_archive_transaction(&pool, &archive).await.unwrap();
+        let mut merge = local_version_input(
+            "00000000-0000-4000-8000-000000000400",
+            "00000000-0000-4000-8000-000000000401",
+            vec![archive.versions[0].id.clone(), archive.versions[2].id.clone()],
+            Some(archive.versions[0].id.clone()), "merge");
+        merge.version.document_id = archive.document.document_id.clone();
+        merge.version.snapshot_json = archive.document.content_json.clone();
+        merge.version.snapshot_hash = archive.versions[0].snapshot_hash.clone();
+        merge.branch_id = archive.branches[0].id.clone();
+        merge.merge_source_branch_id = Some(archive.branches[1].id.clone());
+        merge.restore_draft_revision = Some(2);
+        let source = merge.merge_source_branch_id.clone().unwrap();
+        sqlx::query("UPDATE local_document_branches SET head_version_id = ? WHERE id = ?")
+            .bind(&archive.versions[1].id).bind(&source).execute(&pool).await.unwrap();
+        assert_eq!(save_local_version_transaction(&pool, &merge).await,
+            Err("stale_local_merge_source_head"));
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM local_document_versions")
+            .fetch_one(&pool).await.unwrap();
+        assert_eq!(count, 3);
+        sqlx::query("UPDATE local_document_branches SET head_version_id = ? WHERE id = ?")
+            .bind(&archive.versions[2].id).bind(&source).execute(&pool).await.unwrap();
+        merge.restore_draft_revision = Some(3);
+        assert_eq!(save_local_version_transaction(&pool, &merge).await,
+            Err("stale_local_draft_revision"));
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM local_document_versions")
+            .fetch_one(&pool).await.unwrap();
+        assert_eq!(count, 3);
+        sqlx::query("UPDATE local_documents SET current_branch_id = ? WHERE id = ?")
+            .bind(&source).bind(&merge.version.document_id).execute(&pool).await.unwrap();
+        assert_eq!(save_local_version_transaction(&pool, &merge).await,
+            Err("stale_local_merge_selection"));
+        sqlx::query("UPDATE local_documents SET current_branch_id = ? WHERE id = ?")
+            .bind(&merge.branch_id).bind(&merge.version.document_id).execute(&pool).await.unwrap();
+        sqlx::query("UPDATE local_drafts SET is_composing = 1 WHERE document_id = ?")
+            .bind(&merge.version.document_id).execute(&pool).await.unwrap();
+        assert_eq!(save_local_version_transaction(&pool, &merge).await,
+            Err("local_merge_draft_not_ready"));
+        sqlx::query("UPDATE local_drafts SET is_composing = 0 WHERE document_id = ?")
+            .bind(&merge.version.document_id).execute(&pool).await.unwrap();
+        merge.restore_draft_revision = Some(2);
+        assert!(!save_local_version_transaction(&pool, &merge).await.unwrap().replayed);
+        assert!(save_local_version_transaction(&pool, &merge).await.unwrap().replayed);
+        let draft: (String, i64) = sqlx::query_as(
+            "SELECT content_json, local_revision FROM local_drafts WHERE document_id = ?")
+            .bind(&merge.version.document_id).fetch_one(&pool).await.unwrap();
+        assert_eq!(draft, (merge.version.snapshot_json.clone(), 2));
+        let parents: Vec<String> = sqlx::query_scalar(
+            "SELECT parent_version_id FROM local_document_version_parents WHERE version_id = ? ORDER BY parent_order")
+            .bind(&merge.version.id).fetch_all(&pool).await.unwrap();
+        assert_eq!(parents, merge.version.parent_ids);
+        let source_head: String = sqlx::query_scalar(
+            "SELECT head_version_id FROM local_document_branches WHERE id = ?")
+            .bind(source).fetch_one(&pool).await.unwrap();
+        assert_eq!(source_head, archive.versions[2].id);
     }
 
     fn local_png_preview_input(asset_id: &str) -> LocalPngPreviewInput {

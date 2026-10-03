@@ -1,8 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
-import { parseCanonicalDocument } from "@komyaku/document-schema";
+import { collectAssetIds, parseCanonicalDocument } from "@komyaku/document-schema";
 import { compareCanonicalDocuments, compareThreeWayCanonicalDocuments } from "@komyaku/diff-engine";
 import {
   createDocumentVersion,
+  encodeVersionSnapshot,
   findUniqueMergeBase,
   VERSION_SNAPSHOT_ENCODING
 } from "@komyaku/version-engine";
@@ -309,7 +310,9 @@ export async function reviewLocalVersionIntegration({ documentId, alternativeBra
     || JSON.stringify(branchHeads(confirmation)) !== JSON.stringify(branchHeads(history))) {
     throw new Error("local_merge_review_changed");
   }
-  return Object.freeze({ documentId, baseVersionId, oursVersionId, theirsVersionId,
+  return Object.freeze({ documentId, currentBranchId: history.currentBranchId,
+    oursSnapshotHash: ours.snapshotHash, theirsSnapshotHash: theirs.snapshotHash,
+    baseVersionId, oursVersionId, theirsVersionId,
     alternativeBranchId, alternativeBranchName: alternative.name, comparison });
 }
 
@@ -341,6 +344,17 @@ export async function saveLocalVersion(input, {
     || (input.restoreDraftRevision != null && (!Number.isSafeInteger(input.restoreDraftRevision)
       || input.restoreDraftRevision < 1))) {
     throw new Error("invalid_local_version_request");
+  }
+  if (input.version.reason === "merge") {
+    if (!UUID.test(input.mergeSourceBranchId) || input.mergeSourceBranchId === input.branchId
+      || input.version.parentIds.length !== 2
+      || input.version.parentIds[0] !== input.expectedHeadVersionId
+      || input.version.parentIds[0] === input.version.parentIds[1]
+      || !Number.isSafeInteger(input.restoreDraftRevision) || input.restoreDraftRevision < 1) {
+      throw new Error("invalid_local_merge_request");
+    }
+  } else if (input.mergeSourceBranchId != null) {
+    throw new Error("invalid_local_merge_request");
   }
   const result = await invokeImpl("save_local_version_atomic", { input });
   return parseSavedLocalVersion(result, input);
@@ -412,4 +426,63 @@ export async function restoreLocalDocumentVersion({
   const receipt = await saveLocalVersion(input, options);
   return Object.freeze({ receipt, version: Object.freeze(input.version),
     document: target.document, localRevision: restoreDraftRevision });
+}
+
+const integrationCandidates = new WeakMap();
+
+export async function prepareLocalVersionIntegration({ review, choice, document, authorId,
+  locale, label = null, now = () => new Date(), idFactory = () => crypto.randomUUID()
+}, options = {}) {
+  if (!review || !["ours", "theirs"].includes(choice) || document?.id !== review.documentId) {
+    throw new Error("invalid_local_merge_candidate");
+  }
+  const fresh = await reviewLocalVersionIntegration({ documentId: review.documentId,
+    alternativeBranchId: review.alternativeBranchId, locale }, options);
+  if (["currentBranchId", "baseVersionId", "oursVersionId", "theirsVersionId"].some((key) => fresh[key] !== review[key])) {
+    throw new Error("local_merge_review_changed");
+  }
+  const chosenId = choice === "ours" ? fresh.oursVersionId : fresh.theirsVersionId;
+  const chosen = await loadLocalVersionSnapshot({ documentId: review.documentId, versionId: chosenId }, options);
+  if (chosen.snapshotHash !== (choice === "ours" ? fresh.oursSnapshotHash : fresh.theirsSnapshotHash)) {
+    throw new Error("local_merge_review_snapshot_changed");
+  }
+  const assets = await loadLocalVersionAssets({ documentId: review.documentId, versionId: chosenId }, options);
+  const requiredAssets = new Set(collectAssetIds(chosen.document));
+  const availableAssets = new Set(assets.map(({ id }) => id));
+  if (requiredAssets.size !== assets.length || availableAssets.size !== assets.length
+    || [...requiredAssets].some((id) => !availableAssets.has(id))) {
+    throw new Error("local_merge_asset_closure_mismatch");
+  }
+  const history = await listLocalVersionHistory(review.documentId, options);
+  const branch = history.branches.find(({ id }) => id === history.currentBranchId);
+  if (!branch || history.currentBranchId !== fresh.currentBranchId
+    || history.currentVersionId !== fresh.oursVersionId
+    || history.branches.find(({ id }) => id === fresh.alternativeBranchId)?.headVersionId !== fresh.theirsVersionId) {
+    throw new Error("local_merge_review_changed");
+  }
+  const version = await createDocumentVersion({ id: idFactory(), document: chosen.document,
+    parentIds: [fresh.oursVersionId, fresh.theirsVersionId], authorId,
+    createdAt: now().toISOString(), reason: "merge" });
+  const candidate = Object.freeze({ choice, comparison: compareCanonicalDocuments(document, chosen.document, { locale }),
+    assetIds: Object.freeze(assets.map(({ id }) => id)), snapshotHash: version.snapshotHash });
+  integrationCandidates.set(candidate, { document: chosen.document,
+    draftJson: encodeVersionSnapshot(document).json,
+    input: { operationId: idFactory(), branchId: branch.id, branchName: branch.name,
+      expectedHeadVersionId: fresh.oursVersionId, mergeSourceBranchId: fresh.alternativeBranchId,
+      restoreDraftRevision: null, version: { ...version, label } } });
+  return candidate;
+}
+
+export async function adoptLocalVersionIntegration({ candidate, document, localRevision }, options = {}) {
+  const prepared = integrationCandidates.get(candidate);
+  if (!prepared || !Number.isSafeInteger(localRevision) || localRevision < 0
+    || localRevision >= Number.MAX_SAFE_INTEGER
+    || encodeVersionSnapshot(document).json !== prepared.draftJson) {
+    throw new Error("local_merge_candidate_changed");
+  }
+  // Preserve the exact request for receipt replay after an uncertain native response.
+  prepared.input.restoreDraftRevision ??= localRevision + 1;
+  const receipt = await saveLocalVersion(prepared.input, options);
+  return Object.freeze({ receipt, document: prepared.document,
+    localRevision: prepared.input.restoreDraftRevision });
 }

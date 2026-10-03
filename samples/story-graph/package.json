@@ -1,0 +1,18 @@
+{
+  "name": "@komyaku/story-graph-app",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun ../../apps/desktop/node_modules/vite/bin/vite.js --host 127.0.0.1 --port 1437 --strictPort",
+    "build": "bun ../../apps/desktop/node_modules/vite/bin/vite.js build",
+    "tauri": "bun run build && cargo run --manifest-path src-tauri/Cargo.toml --locked",
+    "check": "bun run build && bun test test && cargo test --workspace --locked",
+    "test": "bun test test",
+    "package": "bun run build && bun ../../apps/desktop/node_modules/@tauri-apps/cli/tauri.js build --debug --bundles app"
+  },
+  "dependencies": {
+    "@komyaku/document-schema": "file:../../packages/document-schema",
+    "@komyaku/story-graph": "file:../../packages/story-graph"
+  }
+}

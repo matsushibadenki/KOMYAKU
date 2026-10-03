@@ -1,0 +1,4 @@
+[workspace]
+members = ["src-tauri", "vendor/unge/crates/*"]
+default-members = ["src-tauri"]
+resolver = "2"

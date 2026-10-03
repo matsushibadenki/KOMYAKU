@@ -10,7 +10,7 @@ Quit the app completely and confirm its process has exited. Relaunch the same bu
 
 - [Done] The main-window Tauri capability now grants `import_local_history_archive_atomic`; the hidden Mermaid renderer does not. The command is included in `build.rs`, and the generated permission exists after a successful macOS bundle build.
 - [Done] The dedicated bundle builds successfully, and three harness tests cover identifier isolation, first import plus readback, no-write recovery, and refusal of partial state.
-- [Done] The bundle's `Info.plist` reports the isolated identifier `app.komyaku.desktop.history-archive-qa`. The repository suite now passes 407 Bun tests (25 PostgreSQL-dependent tests skipped), 31 Rust tests (one ignored), and 44 Desktop Playwright E2E tests. These checks do not replace a native WebView launch.
+- [Done] The bundle's `Info.plist` reports the isolated identifier `app.komyaku.desktop.history-archive-qa`. The repository suite now passes 418 Bun tests (25 PostgreSQL-dependent tests skipped), 31 Rust tests (one ignored), and 47 Desktop Playwright E2E tests. These checks do not replace a native WebView launch.
 - [Next] Run first launch, complete quit, and second launch through the native WebView on an unlocked Mac. Capture the visible result, then inspect the separate profile's SQLite counts and hashes without altering it.
 - [Next] Independently exercise the ordinary editor's visible full-history export and file-picker import into an empty profile, then inspect its lineage graph. The deterministic runner validates native IPC and bytes; it does not exercise those controls.
 

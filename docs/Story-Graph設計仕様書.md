@@ -1,6 +1,6 @@
 # KOMYAKU Story Graph
 
-> 実施方針（2026-09-09）：本書は長期構想の原案として保持する。Story GraphはKOMYAKU本体完成後、独立したサンプルアプリとして `samples/story-graph/` で開発する。本体への組込みを前提とする以下の記述より、この実施順序と配置を優先する。[開発準備と境界](../samples/story-graph/README.md)・[サンプル用Roadmap](../samples/story-graph/ROADMAP.md)を参照。
+> 実施方針（2026-09-26改定）：Canvas UIはKOMYAKU本体完成後に `samples/story-graph/` の独立サンプルアプリとして開発する。一方、機械可読なStory Graph schema、決定的な整合性判定、Document＋GraphのVersion境界はKOMYAKUの共有エンジンとする。Agentは正本を直接変更せず、KOMYAKUの検証・人間の採用・Version保存を経由する。[ADR-078](adr/ADR-078-agent-story-graph-core.md)・[Canonical Story Graph v1](formats/story-graph-v1.md)・[サンプル用Roadmap](../samples/story-graph/ROADMAP.md)を参照。
 
 ## ノード型文章構築・物語設計システム 設計仕様書
 

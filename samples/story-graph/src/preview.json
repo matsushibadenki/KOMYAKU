@@ -1,0 +1,476 @@
+{
+  "revision": 0,
+  "selected": "a248b9b6-ce79-4b7f-ae0b-818c85273ec5",
+  "nodes": [
+    {
+      "id": "58c52f27-52d4-439d-8d4c-6518e51e92c1",
+      "type": "story.block",
+      "title": "雨の駅から",
+      "order": 0
+    },
+    {
+      "id": "d82a5681-9e9d-4209-9b77-0da0ef33e157",
+      "type": "story.sequence",
+      "title": "手紙の物語",
+      "order": 0,
+      "parent": "58c52f27-52d4-439d-8d4c-6518e51e92c1"
+    },
+    {
+      "id": "a248b9b6-ce79-4b7f-ae0b-818c85273ec5",
+      "type": "story.scene",
+      "title": "起 · 雨の駅",
+      "path": "both",
+      "order": 0,
+      "parent": "d82a5681-9e9d-4209-9b77-0da0ef33e157"
+    },
+    {
+      "id": "a68c978e-d3a7-4a93-9f2c-026c610f31b2",
+      "type": "story.scene",
+      "title": "承 · 手紙を開く",
+      "path": "main",
+      "order": 1,
+      "parent": "d82a5681-9e9d-4209-9b77-0da0ef33e157"
+    },
+    {
+      "id": "22735721-2b90-4282-b354-8ec6a78cc2fe",
+      "type": "story.scene",
+      "title": "承 · 手紙を隠す",
+      "path": "alternative",
+      "order": 1,
+      "parent": "d82a5681-9e9d-4209-9b77-0da0ef33e157"
+    },
+    {
+      "id": "ad4644d8-2453-4e8e-821a-a06835656b0f",
+      "type": "story.scene",
+      "title": "転 · 記憶の場所",
+      "path": "both",
+      "order": 2,
+      "parent": "d82a5681-9e9d-4209-9b77-0da0ef33e157"
+    },
+    {
+      "id": "f082644c-145e-450e-9b46-13969ddf968b",
+      "type": "story.scene",
+      "title": "結 · 新しい朝",
+      "path": "both",
+      "order": 3,
+      "parent": "d82a5681-9e9d-4209-9b77-0da0ef33e157"
+    },
+    {
+      "id": "f2bb75c6-93bb-4316-aaf1-6c1951a30e9b",
+      "type": "story.character",
+      "title": "灯 / Akari"
+    },
+    {
+      "id": "3f1b5dd1-ece7-4796-8e22-d574c77f7eaa",
+      "type": "story.character",
+      "title": "蓮 / Ren"
+    },
+    {
+      "id": "17534d39-8fe6-44a5-9318-969fe5645840",
+      "type": "story.character",
+      "title": "澪 / Mio"
+    },
+    {
+      "id": "0f157281-a8ea-40e5-9ec2-864b785e8299",
+      "type": "story.relationship",
+      "title": "幼なじみ / Childhood friends",
+      "kind": "friend",
+      "mutual": true
+    },
+    {
+      "id": "f2a61f03-b150-4b5f-b7b7-742d5e44f69d",
+      "type": "story.relationship",
+      "title": "兄妹 / Siblings",
+      "kind": "family",
+      "mutual": true
+    },
+    {
+      "id": "834db334-ac56-407d-a719-c2dba3b10bc5",
+      "type": "story.relationship",
+      "title": "秘密 / A shared secret",
+      "kind": "trust",
+      "mutual": true
+    }
+  ],
+  "edges": [
+    {
+      "id": "4cf71e83-6777-4892-a99b-0a42cba28cf9",
+      "from": "f2bb75c6-93bb-4316-aaf1-6c1951a30e9b",
+      "to": "0f157281-a8ea-40e5-9ec2-864b785e8299",
+      "port": "from"
+    },
+    {
+      "id": "19f234ba-4a1c-4b5c-b7d7-35cefa2d6beb",
+      "from": "3f1b5dd1-ece7-4796-8e22-d574c77f7eaa",
+      "to": "0f157281-a8ea-40e5-9ec2-864b785e8299",
+      "port": "to"
+    },
+    {
+      "id": "d5ae7531-490d-47d6-8036-ae5b42d22879",
+      "from": "f2bb75c6-93bb-4316-aaf1-6c1951a30e9b",
+      "to": "f2a61f03-b150-4b5f-b7b7-742d5e44f69d",
+      "port": "from"
+    },
+    {
+      "id": "b9ce9153-53ad-413d-8511-f6750dd90abe",
+      "from": "17534d39-8fe6-44a5-9318-969fe5645840",
+      "to": "f2a61f03-b150-4b5f-b7b7-742d5e44f69d",
+      "port": "to"
+    },
+    {
+      "id": "6ccaceba-9066-4c84-81da-b2f85b316eff",
+      "from": "3f1b5dd1-ece7-4796-8e22-d574c77f7eaa",
+      "to": "834db334-ac56-407d-a719-c2dba3b10bc5",
+      "port": "from"
+    },
+    {
+      "id": "14d8d98d-bea2-445e-8d52-13a89e5c8f50",
+      "from": "17534d39-8fe6-44a5-9318-969fe5645840",
+      "to": "834db334-ac56-407d-a719-c2dba3b10bc5",
+      "port": "to"
+    },
+    {
+      "id": "980b8dc3-6eae-47b3-b634-14d2cd20e4cf",
+      "from": "a248b9b6-ce79-4b7f-ae0b-818c85273ec5",
+      "to": "a68c978e-d3a7-4a93-9f2c-026c610f31b2",
+      "port": "previous"
+    },
+    {
+      "id": "99cf6ae8-1c8b-436c-b34f-07afccd4353e",
+      "from": "a248b9b6-ce79-4b7f-ae0b-818c85273ec5",
+      "to": "22735721-2b90-4282-b354-8ec6a78cc2fe",
+      "port": "previous"
+    },
+    {
+      "id": "6cba3a88-386f-4c65-a9b8-39b56c997638",
+      "from": "a68c978e-d3a7-4a93-9f2c-026c610f31b2",
+      "to": "ad4644d8-2453-4e8e-821a-a06835656b0f",
+      "port": "previous"
+    },
+    {
+      "id": "589fbee7-4fe6-48a1-a1f5-517a52b2450e",
+      "from": "22735721-2b90-4282-b354-8ec6a78cc2fe",
+      "to": "ad4644d8-2453-4e8e-821a-a06835656b0f",
+      "port": "previous"
+    },
+    {
+      "id": "107f9ef5-22c3-4fcf-a5e1-e1cb52230502",
+      "from": "ad4644d8-2453-4e8e-821a-a06835656b0f",
+      "to": "f082644c-145e-450e-9b46-13969ddf968b",
+      "port": "previous"
+    }
+  ],
+  "details": {
+    "a248b9b6-ce79-4b7f-ae0b-818c85273ec5": {
+      "id": "a248b9b6-ce79-4b7f-ae0b-818c85273ec5",
+      "type_id": "story.scene",
+      "properties": {
+        "title": "起 · 雨の駅",
+        "notes": "",
+        "canonical": {
+          "schemaId": "https://komyaku.example/schemas/document/v1",
+          "schemaVersion": 1,
+          "id": "4a0d6997-8b62-468d-aaff-bfc00952f95e",
+          "type": "document",
+          "attrs": {
+            "language": "und",
+            "direction": "auto",
+            "writingMode": "horizontal-tb"
+          },
+          "metadata": {},
+          "extensions": {},
+          "content": [
+            {
+              "id": "10a5344e-6514-4205-bbb5-0c7405e633aa",
+              "schemaVersion": 1,
+              "type": "paragraph",
+              "attrs": {
+                "lang": null,
+                "dir": "auto"
+              },
+              "metadata": {},
+              "extensions": {},
+              "renderArtifacts": [],
+              "content": [
+                {
+                  "type": "text",
+                  "text": "終電が去った駅で、灯は差出人のない手紙を拾った。\n封筒には、十年前に消えた兄の筆跡があった。",
+                  "marks": [],
+                  "metadata": {},
+                  "extensions": {}
+                }
+              ]
+            }
+          ]
+        },
+        "path": "both",
+        "order": 0,
+        "parent": "d82a5681-9e9d-4209-9b77-0da0ef33e157"
+      }
+    },
+    "a68c978e-d3a7-4a93-9f2c-026c610f31b2": {
+      "id": "a68c978e-d3a7-4a93-9f2c-026c610f31b2",
+      "type_id": "story.scene",
+      "properties": {
+        "title": "承 · 手紙を開く",
+        "notes": "",
+        "canonical": {
+          "schemaId": "https://komyaku.example/schemas/document/v1",
+          "schemaVersion": 1,
+          "id": "94dc6a84-9deb-48f0-9080-239018687b2f",
+          "type": "document",
+          "attrs": {
+            "language": "und",
+            "direction": "auto",
+            "writingMode": "horizontal-tb"
+          },
+          "metadata": {},
+          "extensions": {},
+          "content": [
+            {
+              "id": "df7a64f5-e61e-4a4c-976d-a9d04d443699",
+              "schemaVersion": 1,
+              "type": "paragraph",
+              "attrs": {
+                "lang": null,
+                "dir": "auto"
+              },
+              "metadata": {},
+              "extensions": {},
+              "renderArtifacts": [],
+              "content": [
+                {
+                  "type": "text",
+                  "text": "灯は蓮に手紙を見せた。彼は宛名を見た瞬間、言葉を失った。",
+                  "marks": [],
+                  "metadata": {},
+                  "extensions": {}
+                }
+              ]
+            }
+          ]
+        },
+        "path": "main",
+        "order": 1,
+        "parent": "d82a5681-9e9d-4209-9b77-0da0ef33e157"
+      }
+    },
+    "22735721-2b90-4282-b354-8ec6a78cc2fe": {
+      "id": "22735721-2b90-4282-b354-8ec6a78cc2fe",
+      "type_id": "story.scene",
+      "properties": {
+        "title": "承 · 手紙を隠す",
+        "notes": "",
+        "canonical": {
+          "schemaId": "https://komyaku.example/schemas/document/v1",
+          "schemaVersion": 1,
+          "id": "f8f43503-61e2-4257-ac20-f6f550c9ff8b",
+          "type": "document",
+          "attrs": {
+            "language": "und",
+            "direction": "auto",
+            "writingMode": "horizontal-tb"
+          },
+          "metadata": {},
+          "extensions": {},
+          "content": [
+            {
+              "id": "c6896158-bbfb-423d-a6de-a22965f7c152",
+              "schemaVersion": 1,
+              "type": "paragraph",
+              "attrs": {
+                "lang": null,
+                "dir": "auto"
+              },
+              "metadata": {},
+              "extensions": {},
+              "renderArtifacts": [],
+              "content": [
+                {
+                  "type": "text",
+                  "text": "灯は手紙を鞄の底にしまった。今はまだ、誰も信じられなかった。",
+                  "marks": [],
+                  "metadata": {},
+                  "extensions": {}
+                }
+              ]
+            }
+          ]
+        },
+        "path": "alternative",
+        "order": 1,
+        "parent": "d82a5681-9e9d-4209-9b77-0da0ef33e157"
+      }
+    },
+    "ad4644d8-2453-4e8e-821a-a06835656b0f": {
+      "id": "ad4644d8-2453-4e8e-821a-a06835656b0f",
+      "type_id": "story.scene",
+      "properties": {
+        "title": "転 · 記憶の場所",
+        "notes": "",
+        "canonical": {
+          "schemaId": "https://komyaku.example/schemas/document/v1",
+          "schemaVersion": 1,
+          "id": "54c8365b-3525-4f70-9d14-099bdb588755",
+          "type": "document",
+          "attrs": {
+            "language": "und",
+            "direction": "auto",
+            "writingMode": "horizontal-tb"
+          },
+          "metadata": {},
+          "extensions": {},
+          "content": [
+            {
+              "id": "addef7df-eef7-4a83-9c00-380105d16bae",
+              "schemaVersion": 1,
+              "type": "paragraph",
+              "attrs": {
+                "lang": null,
+                "dir": "auto"
+              },
+              "metadata": {},
+              "extensions": {},
+              "renderArtifacts": [],
+              "content": [
+                {
+                  "type": "text",
+                  "text": "二人が辿り着いたのは、閉鎖された図書館だった。窓の向こうに、見覚えのある影が動いた。",
+                  "marks": [],
+                  "metadata": {},
+                  "extensions": {}
+                }
+              ]
+            }
+          ]
+        },
+        "path": "both",
+        "order": 2,
+        "parent": "d82a5681-9e9d-4209-9b77-0da0ef33e157"
+      }
+    },
+    "f082644c-145e-450e-9b46-13969ddf968b": {
+      "id": "f082644c-145e-450e-9b46-13969ddf968b",
+      "type_id": "story.scene",
+      "properties": {
+        "title": "結 · 新しい朝",
+        "notes": "",
+        "canonical": {
+          "schemaId": "https://komyaku.example/schemas/document/v1",
+          "schemaVersion": 1,
+          "id": "eb06df3e-21cf-44d9-bf89-3a572ebbe9d9",
+          "type": "document",
+          "attrs": {
+            "language": "und",
+            "direction": "auto",
+            "writingMode": "horizontal-tb"
+          },
+          "metadata": {},
+          "extensions": {},
+          "content": [
+            {
+              "id": "af84b060-a526-43af-b9af-2ae07177bd73",
+              "schemaVersion": 1,
+              "type": "paragraph",
+              "attrs": {
+                "lang": null,
+                "dir": "auto"
+              },
+              "metadata": {},
+              "extensions": {},
+              "renderArtifacts": [],
+              "content": [
+                {
+                  "type": "text",
+                  "text": "扉を開けると、朝の光が差し込んだ。灯は手紙の最後の一行を、声に出して読んだ。",
+                  "marks": [],
+                  "metadata": {},
+                  "extensions": {}
+                }
+              ]
+            }
+          ]
+        },
+        "path": "both",
+        "order": 3,
+        "parent": "d82a5681-9e9d-4209-9b77-0da0ef33e157"
+      }
+    },
+    "f2bb75c6-93bb-4316-aaf1-6c1951a30e9b": {
+      "id": "f2bb75c6-93bb-4316-aaf1-6c1951a30e9b",
+      "type_id": "story.character",
+      "properties": {
+        "title": "灯 / Akari",
+        "role": "主人公。失踪した兄を探している。",
+        "notes": ""
+      }
+    },
+    "3f1b5dd1-ece7-4796-8e22-d574c77f7eaa": {
+      "id": "3f1b5dd1-ece7-4796-8e22-d574c77f7eaa",
+      "type_id": "story.character",
+      "properties": {
+        "title": "蓮 / Ren",
+        "role": "幼なじみ。手紙の秘密を知っている。",
+        "notes": ""
+      }
+    },
+    "17534d39-8fe6-44a5-9318-969fe5645840": {
+      "id": "17534d39-8fe6-44a5-9318-969fe5645840",
+      "type_id": "story.character",
+      "properties": {
+        "title": "澪 / Mio",
+        "role": "灯の兄。十年前に消息を絶った。",
+        "notes": ""
+      }
+    },
+    "0f157281-a8ea-40e5-9ec2-864b785e8299": {
+      "id": "0f157281-a8ea-40e5-9ec2-864b785e8299",
+      "type_id": "story.relationship",
+      "properties": {
+        "title": "幼なじみ / Childhood friends",
+        "kind": "friend",
+        "mutual": true,
+        "notes": ""
+      }
+    },
+    "f2a61f03-b150-4b5f-b7b7-742d5e44f69d": {
+      "id": "f2a61f03-b150-4b5f-b7b7-742d5e44f69d",
+      "type_id": "story.relationship",
+      "properties": {
+        "title": "兄妹 / Siblings",
+        "kind": "family",
+        "mutual": true,
+        "notes": ""
+      }
+    },
+    "834db334-ac56-407d-a719-c2dba3b10bc5": {
+      "id": "834db334-ac56-407d-a719-c2dba3b10bc5",
+      "type_id": "story.relationship",
+      "properties": {
+        "title": "秘密 / A shared secret",
+        "kind": "trust",
+        "mutual": true,
+        "notes": ""
+      }
+    },
+    "58c52f27-52d4-439d-8d4c-6518e51e92c1": {
+      "id": "58c52f27-52d4-439d-8d4c-6518e51e92c1",
+      "type_id": "story.block",
+      "properties": {
+        "title": "雨の駅から",
+        "notes": "",
+        "order": 0
+      }
+    },
+    "d82a5681-9e9d-4209-9b77-0da0ef33e157": {
+      "id": "d82a5681-9e9d-4209-9b77-0da0ef33e157",
+      "type_id": "story.sequence",
+      "properties": {
+        "title": "手紙の物語",
+        "notes": "",
+        "order": 0,
+        "parent": "58c52f27-52d4-439d-8d4c-6518e51e92c1"
+      }
+    }
+  }
+}

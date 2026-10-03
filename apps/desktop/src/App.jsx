@@ -42,6 +42,8 @@ import {
   listLocalVersionHistory,
   localVersionHistoryAvailable,
   reviewLocalVersionIntegration,
+  prepareLocalVersionIntegration,
+  adoptLocalVersionIntegration,
   restoreLocalDocumentVersion
 } from "./services/local-version-history.js";
 import {
@@ -185,9 +187,12 @@ export function App() {
   const [versionComparison, setVersionComparison] = useState(null);
   const [comparisonStatus, setComparisonStatus] = useState("idle");
   const [integrationReview, setIntegrationReview] = useState(null);
+  const [integrationCandidate, setIntegrationCandidate] = useState(null);
   const [integrationStatus, setIntegrationStatus] = useState("idle");
   const [archiveImportConflict, setArchiveImportConflict] = useState(null);
   const historyReadSequence = useRef(0);
+  const historyLoadedSession = useRef(null);
+  const integrationSubmission = useRef(null);
   const comparisonReadSequence = useRef(0);
   const integrationReadSequence = useRef(0);
   const libraryReadSequence = useRef(0);
@@ -212,6 +217,7 @@ export function App() {
       const history = await listLocalVersionHistory(documentId);
       if (!isCurrent()) return null;
       ++integrationReadSequence.current;
+      setIntegrationCandidate(null);
       setIntegrationReview(null);
       setIntegrationStatus("idle");
       setVersionHistory(history);
@@ -220,6 +226,7 @@ export function App() {
     } catch {
       if (!isCurrent()) return null;
       ++integrationReadSequence.current;
+      setIntegrationCandidate(null);
       setIntegrationReview(null);
       setIntegrationStatus("idle");
       setVersionHistory(null);
@@ -241,6 +248,7 @@ export function App() {
       const page = await listLocalVersionHistory(loadedHistory.documentId, { cursor });
       if (!isCurrent()) return false;
       ++integrationReadSequence.current;
+      setIntegrationCandidate(null);
       setIntegrationReview(null);
       setIntegrationStatus("idle");
       setVersionHistory(appendLocalVersionHistoryPage(loadedHistory, page));
@@ -268,6 +276,7 @@ export function App() {
     setVersionComparison(null);
     setComparisonStatus("idle");
     ++integrationReadSequence.current;
+    setIntegrationCandidate(null);
     setIntegrationReview(null);
     setIntegrationStatus("idle");
   }, []);
@@ -294,7 +303,12 @@ export function App() {
 
   useEffect(() => {
     const documentId = checkpoint?.durable ? checkpoint.document.id : null;
-    if (editorWorkspace.mode === "local" && documentId) void refreshVersionHistory(documentId);
+    if (editorWorkspace.mode !== "local") { historyLoadedSession.current = null; return; }
+    const session = editSession.current;
+    if (documentId && historyLoadedSession.current !== session) {
+      historyLoadedSession.current = session;
+      void refreshVersionHistory(documentId);
+    }
   }, [checkpoint?.document?.id, checkpoint?.durable, editorWorkspace.mode, refreshVersionHistory]);
 
   const createCheckpoint = useCallback(async ({ retry = false } = {}) => {
@@ -678,6 +692,7 @@ export function App() {
     if (session?.documentId !== documentId) return false;
     const sequence = ++integrationReadSequence.current;
     const isCurrent = () => editSession.current === session && sequence === integrationReadSequence.current;
+    setIntegrationCandidate(null);
     setIntegrationReview(null);
     setIntegrationStatus("loading");
     try {
@@ -695,6 +710,56 @@ export function App() {
       return false;
     }
   }, [checkpoint?.document?.id, i18n.resolvedLanguage]);
+
+  const previewIntegration = useCallback((choice) => runDocumentMutation(async () => {
+    if (!integrationReview) return false;
+    const sequence = ++integrationReadSequence.current;
+    setIntegrationCandidate(null);
+    setIntegrationStatus("loading");
+    try {
+      const prepared = await prepareForDocumentTransition();
+      if (!prepared?.checkpoint?.durable) throw new Error("durable_checkpoint_required");
+      const candidate = await prepareLocalVersionIntegration({ review: integrationReview, choice,
+        document: prepared.checkpoint.document, authorId: getOrCreateLocalVersionAuthorId(),
+        locale: i18n.resolvedLanguage, label: t("versionHistory.integration.savedLabel") });
+      if (!prepared.isCurrent() || sequence !== integrationReadSequence.current) return false;
+      setIntegrationCandidate(candidate);
+      setIntegrationStatus("preview");
+      return true;
+    } catch {
+      if (sequence === integrationReadSequence.current) setIntegrationStatus("error");
+      return false;
+    }
+  }), [integrationReview, runDocumentMutation, prepareForDocumentTransition, i18n.resolvedLanguage, t]);
+
+  const adoptIntegration = useCallback(() => runDocumentMutation(async () => {
+    if (!integrationCandidate) return false;
+    setVersionStatus("saving");
+    try {
+      let submission = integrationSubmission.current;
+      if (submission?.candidate !== integrationCandidate) {
+        const prepared = await prepareForDocumentTransition();
+        if (!prepared?.checkpoint?.durable || !prepared.isCurrent()) throw new Error("durable_checkpoint_required");
+        submission = { candidate: integrationCandidate, checkpoint: prepared.checkpoint,
+          session: editSession.current, generation: editGeneration.current };
+        integrationSubmission.current = submission;
+      }
+      // Save-only retry: do not checkpoint the old draft over a possibly committed merge.
+      if (submission.session !== editSession.current || submission.generation !== editGeneration.current) {
+        throw new Error("local_merge_candidate_changed");
+      }
+      const merged = await adoptLocalVersionIntegration({ candidate: integrationCandidate,
+        document: submission.checkpoint.document, localRevision: submission.checkpoint.revision });
+      replaceWorkingDocument(merged.document, merged.localRevision);
+      setPersistenceStatus("restored");
+      await refreshVersionHistory(merged.document.id);
+      return true;
+    } catch {
+      setVersionStatus("error");
+      setIntegrationStatus("error");
+      return false;
+    }
+  }), [integrationCandidate, runDocumentMutation, prepareForDocumentTransition, replaceWorkingDocument, refreshVersionHistory]);
 
   const createNewLocalDocument = useCallback(async () => {
     if (!await prepareForDocumentTransition()) return false;
@@ -952,6 +1017,9 @@ export function App() {
             comparison={versionComparison}
             comparisonStatus={comparisonStatus}
             onReviewIntegration={reviewAlternative}
+            onPreviewIntegration={previewIntegration}
+            onAdoptIntegration={adoptIntegration}
+            integrationCandidate={integrationCandidate}
             integrationReview={integrationReview}
             integrationStatus={integrationStatus}
             labels={{
@@ -1004,6 +1072,11 @@ export function App() {
                 conflicts: (count) => t("versionHistory.integration.conflicts", { count }),
                 noConflicts: t("versionHistory.integration.noConflicts"),
                 readOnly: t("versionHistory.integration.readOnly"),
+                chooseOurs: t("versionHistory.integration.chooseOurs"),
+                chooseTheirs: t("versionHistory.integration.chooseTheirs"),
+                adopt: t("versionHistory.integration.adopt"),
+                preview: t("versionHistory.integration.preview"),
+                assets: (count) => t("versionHistory.integration.assets", { count }),
                 kinds: Object.fromEntries(["delete-edit", "move", "text", "metadata", "text-format",
                   "source", "asset", "add-add", "attributes", "asset-metadata", "type", "extensions"]
                   .map((kind) => [kind, t(`versionHistory.integration.kinds.${kind}`)])),
@@ -1011,6 +1084,7 @@ export function App() {
                   idle: t("versionHistory.integration.status.idle"),
                   loading: t("versionHistory.integration.status.loading"),
                   ready: t("versionHistory.integration.status.ready"),
+                  preview: t("versionHistory.integration.status.preview"),
                   ambiguous_merge_base: t("versionHistory.integration.status.ambiguous"),
                   missing_merge_base: t("versionHistory.integration.status.missing"),
                   error: t("versionHistory.integration.status.error")

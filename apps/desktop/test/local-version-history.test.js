@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { createCanonicalNode, createEmptyDocument } from "@komyaku/document-schema";
 import { createDocumentVersion } from "@komyaku/version-engine";
 import {
+  prepareLocalVersionIntegration,
+  adoptLocalVersionIntegration,
   appendLocalVersionHistoryPage,
   compareLocalDocumentVersions,
   createLocalDocumentVersion,
@@ -397,4 +399,97 @@ describe("reviewing a local alternative", () => {
     await expect(reviewLocalVersionIntegration({ documentId, alternativeBranchId: branchIds[1] },
       { native: true, invokeImpl })).rejects.toThrow(/local_merge_review_changed/);
   });
+});
+
+describe("reviewed integration native command boundary", () => {
+  const ours = "00000000-0000-4000-8000-000000000501";
+  const theirs = "00000000-0000-4000-8000-000000000502";
+  const source = "00000000-0000-4000-8000-000000000503";
+  const mergeInput = () => ({ ...structuredClone(input),
+    expectedHeadVersionId: ours, restoreDraftRevision: 2, mergeSourceBranchId: source,
+    version: { ...structuredClone(input.version), reason: "merge", parentIds: [ours, theirs] }
+  });
+
+  test("passes both reviewed heads, source branch and draft revision in one native request", async () => {
+    const request = mergeInput();
+    let calls = 0;
+    const result = await saveLocalVersion(request, { native: true, invokeImpl: async (name, args) => {
+      calls += 1;
+      expect(name).toBe("save_local_version_atomic");
+      expect(args.input).toEqual(request);
+      return { operationId: request.operationId, documentId: request.version.documentId,
+        versionId: request.version.id, branchId: request.branchId,
+        snapshotHash: request.version.snapshotHash, replayed: false };
+    } });
+    expect(calls).toBe(1);
+    expect(result.replayed).toBe(false);
+  });
+
+  test("rejects incomplete or mismatched merge guards before IPC", async () => {
+    let calls = 0;
+    const options = { native: true, invokeImpl: async () => { calls += 1; } };
+    for (const patch of [
+      { mergeSourceBranchId: null }, { mergeSourceBranchId: input.branchId },
+      { restoreDraftRevision: null }, { expectedHeadVersionId: theirs },
+      { version: { ...mergeInput().version, parentIds: [ours, ours] } }
+    ]) {
+      await expect(saveLocalVersion({ ...mergeInput(), ...patch }, options))
+        .rejects.toThrow(/invalid_local_merge_request/);
+    }
+    await expect(saveLocalVersion({ ...input, mergeSourceBranchId: source }, options))
+      .rejects.toThrow(/invalid_local_merge_request/);
+    expect(calls).toBe(0);
+  });
+});
+
+
+test("integration candidate binds exact draft, selected snapshot and retry request", async () => {
+  const fixture = await mergeReviewFixture();
+  const { documentId, versions, branches, branchIds, ids, summary } = fixture;
+  const writes = [];
+  let failFirst = true;
+  const invokeImpl = async (command, payload) => {
+    if (command === "list_local_version_history") return { documentId,
+      currentBranchId: branchIds[0], currentVersionId: ids[1], branches,
+      versions: versions.map(summary), nextCursor: null };
+    if (command === "load_local_version_assets") return [];
+    if (command === "load_local_version_snapshot") {
+      const version = versions.find(({ id }) => id === payload.versionId);
+      return { documentId, versionId: version.id, schemaVersion: version.schemaVersion,
+        snapshotEncoding: version.snapshotEncoding, snapshotJson: version.snapshotJson,
+        snapshotHash: version.snapshotHash };
+    }
+    if (command === "save_local_version_atomic") {
+      writes.push(structuredClone(payload.input));
+      if (failFirst) { failFirst = false; throw new Error("lost response"); }
+      const request = payload.input;
+      return { operationId: request.operationId, documentId, versionId: request.version.id,
+        branchId: request.branchId, snapshotHash: request.version.snapshotHash, replayed: true };
+    }
+    throw new Error(command);
+  };
+  const options = { native: true, invokeImpl };
+  const review = await reviewLocalVersionIntegration({ documentId, alternativeBranchId: branchIds[1] }, options);
+  const document = JSON.parse(versions[1].snapshotJson);
+  const candidate = await prepareLocalVersionIntegration({ review, document, choice: "theirs",
+    authorId: versions[0].authorId }, options);
+  expect(writes).toHaveLength(0);
+  expect(candidate.assetIds).toEqual([]);
+  expect(candidate.comparison.changes.length).toBeGreaterThan(0);
+  const changed = structuredClone(document);
+  changed.metadata.title = "Changed after preview";
+  await expect(adoptLocalVersionIntegration({ candidate, document: changed, localRevision: 7 }, options))
+    .rejects.toThrow(/local_merge_candidate_changed/);
+  await expect(adoptLocalVersionIntegration({ candidate: { ...candidate }, document, localRevision: 7 }, options))
+    .rejects.toThrow(/local_merge_candidate_changed/);
+  expect(writes).toHaveLength(0);
+  await expect(adoptLocalVersionIntegration({ candidate, document, localRevision: 7 }, options))
+    .rejects.toThrow(/lost response/);
+  const saved = await adoptLocalVersionIntegration({ candidate, document, localRevision: 8 }, options);
+  expect(writes[1]).toEqual(writes[0]);
+  expect(writes[0].version.parentIds).toEqual([ids[1], ids[2]]);
+  expect(writes[0].mergeSourceBranchId).toBe(branchIds[1]);
+  expect(writes[0].version.snapshotHash).toBe(versions[2].snapshotHash);
+  expect(saved.localRevision).toBe(8);
+  expect(saved.document).toEqual(JSON.parse(versions[2].snapshotJson));
 });
