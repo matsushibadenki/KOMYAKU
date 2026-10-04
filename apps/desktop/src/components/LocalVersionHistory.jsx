@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { VersionLineageGraph } from "./VersionLineageGraph.jsx";
 
-function IntegrationParagraphEditor({ candidate, disabled, onRevise, labels, onDirty }) {
+function IntegrationParagraphEditor({ candidate, disabled, onRevise, labels, onDirty, onComposition }) {
   const [edits, setEdits] = useState({});
   const composing = useRef(false);
   const [compositionActive, setCompositionActive] = useState(false);
@@ -21,8 +21,8 @@ function IntegrationParagraphEditor({ candidate, disabled, onRevise, labels, onD
     {paragraphs.length ? paragraphs.slice(0, 100).map(({ nodeId, text }, index) => <label key={nodeId}>
       <span>{labels.editParagraph(index + 1)}</span>
       <textarea disabled={disabled} maxLength={100_000} rows={3}
-        onCompositionStart={() => { composing.current = true; setCompositionActive(true); onDirty(true); }}
-        onCompositionEnd={(event) => { composing.current = false; setCompositionActive(false);
+        onCompositionStart={() => { composing.current = true; setCompositionActive(true); onComposition(true); onDirty(true); }}
+        onCompositionEnd={(event) => { composing.current = false; setCompositionActive(false); onComposition(false);
           changeText(nodeId, event.currentTarget.value); }}
         onKeyDown={(event) => { if (event.key === "Enter" && (composing.current || event.nativeEvent.isComposing)) event.stopPropagation(); }}
         value={edits[nodeId] ?? text} onChange={(event) => changeText(nodeId, event.target.value)} />
@@ -34,8 +34,9 @@ function IntegrationParagraphEditor({ candidate, disabled, onRevise, labels, onD
 export function LocalVersionHistory({ history, available, status, onCreateInitial, onSaveNamed,
   onCreateAlternative, onRestore, onLoadOlder, onExport, exportStatus, onCompare, comparison,
   comparisonStatus, onReviseIntegration, integrationSubmitted, onPreviewIntegration, onAdoptIntegration, integrationCandidate, onReviewIntegration, integrationReview, integrationStatus, locale, labels }) {
+  const [integrationComposing, setIntegrationComposing] = useState(false);
   const [integrationDirty, setIntegrationDirty] = useState(false);
-  useEffect(() => { setIntegrationDirty(false); }, [integrationCandidate]);
+  useEffect(() => { setIntegrationDirty(false); setIntegrationComposing(false); }, [integrationCandidate]);
   const [label, setLabel] = useState("");
   const [branchName, setBranchName] = useState("");
   const [compareFrom, setCompareFrom] = useState("");
@@ -177,16 +178,16 @@ export function LocalVersionHistory({ history, available, status, onCreateInitia
           <div className="version-integration-review">
             <div><h3>{labels.integration.title}</h3><p>{labels.integration.description}</p></div>
             {alternatives.length ? (
-              <form onSubmit={(event) => { event.preventDefault(); void onReviewIntegration(integrationBranchId); }}>
+              <form onSubmit={(event) => { event.preventDefault(); if (!integrationComposing) void onReviewIntegration(integrationBranchId); }}>
                 <label><span>{labels.integration.branch}</span>
-                  <select value={integrationBranchId}
+                  <select disabled={integrationComposing} value={integrationBranchId}
                     onChange={(event) => setIntegrationBranchId(event.target.value)}>
                     {alternatives.map((branch) => <option key={branch.id} value={branch.id}>
                       {branch.name}
                     </option>)}
                   </select>
                 </label>
-                <button type="submit" disabled={busy || !integrationBranchId || integrationStatus === "loading"}>
+                <button type="submit" disabled={busy || integrationComposing || !integrationBranchId || integrationStatus === "loading"}>
                   {labels.integration.action}
                 </button>
               </form>
@@ -218,15 +219,15 @@ export function LocalVersionHistory({ history, available, status, onCreateInitia
                 </ol> : null}
                 <p className="version-integration-note">{labels.integration.readOnly}</p>
                 <div className="library-actions">
-                  <button type="button" disabled={busy || integrationStatus === "loading"}
+                  <button type="button" disabled={busy || integrationComposing || integrationStatus === "loading"}
                     onClick={() => onPreviewIntegration("ours")}>{labels.integration.chooseOurs}</button>
-                  <button type="button" disabled={busy || integrationStatus === "loading"}
+                  <button type="button" disabled={busy || integrationComposing || integrationStatus === "loading"}
                     onClick={() => onPreviewIntegration("theirs")}>{labels.integration.chooseTheirs}</button>
                 </div>
                 {integrationCandidate ? <div>
                   <IntegrationParagraphEditor key={integrationCandidate.snapshotHash} candidate={integrationCandidate}
                     disabled={busy || integrationSubmitted || integrationStatus === "loading"}
-                    onRevise={onReviseIntegration} onDirty={setIntegrationDirty} labels={labels.integration} />
+                    onRevise={onReviseIntegration} onDirty={setIntegrationDirty} onComposition={setIntegrationComposing} labels={labels.integration} />
                   <h4>{labels.integration.preview}</h4>
                   <p>{labels.changeSummary(integrationCandidate.comparison.summary)}</p>
                   <p>{labels.integration.assets(integrationCandidate.assetIds.length)}</p>

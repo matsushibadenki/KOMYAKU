@@ -542,6 +542,12 @@ test('integration paragraph composition blocks diff submission and adoption unti
   const input = panel.locator('.integration-paragraph-editor textarea').first();
   await input.dispatchEvent('compositionstart');
   await input.fill('変換中の文章');
+  await expect(panel.getByRole('button', { name: '統合をプレビュー' })).toBeDisabled();
+  await expect(panel.getByRole('button', { name: '現在の版を残して差分確認' })).toBeDisabled();
+  await expect(panel.getByRole('button', { name: '別案の版を採用して差分確認' })).toBeDisabled();
+  await expect(panel.getByRole('combobox')).toBeDisabled();
+  await panel.locator('form').first().evaluate(element => element.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(await page.evaluate(() => window.integrationReviewCalls)).toHaveLength(1);
   await expect(panel.getByRole('button', { name: '編集結果の差分を確認' })).toBeDisabled();
   await expect(panel.getByRole('button', { name: '確認して統合版を保存' })).toBeDisabled();
   await input.evaluate(element => element.closest('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));

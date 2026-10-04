@@ -1,6 +1,10 @@
 import {graphemeStep} from './text-performance.js';
 
 export const selectionRange=selection=>({start:Math.min(selection.anchor,selection.focus),end:Math.max(selection.anchor,selection.focus)});
+// A mouse extension retains the original anchor even after reversing direction.
+export function pointSelection(length,anchor,focus) {
+  return {anchor:Math.max(0,Math.min(length,anchor)),focus:Math.max(0,Math.min(length,focus))};
+}
 export function extendSelection(text,selection,direction) {
   return {...selection,focus:graphemeStep(text,selection.focus,direction)};
 }

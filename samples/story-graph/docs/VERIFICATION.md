@@ -1,5 +1,12 @@
 # Verification — 2026-10-02
 
+## 長段落のShift＋クリック範囲選択 — 2026-10-04
+
+- `bun test test`: 20件成功、480 assertions。遠い表示断片への選択、始点を保った方向反転、CRLF、既存の跨ぎ範囲置換・IME継続用の入力欄保持を検証。
+- `bun run package`: frontend buildとmacOS debug app bundleの生成成功。
+- 同一段落・同一シーン内のShift＋クリックを対象とする。横書き／縦書きともWebKitのnative hit-test位置を用い、文字の座標を独自推測しない。
+- 実WebViewのShift＋クリック、実IMEとの連続操作、グループ執筆でのnative QAは未完了。ドラッグ／複数段落選択、完全DOM仮想化は引き続き[Next]。
+
 ## AI writing and authentication — 2026-10-03
 
 - App-specific Rust tests: 31 pass, including actual loopback cancellation with desktop sandbox approval, OAuth/JWT trust boundaries, private credential storage, independent-store locking, refresh scheduling, SSE split UTF-8/CRLF and late failure, supported request fields, model filtering/order, and changed-manuscript protection.

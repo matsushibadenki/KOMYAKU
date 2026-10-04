@@ -1,6 +1,17 @@
 import {test,expect} from 'bun:test';
 import {fragments,inputPatch} from '../src/text-performance.js';
-import {selectionRange,extendSelection,fragmentSelection,replaceSelectionFragments} from '../src/paragraph-selection.js';
+import {selectionRange,extendSelection,fragmentSelection,replaceSelectionFragments,pointSelection} from '../src/paragraph-selection.js';
+
+test('pointer extension retains its anchor across distant fragments and reversals',()=>{
+  const text=('雨'.repeat(8190)+'\r\n').repeat(4),parts=fragments(text);
+  const forward=pointSelection(text.length,4,24580);
+  expect(selectionRange(forward)).toEqual({start:4,end:24580});
+  expect(fragmentSelection(parts[1],forward)).toEqual({start:0,end:8190});
+  const reversed=pointSelection(text.length,forward.anchor,1);
+  expect(selectionRange(reversed)).toEqual({start:1,end:4});
+  expect(text.slice(4,24580)).toContain('\r\n');
+  expect(pointSelection(text.length,-1,text.length+100)).toEqual({anchor:0,focus:text.length});
+});
 
 test('shift selection crosses fragment boundaries and reverses without splitting emoji',()=>{
   const text='雨'.repeat(8191)+'👨‍👩‍👧‍👦'+'次',anchor=8190;

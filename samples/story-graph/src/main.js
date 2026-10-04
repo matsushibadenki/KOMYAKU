@@ -1,6 +1,6 @@
 import './style.css';
 import { fragments, inputPatch, characters, graphemeStep, canonicalPosition } from './text-performance.js';
-import {selectionRange,extendSelection,fragmentSelection,replaceSelectionFragments} from './paragraph-selection.js';
+import {selectionRange,extendSelection,fragmentSelection,replaceSelectionFragments,pointSelection} from './paragraph-selection.js';
 import { paragraphText, insertDialogue, updateParagraph, setDialogueWidth, paragraphById } from './dialogue.js';
 import { messages, languages } from './locales.js';
 import { canonicalText, routeNodes, relatedPeople, outlineNodes, outlineDrop, containedScenes } from './adapter.js';
@@ -32,6 +32,7 @@ const pendingParagraphs=new Map();
 let paragraphSelection=null,reflowing=false;
 const selectionReplacements=new WeakMap(),compositionReflow=new WeakSet();
 let paintingSelection=false;
+let pointerSelection=null;
 let wholeCanonicalDraft=false, manuscriptObserver=null;
 let groupDetails=[], groupFocus=null;
 const groupEdits=new Map();
@@ -478,15 +479,35 @@ function reflowParagraph(input,position) {
   for(const block of wrappers){manuscriptObserver?.observe(block);if(wrappers.length<=80)resizeManuscript(block);}
   focusParagraphPosition(wrappers.map(block=>block.querySelector('textarea')),position);reflowing=false;
 }
-document.addEventListener('pointerdown',event=>{if(event.shiftKey&&paragraphSelection&&event.target.dataset.block&&selectedParagraph(event.target))return;clearParagraphSelection();});
+document.addEventListener('pointerdown',event=>{
+  pointerSelection=null;
+  const input=event.target,active=document.activeElement;
+  if(native&&!composing&&event.button===0&&event.shiftKey&&input.dataset.block&&!input.closest('.dialogue-sheet')&&active?.dataset.block===input.dataset.block&&inputScene(active)===inputScene(input)&&paragraphInputs(input).length>1){
+    const anchor=selectedParagraph(active)?paragraphSelection.anchor:caretPosition(active,active.selectionDirection==='backward'?active.selectionEnd:active.selectionStart);
+    pointerSelection={input,anchor,pointer:event.pointerId};return;
+  }
+  clearParagraphSelection();
+},true);
+document.addEventListener('pointerup',event=>{
+  const pending=pointerSelection;if(!pending||pending.pointer!==event.pointerId)return;
+  // Read WebKit's native hit-tested caret after its pointer default action.
+  requestAnimationFrame(()=>{
+    if(pointerSelection!==pending)return;
+    pointerSelection=null;const input=pending.input;
+    if(!input.isConnected||document.activeElement!==input){clearParagraphSelection();return;}
+    const focus=caretPosition(input,input.selectionDirection==='backward'?input.selectionStart:input.selectionEnd);
+    selectParagraphPosition(input,pointSelection(paragraphValue(input).length,pending.anchor,focus));
+  });
+});
+document.addEventListener('pointercancel',()=>{if(pointerSelection){pointerSelection=null;clearParagraphSelection();}});
 // macOS Edit > Select All can select the native textarea without a DOM keydown.
 document.addEventListener('select',event=>{
-  const input=event.target;if(reflowing||paintingSelection||paragraphSelection||composing||!native||!input.dataset.block||input.closest('.dialogue-sheet')||!input.value.length||input.selectionStart!==0||input.selectionEnd!==input.value.length)return;
+  const input=event.target;if(reflowing||paintingSelection||pointerSelection||paragraphSelection||composing||!native||!input.dataset.block||input.closest('.dialogue-sheet')||!input.value.length||input.selectionStart!==0||input.selectionEnd!==input.value.length)return;
   const peers=paragraphInputs(input);if(peers.length<2)return;
   paragraphSelection={id:input.dataset.block,scene:inputScene(input),anchor:0,focus:paragraphValue(input).length};paintParagraphSelection(input);
 },true);
 document.addEventListener('selectionchange',()=>{
-  if(paintingSelection||reflowing)return;
+  if(paintingSelection||reflowing||pointerSelection)return;
   const input=document.activeElement;if(!paragraphSelection)return;
   if(!input?.dataset.block||!selectedParagraph(input)){clearParagraphSelection();return;}
   const local=fragmentSelection({start:Number(input.dataset.start),text:rawFragment(input)},paragraphSelection);
