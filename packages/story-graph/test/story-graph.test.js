@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createEmptyDocument } from "@komyaku/document-schema";
 import {
   applyStoryWorkspaceCommand,
+  applyStoryWorkspaceTransaction,
   characterKnowsFact,
   checkStoryGraphConsistency,
   compareStoryPathMerge,
@@ -257,5 +258,45 @@ describe("atomic Story Workspace command contract", () => {
     ]))).toThrow(/story_command_workspace_mismatch/);
     expect(() => applyStoryWorkspaceCommand({ ...state, revision: Number.MAX_SAFE_INTEGER },
       command(state, [remove]))).toThrow(/invalid_story_workspace_revision/);
+  });
+});
+
+
+describe("Story Workspace transaction receipts", () => {
+  const state = () => { const { document, graph } = fixture(); return { workspace: { schemaId: STORY_WORKSPACE_SCHEMA_ID, schemaVersion: 1, document, graph }, revision: 0 }; };
+  const request = current => ({ operationId: id(200), command: {
+    documentId: current.workspace.document.id, graphId: current.workspace.graph.id, expectedRevision: current.revision,
+    operations: [{ type: 'remove', collection: 'paths', id: id(40) }] } });
+  test('lost-response replay does not apply twice or rewind later edits', () => {
+    const original = state();
+    const input = request(original);
+    const saved = applyStoryWorkspaceTransaction(original, input);
+    expect(saved.replayed).toBe(false);
+    expect(saved.state.revision).toBe(1);
+    const later = { ...saved.state, revision: 2 };
+    const replay = applyStoryWorkspaceTransaction(later, input, saved.receipt);
+    expect(replay.replayed).toBe(true);
+    expect(replay.state).toBe(later);
+    expect(replay.receipt.revision).toBe(1);
+    expect(applyStoryWorkspaceTransaction(later, { command: input.command, operationId: input.operationId }, saved.receipt).replayed).toBe(true);
+    expect(() => applyStoryWorkspaceTransaction(later, input, { ...saved.receipt, revision: 2 }))
+      .toThrow(/invalid_story_transaction_receipt/);
+    expect(original.workspace.graph.paths).toHaveLength(2);
+  });
+  test('same operation ID cannot adopt different operations', () => {
+    const current = state(); const input = request(current);
+    const saved = applyStoryWorkspaceTransaction(current, input);
+    expect(() => applyStoryWorkspaceTransaction(saved.state, { ...input, command: {
+      ...input.command, expectedRevision: 1 } }, saved.receipt)).toThrow(/story_operation_collision/);
+    expect(() => applyStoryWorkspaceTransaction(saved.state, { ...input, operationId: id(201) }, saved.receipt))
+      .toThrow(/story_operation_collision/);
+  });
+  test('failed batches create no state or receipt and replay requires a compatible workspace', () => {
+    const current = state(); const input = request(current); const before = structuredClone(current);
+    expect(() => applyStoryWorkspaceTransaction(current, { ...input, command: {
+      ...input.command, operations: [{ type: 'remove', collection: 'nodes', id: id(20) }] } })).toThrow();
+    expect(current).toEqual(before);
+    const saved = applyStoryWorkspaceTransaction(current, input);
+    expect(() => applyStoryWorkspaceTransaction(current, input, saved.receipt)).toThrow(/invalid_story_transaction_receipt/);
   });
 });

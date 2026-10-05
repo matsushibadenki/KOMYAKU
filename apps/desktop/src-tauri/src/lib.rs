@@ -1,3 +1,7 @@
+// Internal groundwork; enable runtime use after native composite validation.
+#[allow(dead_code)]
+mod story_workspace_store;
+
 use image::{ImageFormat, ImageReader, Limits};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

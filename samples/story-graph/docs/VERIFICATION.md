@@ -1,5 +1,102 @@
 # Verification — 2026-10-02
 
+## 執筆の構造見出し編集 — 2026-10-05
+
+- まとめ執筆のシーケンス・シーン名と、パンくずの親ブロック・シーケンス名を入力欄へ変更。ブロック／シーケンスの主見出し、単独シーン名を含め、対象IDごとにRustの既存property命令で保存する。
+- 独立bridge fixture＋Playwrightで横書き／縦書き2ケース成功。ブロック・シーケンス・複数シーンの編集、左ツリーへの反映、パンくずの親項目の編集、再読み込みによる保存保持、読むモードの入力欄なしを確認。自動保存後のカーソル位置、保存中の追加入力、保存失敗時の入力保持と再試行、見出し編集後のまとめ執筆の本文保存も確認。console error/warningなし。両書字方向のスクリーンショットで入力欄の表示を確認。
+- `bun test test`: 22件・490 assertions成功。macOS debug app packageビルド成功。今回の編集操作はChromiumのfixtureで、実Tauri WebView・実OS IMEの操作は未検証。Rustの名前変更経路は変更なし。
+
+## 構造見出しの太さ統一 — 2026-10-05
+
+- ブロック名のtextarea（通常）、シーケンスのh2（650）、シーンのh3（500）に異なる太さが適用されていたため、種類別のサイズを保ち、まとめ執筆・パンくず・読む画面の構造見出しを400へ統一。
+- 既存Playwrightと独立bridge fixtureで日本語の横書き／縦書き2ケース成功。まとめ執筆・パンくず・読む画面でcomputed font-weightがすべて400であること、文字サイズ・書体の一致を確認。console error/warningなし。横書きまとめ執筆のスクリーンショットを確認。macOS debug app packageビルド成功。
+
+## macOSのウインドウボタン位置 — 2026-10-05
+
+- OverlayタイトルバーのtrafficLightPosition.yを10→21へ変更し、36pxのWebViewタイトルバーに対してネイティブボタンを11px下げる。横位置12pxは維持。
+- ローカルのtao実装でyがタイトルバーコンテナの高さに加算されることを確認。macOS debug app packageビルド成功。専用のtmp作品・認証保存先で起動し、CUAでタイトルバー・タイトル・パネルボタン・メニューを確認。OSの画面共有インジケーターが左上の3ボタンに重なるため、ボタン自体の目視確認は未完了。利用者の作品・認証を使用しない。
+
+## 既定サイズと構造見出しの書体統一 — 2026-10-05
+
+- Rust／ブラウザープレビュー／設定リセットの既定値を本文18px、ブロック30px、シーケンス25px、シーン22pxへ変更。既存の保存済みサイズは維持し、欠けているブロック／シーケンス値には30／25pxを補完。
+- シーケンスの中間見出し・パンくずと読む画面の構造見出しへ本文フォントを適用。選択した明朝・ゴシック・等幅フォントが、ブロック／シーケンス／シーンへ揃って反映される。
+- 独立bridge fixture＋既存Playwrightで3言語×横書き／縦書きの6ケース成功。初期表示とリセット後の既定サイズ、見出しと本文のcomputed font-family一致、手動変更と再読込みを検証。各ケースの書体は日本語＝明朝、英語＝ゴシック、简体中文＝等幅。console error/warningなし。日本語のまとめ執筆・読む画面のスクリーンショットを確認。
+- 環境設定のRustテスト2件成功。旧設定と新しい既定値、保存・復元・無効値の拒否を確認。macOS debug app packageビルド成功。今回の画面操作はChromiumのfixtureで、実Tauri WebViewの操作は未検証。
+
+## ブロック・シーケンス・シーン名の文字サイズ — 2026-10-05
+
+- アピアランスに種類ごとの文字サイズ（12〜48px）を設置。既存titleSizeをシーン名として継承し、ブロック／シーケンスのサイズを追加。執筆のパンくず・まとめ執筆と、読む画面の構造見出しへ反映。
+- Browser pluginは利用できないため、既存Playwright＋Chromiumと独立したTauri bridge fixtureを使用。日本語・英語・简体中文×横書き・縦書きの6ケース成功。34／24／28pxへUIで変更し、computed font-sizeを枠名・シーン名・パンくず・読む見出しで確認。再読み込みによる設定保持、初期化、49px入力の拒否、375pxのダイアログ収まりも確認。console error/warningとViteエラーなし。
+- 1040×820の執筆／読む／設定と375×820の設定をスクリーンショットで確認。小さい画面のアピアランスタブの途中改行も解消。読む画面でブロックとシーケンスを重複表示しないことを確認。
+- Rustの環境設定2テストで旧設定の既定値、保存・復元、12〜48px外と非有限値の拒否、無効な保存が既存値を置換しないことを確認。`bun test test`は22件・490 assertions、clippyとmacOS debug app packageビルドが成功。
+- 今回の画面検証はChromiumのbridge fixture。実Tauri WebViewでの設定操作と分離ウインドウ間の同期操作は未検証。設定保存はRust、ウインドウは既存の設定イベントを利用。
+
+## 台本PDFの縦組修正 — 2026-10-05
+
+- 開きカッコ分の1文字追加も確認。2文字の役者名では2行目以降を3文字分下げ、セリフの最初の文字に揃える。折り返し・明示改行・改ページの既存テストを更新し、export関連6件とPDF生成fixtureが成功。PDFのセリフを再画像化して確認。
+- 視覚QA fixture内で英字・半角の?!・句点・小書き仮名・括弧・長音・三点リーダーの描画パス境界を測定し、12ptのセル内（字体の張り出し許容1pt）に収まることを確認。回転する文字もフォントのascender／descenderに合わせて列中央へ配置。
+- 添付manuscript-script-1.jpgに合わせ、タイトル枠の下辺を除去。枠と本文の文字セル端の空白を左右18ptに統一し、空のシーンで枠が連続する場合も18ptに揃える。
+- usvgの横組字形の回転に代えて、rustybuzzの縦方向shapeとOpenType縦用字形・原点を使用。確認用4ページをPopplerで画像化し、句読点・括弧・小書き仮名・長音・三点リーダー、枠、余白、ページ番号、長文の続きに欠けや重なりがないことを目視確認。
+- 追加のレイアウトテストで枠の両側の空白が等しいこと、長いセリフの折り返し・明示改行・改ページの開始位置が役者名2文字＋開きカッコ1文字分下がること、本文の欠落がないことを確認。既存の20,000文字・長いタイトル・本文のページ境界の検証も成功。
+- `cargo test -p komyaku-story-graph --locked`: 41件成功・2件ignore。視覚QA fixtureは別途実行して成功。`cargo clippy -p komyaku-story-graph --all-targets --locked -- -D warnings`、`bun test test`（22件・490 assertions）、macOS debug app packageビルド成功。
+- pypdfで4ページから元の句読点・小書き仮名・セリフを抽出できることを確認（縦組抽出時の文字間改行を除いて照合）。テキスト層の字体は埋込み、可視の縦用字形はパス。今回の変更後の保存ダイアログ操作、他OSの字体とPDFビューアの選択操作は未検証。縦中横・高度な禁則は未実装。
+
+## 台本PDF — 2026-10-05
+
+- ファイル→書き出し→PDF→標準／台本へメニューを拡張。台本は添付のhonbun-drama2.jpgを参考にA4縦型、約1/3の罫線、罫線上のシーン番号と下の縦書きタイトルを囲む枠、縦書き本文、ト書きの6文字字下げ、ページ番号、余白を実装。
+- Rustレイアウト2テストで20,000文字の欠落なし、番号順、役者名と引用符、本文／ト書きの開始位置、左右・下端の境界、見出しと本文列を一緒に次ページへ送ること、非常に長いタイトルの保持を確認。PDF生成fixtureテストは明示実行して成功。既定では2つの視覚QAテストをignore。
+- `cargo test -p komyaku-story-graph --locked`: 40件成功・2件ignore。`cargo clippy -p komyaku-story-graph --all-targets --locked -- -D warnings`、`bun test test`の22件・490 assertions、macOS debug app bundle生成成功。
+- Browser plugin not available。独立Tauri bridge／作品fixtureと既存Playwright＋Chromiumで日本語・英語・简体中文の4形式、編集の保存後に書き出し、エラー／キャンセル、Escape、1040×820／375×820のメニュー表示を確認。console error/warning、Viteエラーoverlayなし。既存のMarkdown中文ラベルも修正。
+- 台本fixtureの4ページをPopplerで画像化し、枠・罫線・番号・縦書きの句読点／括弧・字下げ・改ページを目視確認。pypdfで日本語本文と最後のセリフ「終わり。」を抽出。試験中の初回UIテストはサブメニューsummaryが2個になったためlocatorが曖昧で失敗し、階層を区別して再実行成功。
+- 専用tmp作品・auth storeで実macOSアプリを起動。CUAでPDF→台本を選択し、標準保存ダイアログからtmpへ保存。完了表示、.pdf拡張子、既定-script.pdf名、実出力の番号付き全5シーン（別展開を含む）を確認。実出力PDFの1ページも画像で確認。利用者の作品や認証は使わない。
+- 台本のト書きはparagraph、セリフは既存のセリフシートから分類。手入力の本文中の引用符を自動解析しない。字体・サイズ・用紙・字下げ・罫線位置は固定。縦中横、用紙／余白の設定UI、巨大作品の出力時間測定、他OSでの保存は後続対応。
+
+## 作品の書き出し — 2026-10-05
+
+- ファイル→書き出し→TXT／Markdown／PDFを実装。Rust正本から構造順に全シーン（別展開を含む）を取得。画面外の入力DOM、Reading View、現在の折りたたみ状態には依存しない。
+- `cargo test -p komyaku-story-graph --locked`: 38件成功、PDF視覚検証用1件は既定でignore。既存の認証loopbackテストは通常sandboxで拒否されたためデスクトップ権限で再実行して成功。`cargo clippy -p komyaku-story-graph --all-targets --locked -- -D warnings`: 成功。`bun test test`: 22件・490 assertions成功。macOS debug app bundle生成成功。
+- Rustの新規3テストで構造順・別展開・空作品・メモの除外、Unicode・Markdownのエスケープ・改行、拡張子検査、既存ファイルの一時ファイル置換を確認。
+- Browser plugin not available。既存Playwright＋Chromium、独立したTauri bridge／作品fixtureで日本語・英語・简体中文の各3形式を確認。編集を保存してから命令送信、キャンセル、エラー表示、Escapeでメニューを閉じる、1040×820／375×820でメニューのはみ出しなし。console error/warning、Viteエラーoverlayなし。補足の「A4・横書き」は一行で表示。
+- PDFの視覚検証テストを明示実行し、4ページのA4 fixtureを生成。Popplerで全4ページをPNGにして確認。見出し・本文・セリフ2列・ページ番号に重なりや切れなし。pypdfで日本語・英語・中文の文字抽出成功。lopdfのpage抽出はForm XObject内の文字を拾わないため、テストではページ数・ToUnicodeを確認し、実文字はpypdfで別途確認。
+- 実macOSアプリを `/private/tmp/komyaku-export-native-20261005` と専用auth storeで起動し、CUAで標準保存ダイアログから各形式をtmpへ保存。成功表示と出力ファイルを確認。TXT／MarkdownはUTF-8、日本語本文と別展開を含む全5シーンを確認。実出力PDFの日本語を抽出し、A4の1ページを画像で確認。利用者の作品・認証は使用しない。
+- PDFはA4横書き・固定の字体／サイズ／余白。システムフォントを利用して埋め込み、書記素を保って折返し、英単語・基本的な日本語の禁則を考慮。縦書き、現在のアピアランス設定の反映、ルート指定、巨大作品の出力時間測定、他OSの保存ダイアログは未検証。
+
+## 範囲選択表示のDOM生成削減 — 2026-10-05
+
+- 独立した作品fixture／Tauri bridgeと既存Playwright＋Chromiumで16ケース成功。100万字・40万字・CRLF入り100万字の横書き／縦書きでは、全選択後のtextarea数が1〜3個。全文コピーのUTF-16長は編集済み正本と一致し、選択中に先頭へスクロールすると再生成した非アクティブ欄に選択色が反映される。
+- 横書き100万字の追加実行ではMutationObserverで全選択・スクロール中の一時生成も計測し、最大3入力欄。その他のケースの1〜3個は全選択後の計測値。範囲削除、CRLF境界、セリフ編集・幅・合成compositionの既存フローも成功。console error/warningなし。
+- `bun test test`: 22件・490 assertions成功。`bun run package`: macOS debug app bundle生成成功。Rustの正本・保存・Undo経路に変更なし。
+- 検証中、アクティブ欄のネイティブ選択をCSS選択色で判定したテストが失敗したため、スクロール先の非アクティブ欄を検証するよう修正。実Tauri WebView・実OS IMEは未検証。範囲置換／IME準備時の全段落一時生成と全文snapshot保存の走査は残る。
+
+## 通常入力時の一時DOM生成削減 — 2026-10-05
+
+- 既存Playwright＋Chromiumと独立したTauri bridge／作品fixtureで16ケース成功。横書き／縦書きの本文・グループ執筆・セリフ・巨大段落を検証し、console error/warningとViteエラーoverlayなし。通常／セリフケースは1040×820と820×650の画面を確認。
+- 100万字・40万字・CRLF入り100万字の各横／縦書きで、MutationObserverによる通常入力・隣接表示単位への移動中のtextarea最大数は2個。先頭へのAと絵文字挿入後、次の表示単位へのB挿入が正本UTF-16位置と一致。画面外から再生成した入力欄の編集内容・開始位置・長さも保持。
+- CRLF境界の移動位置と、境界をまたぐ4 UTF-16単位のコピー・削除を検証。正本の段落数は1のまま。既存の通常境界2文字の選択・削除、セリフの値・幅・ドラッグ・合成compositionイベント・新規追加フォーカスも成功。
+- `bun test test`: 22件・490 assertions成功。`bun run package`: frontend buildとmacOS debug app bundle生成成功。Rustの正本・保存・Undo経路に変更なし。
+- 実Tauri WebView・実OS IME・複数ウインドウは追加QA。明示的な範囲選択時の全段落一時生成、プレースホルダー数、全文snapshot保存の走査は残る。フレーム時間・保存時間の改善は今回測定していない。
+
+## セリフシートのDOM仮想化 — 2026-10-05
+
+- `test/manuscript-viewport-browser.mjs`を拡張。Browser plugin not availableのため既存Playwright＋Chromium、`http://127.0.0.1:1448/`、独立したTauri bridge／作品fixtureで検証。利用者の作品・認証には接続しない。
+- 横書き／縦書きで本文500＋セリフ500の混在、ブロック執筆、セリフのみ1,000シートを検証。混在時の初期生成は19／21シート、グループ執筆は17／19シート。画面外のシート除去と再生成、両セルのUnicode・改行・手動幅の保持を確認。
+- キーボードで幅80→82、3pxドラッグで85へ変更。つかむ位置の違いで幅が飛ぶ問題を修正。幅のドラッグ中に末尾へスクロールしてもtableとpointer captureを保持し、再表示後も85を保持。追加したセリフの役者名へフォーカスが移ることを確認。
+- compositionstart→フォーカス移動→末尾スクロールで対象シートが保持され、compositionend後に除去可能になることを合成イベントで検証。実OS IMEの入力検証とは区別する。
+- 縦書きで幅保存後に先頭へ戻る不具合を修正し、単一シーンの横スクロール位置を再描画後も保持。
+- 本文8ケース＋セリフ6ケースの14ケースを実行。URL・タイトル、本文の存在、Viteエラーoverlay、console error/warning、1040×820→820×650の画面を確認。faviconのみ既存dev pageの仕様に合わせ204へ差し替え。
+- `bun test test`: 22件・490 assertions成功。macOS debug app bundle生成成功。Rustの正本・保存・Undo経路に変更なし。実Tauri WebView、実IME、複数ウインドウ競合は追加QA。プレースホルダー数と巨大なセリフセルの分割・性能測定も残る。
+
+## 本文入力DOMの仮想化 — 2026-10-05
+
+- Browser plugin not available。既存Playwright＋Chromium（ローカルの検証用ブラウザー）で `http://127.0.0.1:1448/` を検証。Tauri invoke・作品・保存先はブラウザー内の独立したfixtureで代用し、利用者の作品や認証には接続していない。Rust保存の実検証とは区別する。
+- フロー：本文／ブロック執筆を開く→入力→末尾へスクロール→先頭へ戻る→編集内容を再表示。100万字／40万字の単一段落ではShift＋クリックで分割境界をまたぐ2文字をコピー・削除し、正本の文字数と段落数を検証。
+- 1040×820、リサイズ後820×650。横書き・縦書き×通常1,000段落／グループ1,000段落／100万字／40万字の8ケース成功。通常1,000段落は39／43入力欄、グループは35／38入力欄、巨大段落は初期1入力欄。画面外のtextarea除去・再生成、編集保持、段落ID・段落数の維持、方向別スクロールを確認。
+- ページURL・タイトル、本文の存在、Viteエラーoverlayなし、console error/warningなし、スクリーンショットを確認。デスクトップappのアイコンはTauri bundle側なので、dev pageのfaviconリクエストのみ204へ差し替えた。
+- `bun test test`: 21件・485 assertions成功。`bun run package`: macOS debug app bundle生成成功。Rustロジックへの変更はない。
+- 縦書き40万字の範囲削除で、再分割後の全入力欄を同期計測する遅延を検出。再分割時も入力欄を遅延生成し、カーソル位置の入力欄だけ即時生成・計測するよう修正。
+- 再実行：検証用Viteを1448番で起動し、`node test/manuscript-viewport-browser.mjs`。`STORY_GRAPH_QA_URL`、`STORY_GRAPH_QA_BROWSER`（既存Chromium実行ファイル）、`STORY_GRAPH_QA_OUTPUT`でURL／実行ファイル／画像出力先を指定可能。既定の画像出力はOSのtmp。
+- WebKit検証は手元の既存runtimeで起動後に結果が返らず中断。実Tauri WebView、実IME、分離パネル・複数ウインドウのnative QAは未完了。セリフシート、全プレースホルダー、範囲操作中の段落全体の一時DOMは削減対象として残る。全文保存の時間やフレーム時間の改善は今回測定していない。
+
 ## 長段落のShift＋クリック範囲選択 — 2026-10-04
 
 - `bun test test`: 20件成功、480 assertions。遠い表示断片への選択、始点を保った方向反転、CRLF、既存の跨ぎ範囲置換・IME継続用の入力欄保持を検証。
@@ -254,3 +351,19 @@ JS 12テスト、Rustアプリ34テスト、Clippy（warnings禁止）、macOS p
 - renderer回帰テスト、Metal GPU描画テスト3件、Clippyを確認。macOS bundleを再ビルドし、隔離QA作品で文字・太い線・矢印の実表示を確認。曲線の各線分を丸い端で重ね、線分の境界で途切れて見える問題も解消。[確認画面](qa/graph-directions.png)。
 
 - 矢印を曲線途中から接続端へ移動。接続点の6px手前に先端を置き、ノード本体・ポートで隠れないよう調整。双方向の両端、片方向の接続先側という意味は維持。方向・端位置の回帰テストに合格し、更新macOS bundleの実表示を確認。[両端の確認画面](qa/graph-endpoint-arrows.png)。
+
+## Compact履歴・ローカル版管理 — 2026-10-05
+
+指定URLのHTML/CSS/JSを取得し、Git client本体をvendorへ取り込み。履歴の行高3rem・グラフ幅5.75remを維持し、丸の開閉をinline詳細へ接続しました。
+
+- `bun test test`: 22 pass、0 fail。履歴を含む3言語のキー一致も検証。
+- `cargo test -p komyaku-story-graph --locked`: 44 pass、0 fail、2 ignored（従来のPDF生成fixture）。認証のloopback待受に必要なsandbox外実行で確認。履歴テスト3件は原子公開前の中断、親ID順序、再読込、ハッシュ不一致、無効ID、別作品復元と正本不変を検証。
+- `cargo clippy -p komyaku-story-graph --locked -- -D warnings`: 成功。
+- `bun run package`: macOS debug app bundle生成成功。
+- ブラウザー: Browserプラグイン不在のため既存Playwright/Chromiumを使用。最終ビルドを`http://127.0.0.1:1449/`で配信。日本語／简体中文1100×820、英語760×820。`style-src 'self'`ヘッダーを付与し、丸のstroke色、SVG高さ、Compact変数、ページ識別、非空画面、overlayなし、console/page errorなしを確認。
+- 操作: 履歴→空状態→初稿保存→改稿版保存→丸で詳細表示→Enterで省略→上下キー移動→検索→元版IDで復元要求→保存失敗時の名称保持→再試行。ブラウザーのTauriブリッジはfixture/mockであり、Rust永続化の証拠とは分離。
+- 実Tauri/WebKit: `/private/tmp/komyaku-history-native-20261005`を保存・作品libraryの隔離先として起動。初稿保存→シーン名変更→2版目保存→初稿の丸で「変更 起 · 雨の駅 改稿」表示→「初稿からの復元」で新しいウインドウ起動。復元先のシーン名が「起 · 雨の駅」であることをAXで確認。
+- 実ファイル: 2版のSHA-256と親ID、復元snapshotが元snapshotと作品名以外完全一致、現在原稿が改稿状態のままであることを比較。再起動後に両版を読込・展開できることを確認。
+- 表示修正: hostのSVGアイコン用18px規則によるグラフ圧縮を、実測SVG高さで修正。CSPが動的HTMLのstyle属性を拒否するため、色はlane CSSクラスへ変更。CSPを緩めず、最終WebKitスクリーンショットで青緑の線・headの丸・選択輪を確認。
+
+一時QAスクリプトは`/private/tmp/komyaku-history-qa.mjs`、画像は`/private/tmp/komyaku-history-{ja,en,zh-CN}.png`。永続化はローカル不変版、差分は変更項目の要約です。本文内diff、分岐・統合・履歴Archive・Gitリモートは今回の検証対象外。上限512版の性能計測とWindows/Linux実機検証は未実施です。使用者の通常作品・認証profileを変更していません。

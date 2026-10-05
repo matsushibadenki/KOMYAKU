@@ -34,3 +34,12 @@ For ordinary native controls, run `bun run test:integration-ui:package` from `ap
 - [Next] Actual macOS Japanese IME candidate selection/conversion remains unverified by this synthetic event test.
 
 - [Done] 2026-10-04: Composition protection now also disables alternative selection, re-preview and either whole-Version choice, preventing candidate replacement from discarding in-progress paragraph input. A dispatched review-form submission is rejected during composition. All eight integration Playwright regressions passed, including post-confirmation Tab/Enter diff submission. This extends synthetic-event coverage only; native Japanese IME conversion remains [Next].
+
+## 2026-10-05 native keyboard check
+
+- [Done] Rebuilt and opened Integration UI QA with current composition guards. Entered real keys in the integration textarea, then Tab/Return activated final-diff review. The refreshed textarea and diff both contained `Kanji`, and adoption became enabled. Closed the QA app without adopting this candidate. Existing committed text remains the working document.
+- [Next] Native Japanese IME is still unverified: real keys produced Latin letters and Control-Space did not start Japanese composition. No Japanese input source was confirmed; do not count Latin autocorrection as IME evidence. The environment needs a usable Japanese input source before testing candidate selection and confirmation.
+
+- [Done] 2026-10-05: Candidate revision now retains the paragraph editor DOM, clears only its local edit state, and returns focus to its textarea after successful diff review. Playwright verifies edited text, automatic focus restoration and Tab/Enter adoption. Nine integration cases passed before the explicit focus-return addition; the stronger keyboard case passed afterward. Native Japanese input remains unverified.
+
+- [Done] 2026-10-05: Multi-paragraph final-diff review returns focus to the last focused paragraph, falling back to the first available textarea if that node is absent. Browser regression covers second-paragraph editing, unchanged first-paragraph preservation, and clearing unreviewed local text on whole-Version candidate replacement. All ten integration regressions and the frontend build passed. This is browser keyboard coverage; native IME remains unverified.

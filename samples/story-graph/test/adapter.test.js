@@ -3,6 +3,8 @@ import { canonicalText, routeNodes, relatedPeople, outlineNodes, outlineDrop, co
 import { messages } from '../src/locales.js';
 import '../src/ai-locales.js';
 import '../src/character-locales.js';
+import '../src/export-locales.js';
+import '../src/history-locales.js';
 import preview from '../src/preview.json';
 describe('KOMYAKU authoring projections',()=>{
   test('every seeded body is canonical and preserves its Unicode text',()=>{

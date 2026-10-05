@@ -10,6 +10,9 @@ Object.assign(messages.en,{writingMode:'Writing direction',horizontal:'Horizonta
 Object.assign(messages['zh-CN'],{writingMode:'文字方向',horizontal:'横排',vertical:'竖排'});
 
 Object.assign(messages.ja,{actorBold:'役者名を太字にする'});
+Object.assign(messages.ja,{blockSize:'ブロック名の文字サイズ',sequenceSize:'シーケンス名の文字サイズ',titleSize:'シーン名の文字サイズ'});
+Object.assign(messages.en,{blockSize:'Block name font size',sequenceSize:'Sequence name font size',titleSize:'Scene name font size'});
+Object.assign(messages['zh-CN'],{blockSize:'区块名称字号',sequenceSize:'序列名称字号',titleSize:'场景名称字号'});
 Object.assign(messages.en,{actorBold:'Bold actor names'});
 Object.assign(messages['zh-CN'],{actorBold:'角色名称加粗'});
 Object.assign(messages.ja,{rename:'名前を変更',renameRequired:'名称を入力してください。'});

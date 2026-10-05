@@ -4,7 +4,10 @@ import { VersionLineageGraph } from "./VersionLineageGraph.jsx";
 function IntegrationParagraphEditor({ candidate, disabled, onRevise, labels, onDirty, onComposition }) {
   const [edits, setEdits] = useState({});
   const composing = useRef(false);
+  const formRef = useRef(null);
+  const lastEditedNode = useRef(null);
   const [compositionActive, setCompositionActive] = useState(false);
+  useEffect(() => { setEdits({}); }, [candidate]);
   const paragraphs = candidate.editableParagraphs ?? [];
   const changed = paragraphs.filter(({ nodeId, text }) => Object.hasOwn(edits, nodeId) && edits[nodeId] !== text);
   const changeText = (nodeId, text) => {
@@ -12,15 +15,19 @@ function IntegrationParagraphEditor({ candidate, disabled, onRevise, labels, onD
     setEdits(next);
     onDirty(composing.current || paragraphs.some((item) => Object.hasOwn(next, item.nodeId) && next[item.nodeId] !== item.text));
   };
-  return <form className="integration-paragraph-editor" onSubmit={(event) => {
+  return <form ref={formRef} className="integration-paragraph-editor" onSubmit={async (event) => {
     event.preventDefault();
     if (composing.current || disabled || !changed.length) return;
-    void onRevise(changed.map(({ nodeId }) => ({ nodeId, text: edits[nodeId] })));
+    const revised = await onRevise(changed.map(({ nodeId }) => ({ nodeId, text: edits[nodeId] })));
+    if (revised) {
+      const fields = [...(formRef.current?.querySelectorAll("textarea:not(:disabled)") ?? [])];
+      (fields.find(field => field.dataset.nodeId === lastEditedNode.current) ?? fields[0])?.focus();
+    }
   }}>
     <h4>{labels.edit}</h4><p>{labels.editDescription}</p>
     {paragraphs.length ? paragraphs.slice(0, 100).map(({ nodeId, text }, index) => <label key={nodeId}>
       <span>{labels.editParagraph(index + 1)}</span>
-      <textarea disabled={disabled} maxLength={100_000} rows={3}
+      <textarea data-node-id={nodeId} onFocus={() => { lastEditedNode.current = nodeId; }} disabled={disabled} maxLength={100_000} rows={3}
         onCompositionStart={() => { composing.current = true; setCompositionActive(true); onComposition(true); onDirty(true); }}
         onCompositionEnd={(event) => { composing.current = false; setCompositionActive(false); onComposition(false);
           changeText(nodeId, event.currentTarget.value); }}
@@ -225,7 +232,7 @@ export function LocalVersionHistory({ history, available, status, onCreateInitia
                     onClick={() => onPreviewIntegration("theirs")}>{labels.integration.chooseTheirs}</button>
                 </div>
                 {integrationCandidate ? <div>
-                  <IntegrationParagraphEditor key={integrationCandidate.snapshotHash} candidate={integrationCandidate}
+                  <IntegrationParagraphEditor candidate={integrationCandidate}
                     disabled={busy || integrationSubmitted || integrationStatus === "loading"}
                     onRevise={onReviseIntegration} onDirty={setIntegrationDirty} onComposition={setIntegrationComposing} labels={labels.integration} />
                   <h4>{labels.integration.preview}</h4>

@@ -118,13 +118,13 @@ async function openHistory(page, initial = false, paged = false) {
             mediaType: 'text/plain', verified: true, byteLength: 14, contentHash: 'b'.repeat(64) },
           { id: '00000000-0000-4000-8000-000000000603', action: 'removed', name: 'removed.txt', references: 1,
             mediaType: 'text/plain', verified: false, byteLength: null, contentHash: null }
-        ] : [], snapshotHash: "preview", editableParagraphs: [{ nodeId: "preview-node", text: "別案の本文" }], comparison: { summary: { added: 0, removed: 0, moved: 0, changed: 1 },
+        ] : [], snapshotHash: "preview", editableParagraphs: window.multipleIntegrationParagraphs ? [{ nodeId: "preview-node", text: "別案の本文" }, { nodeId: "preview-second", text: "第二段落" }] : [{ nodeId: "preview-node", text: "別案の本文" }], comparison: { summary: { added: 0, removed: 0, moved: 0, changed: 1 },
           changes: [{ nodeId: "preview-node", change: "changed", type: "paragraph",
             textDiff: { removed: "原稿", added: "別案の本文" } }] }, assetIds: window.showIntegrationAssets ? ["added", "retained"] : [] };
       };
       export const reviseLocalVersionIntegration = async ({ candidate, edits }) => {
         window.integrationEdits = edits;
-        return { ...candidate, choice: 'manual', snapshotHash: 'revised', editableParagraphs: edits,
+        return { ...candidate, choice: 'manual', snapshotHash: 'revised', editableParagraphs: candidate.editableParagraphs.map(item => edits.find(edit => edit.nodeId === item.nodeId) ?? item),
           comparison: { summary: { added: 0, removed: 0, moved: 0, changed: 1 },
             changes: [{ nodeId: 'preview-node', change: 'changed', type: 'paragraph',
               textDiff: { removed: '原稿', added: edits[0].text } }] } };
@@ -556,5 +556,48 @@ test('integration paragraph composition blocks diff submission and adoption unti
   await input.press('Tab');
   await page.keyboard.press('Enter');
   await expect.poll(() => page.evaluate(() => window.integrationEdits)).toEqual([{ nodeId: 'preview-node', text: '変換中の文章' }]);
+  await expect(panel.getByRole('button', { name: '確認して統合版を保存' })).toBeEnabled();
+});
+
+
+test('keyboard integration diff review retains focus and permits direct adoption', async ({ page }) => {
+  await openHistory(page, false, true);
+  const panel = page.locator('.version-integration-review');
+  await panel.getByRole('button', { name: '統合をプレビュー' }).click();
+  await panel.getByRole('button', { name: '別案の版を採用して差分確認' }).click();
+  const input = panel.locator('.integration-paragraph-editor textarea').first();
+  await input.fill('キーボードで確認する本文');
+  await input.press('Tab');
+  const review = panel.getByRole('button', { name: '編集結果の差分を確認' });
+  await expect(review).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(input).toHaveValue('キーボードで確認する本文');
+  await expect(input).toBeFocused();
+  await input.press('Tab');
+  const adopt = panel.getByRole('button', { name: '確認して統合版を保存' });
+  await expect(adopt).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect.poll(() => page.evaluate(() => window.versionWrites)).toEqual([{ kind: 'merge', choice: 'manual' }]);
+});
+
+
+test('integration diff returns focus to the edited paragraph and clears edits on candidate replacement', async ({ page }) => {
+  await openHistory(page, false, true);
+  await page.evaluate(() => { window.multipleIntegrationParagraphs = true; });
+  const panel = page.locator('.version-integration-review');
+  await panel.getByRole('button', { name: '統合をプレビュー' }).click();
+  await panel.getByRole('button', { name: '別案の版を採用して差分確認' }).click();
+  const fields = panel.locator('.integration-paragraph-editor textarea');
+  await fields.nth(1).fill('第二段落を確認');
+  await fields.nth(1).press('Tab');
+  await page.keyboard.press('Enter');
+  await expect(fields.nth(1)).toBeFocused();
+  await expect(fields.nth(1)).toHaveValue('第二段落を確認');
+  await expect(fields.first()).toHaveValue('別案の本文');
+  await fields.nth(1).fill('未確認の追加編集');
+  await expect(panel.getByRole('button', { name: '確認して統合版を保存' })).toBeDisabled();
+  await panel.getByRole('button', { name: '現在の版を残して差分確認' }).click();
+  await expect(fields.nth(1)).toHaveValue('第二段落');
+  await expect(panel.getByRole('button', { name: '編集結果の差分を確認' })).toBeDisabled();
   await expect(panel.getByRole('button', { name: '確認して統合版を保存' })).toBeEnabled();
 });

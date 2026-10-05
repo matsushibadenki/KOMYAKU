@@ -1,6 +1,9 @@
 import './style.css';
+import {mountHistory} from './history.js';
+let disposeHistory;
 import { fragments, inputPatch, characters, graphemeStep, canonicalPosition } from './text-performance.js';
 import {selectionRange,extendSelection,fragmentSelection,replaceSelectionFragments,pointSelection} from './paragraph-selection.js';
+import {ManuscriptViewport,estimatedExtent,estimatedDialogueExtent} from './manuscript-viewport.js';
 import { paragraphText, insertDialogue, updateParagraph, setDialogueWidth, paragraphById } from './dialogue.js';
 import { messages, languages } from './locales.js';
 import { canonicalText, routeNodes, relatedPeople, outlineNodes, outlineDrop, containedScenes } from './adapter.js';
@@ -9,6 +12,7 @@ import { defaultPreferences, applyPreferences } from './preferences.js';
 import { installAssistant } from './assistant.js';
 import './ai-locales.js';
 import './character-locales.js';
+import './export-locales.js';
 let preferences = {...defaultPreferences};
 let chatgpt = {pending:false,accounts:[],error:null}, authBusy=false;
 let preferenceTimer, pendingPreferences = null;
@@ -21,7 +25,7 @@ let language = localStorage.getItem('story-language') || 'ja';
 if (!messages[language]) language = 'ja';
 let model = null, detail = null, tab = 'scenes', path = 'main', reading = false, floating = false;
 let busy = false, draft = null, status = native ? 'saved' : '', error = '', backupPath = '';
-let latestDetail=null, composing=false, bodyCaret=null, widthDrag=null;
+let latestDetail=null, composing=false, compositionTarget=null, bodyCaret=null, widthDrag=null;
 let pendingRemote = null, autosaveTimer, draftVersion=0, commitInFlight=null;
 let displayedWindowTitle = null;
 const collapsedOutline = new Set();
@@ -33,42 +37,53 @@ let paragraphSelection=null,reflowing=false;
 const selectionReplacements=new WeakMap(),compositionReflow=new WeakSet();
 let paintingSelection=false;
 let pointerSelection=null;
-let wholeCanonicalDraft=false, manuscriptObserver=null;
+let wholeCanonicalDraft=false;
+let manuscriptViewport=null;
+let lazyManuscript=false;
+const virtualSources=new Map();
 let groupDetails=[], groupFocus=null;
 const groupEdits=new Map();
+const titleEdits=new Map();
 const isContainer=()=>['story.block','story.sequence'].includes(detail?.type_id);
 const writingScene=()=>detail?.type_id==='story.scene'?detail:groupDetails.find(scene=>scene.id===groupFocus);
 const inputScene=input=>input?.closest('[data-scene]')?.dataset.scene;
 const t = key => messages[language][key] || messages[language].error;
 const escape = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const icon = (name) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${{leftPanel:'M3 4h18v16H3z M9 4v16',rightPanel:'M3 4h18v16H3z M15 4v16',block:'M3 6h7l2 3h9v12H3z M3 6V3h7l2 3',sequence:'M3 6h7l2 3h9v12H3z M3 6V3h7l2 3 M7 14h10 M7 17h10',scene:'M6 3h12v18H6z M9 8h6 M9 12h6',graph:'M5 6h4v4H5z M15 14h4v4h-4z M9 8h6v8 M5 17h4v4H5z M9 19h6',undo:'M9 5 4 10l5 5 M4 10h9a6 6 0 0 1 6 6',redo:'m15 5 5 5-5 5 M20 10h-9a6 6 0 0 0-6 6',add:'M12 5v14 M5 12h14',float:'M14 3h7v7 M21 3l-9 9 M10 3H3v18h18v-7',book:'M12 5v16 M12 5C8 2 3 3 3 3v16s5-1 9 2c4-3 9-2 9-2V3s-5-1-9 2',person:'M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0 M4 21v-2a8 8 0 0 1 16 0v2',backup:'M12 3v12 m-4-4 4 4 4-4 M4 16v5h16v-5',trash:'M3 6h18 M9 6V3h6v3 M6 6l1 15h10l1-15 M10 10v7 M14 10v7'}[name] || ''}"/></svg>`;
+const icon = (name) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${{leftPanel:'M3 4h18v16H3z M9 4v16',rightPanel:'M3 4h18v16H3z M15 4v16',block:'M3 6h7l2 3h9v12H3z M3 6V3h7l2 3',sequence:'M3 6h7l2 3h9v12H3z M3 6V3h7l2 3 M7 14h10 M7 17h10',scene:'M6 3h12v18H6z M9 8h6 M9 12h6',graph:'M5 6h4v4H5z M15 14h4v4h-4z M9 8h6v8 M5 17h4v4H5z M9 19h6',undo:'M9 5 4 10l5 5 M4 10h9a6 6 0 0 1 6 6',redo:'m15 5 5 5-5 5 M20 10h-9a6 6 0 0 0-6 6',add:'M12 5v14 M5 12h14',float:'M14 3h7v7 M21 3l-9 9 M10 3H3v18h18v-7',book:'M12 5v16 M12 5C8 2 3 3 3 3v16s5-1 9 2c4-3 9-2 9-2V3s-5-1-9 2',person:'M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0 M4 21v-2a8 8 0 0 1 16 0v2',history:'M3 11a9 9 0 1 1 2 7 M3 4v7h7 M12 7v5l3 2',backup:'M12 3v12 m-4-4 4 4 4-4 M4 16v5h16v-5',trash:'M3 6h18 M9 6V3h6v3 M6 6l1 15h10l1-15 M10 10v7 M14 10v7'}[name] || ''}"/></svg>`;
 function button(action,label,ico,disabled=false,kind='') { return `<button class="${kind}" data-action="${action}" ${disabled?'disabled':''}>${ico?icon(ico):''}<span>${escape(t(label))}</span></button>`; }
 function menu(label,items) {return `<details class="app-menu"><summary>${escape(t(label))}</summary><div class="menu-popup">${items.join('')}</div></details>`;}
-function closeMenus() { document.querySelectorAll('.app-menu[open]').forEach(menu=>menu.open=false); }
+function exportMenu() {
+  const option=(format,label)=>`<button data-action="export" data-format="${format}" ${!native||busy?'disabled':''}>${escape(t(label))}</button>`;
+  return `<details class="export-submenu"><summary>${escape(t('export'))}<span aria-hidden="true">›</span></summary><div class="export-popup">${option('txt','exportText')}${option('md','exportMarkdown')}<details class="export-submenu pdf-submenu"><summary>${escape(t('exportPdf'))}<span aria-hidden="true">›</span></summary><div class="export-popup">${option('pdf','exportPdfStandard')}${option('script','exportScript')}<small><span>${escape(t('exportPdfLayout'))}</span><span>${escape(t('exportScriptLayout'))}</span></small></div></details><small>${escape(t('exportScope'))}</small></div></details>`;
+}
+function closeMenus() { document.querySelectorAll('.app-menu[open],.export-submenu[open]').forEach(menu=>menu.open=false); }
 function field(key,label,value,multiline=false) { return `<label class="field">${escape(t(label))}${multiline?`<textarea data-field="${key}" rows="${key==='text'?16:5}" ${native?'':'readonly'}>${escape(value)}</textarea>`:`<input data-field="${key}" value="${escape(value)}" maxlength="200" ${native?'':'readonly'}>`}</label>`; }
 function draftBase(key) { return key==='canonical'?detail.properties.canonical:key==='projectTitle' ? model.projectTitle??'' : key==='text'?canonicalText(detail.properties.canonical):(detail?.properties[key]??''); }
 function primaryDirty() { return draft && Object.entries(draft).some(([key,value])=>value!==draftBase(key)); }
-function dirty() { return primaryDirty() || groupEdits.size>0; }
+function dirty() { return primaryDirty() || groupEdits.size>0 || titleEdits.size>0; }
 async function loadDetail(id) {
   detail = id ? (native ? await invoke('selected',{id}) : preview.details[id]) : null;
-  draft=null;pendingParagraphs.clear();wholeCanonicalDraft=false;groupEdits.clear();
+  draft=null;pendingParagraphs.clear();wholeCanonicalDraft=false;groupEdits.clear();titleEdits.clear();
   groupDetails=isContainer()?await Promise.all(containedScenes(model.nodes,id).map(node=>native?invoke('selected',{id:node.id}):preview.details[node.id])):[];
   if(!groupDetails.some(scene=>scene.id===groupFocus))groupFocus=groupDetails[0]?.id??null;
 }
 async function refresh() { model = native ? await invoke('workspace') : preview; await loadDetail(model.selected); pendingRemote=null; render(); }
 function render() {
+  disposeHistory?.();disposeHistory=null;
   clearParagraphSelection();
-  closeOutlineMenu();manuscriptObserver?.disconnect();manuscriptObserver=null;
+  closeOutlineMenu();
+  manuscriptViewport?.disconnect();manuscriptViewport=null;virtualSources.clear();
   const reopenPreferences = preferencesOpen;
   applyPreferences(preferences);
   const preserveScroll=renderedDetailId===detail?.id;
   const editorScroll=preserveScroll?document.querySelector('.editor-content')?.scrollTop||0:0;
+  const sceneScroll=preserveScroll?document.querySelector('.scene-writing .manuscript-pages')?.scrollLeft||0:0;
   const groupViewportBefore=preserveScroll?document.querySelector('.group-manuscript'):null;
   const groupScroll={left:groupViewportBefore?.scrollLeft||0,top:groupViewportBefore?.scrollTop||0};
   const listScroll=document.querySelector('.node-list')?.scrollTop||0;
   renderedDetailId=detail?.id;
   const active=document.activeElement;
-  const cursor=active?.dataset?.block ? {scene:inputScene(active),block:active.dataset.block,fragment:active.dataset.fragment,start:active.selectionStart,end:active.selectionEnd} : active?.dataset?.field ? {key:active.dataset.field,start:active.selectionStart,end:active.selectionEnd} : null;
+  const cursor=active?.dataset?.block ? {scene:inputScene(active),block:active.dataset.block,fragment:active.dataset.fragment,start:active.selectionStart,end:active.selectionEnd} : active?.dataset?.outlineTitle ? {title:active.dataset.outlineTitle,start:active.selectionStart,end:active.selectionEnd,direction:active.selectionDirection} : active?.dataset?.field ? {key:active.dataset.field,start:active.selectionStart,end:active.selectionEnd} : null;
   document.documentElement.lang = language;
   const projectTitle=model?.projectTitle?.trim()||t(model?.untitled?'untitledProject':'project');
   const windowTitle = `${projectTitle} · KOMYAKU Story Graph${floatingWindow ? ` · ${t('editor')}` : ''}`;
@@ -81,16 +96,18 @@ function render() {
   const scenes = routeNodes(model?.nodes||[],path);
   const people = (model?.nodes||[]).filter(n=>n.type==='story.character');
   const relations = (model?.nodes||[]).filter(n=>n.type==='story.relationship');
-  const list = tab==='scenes'?outlineNodes(model?.nodes||[],path,collapsedOutline):tab==='characters'?people:relations;
+  const list = tab==='scenes'?outlineNodes(model?.nodes||[],path,collapsedOutline):tab==='characters'?people:tab==='history'?[]:relations;
   const props = detail?.properties || {};
   const values = {...props,...draft};
+  const documents=isContainer()?groupDetails.map(scene=>groupEdits.get(scene.id)?.canonical??scene.properties.canonical):detail?.type_id==='story.scene'?[values.canonical]:[];
+  lazyManuscript=documents.reduce((count,doc)=>count+doc.content.reduce((sum,node)=>sum+(node.type==='paragraph'?Math.max(1,Math.ceil(paragraphText(node).length/4096)):1),0),0)>80;
   const shell = document.getElementById('app');
   const leftOpen=preferences.leftPanelOpen, rightOpen=preferences.rightPanelOpen;
   shell.innerHTML = `<div class="shell ${floatingWindow?'detached':''} ${!leftOpen?'left-panel-closed':''} ${!rightOpen?'right-panel-closed':''} ${!leftOpen&&!rightOpen?'focus-writing':''} ${native&&navigator.platform.includes('Mac')?'mac-native':''}">
     ${!floatingWindow?`<header class="window-titlebar" data-tauri-drag-region><span class="window-title" data-tauri-drag-region>${escape(projectTitle)}</span><div class="panel-toggles"><button data-action="toggleLeftPanel" title="${escape(t(leftOpen?'hideLeftPanel':'showLeftPanel'))}" aria-label="${escape(t(leftOpen?'hideLeftPanel':'showLeftPanel'))}" aria-pressed="${leftOpen}" aria-controls="left-icon-menu story-navigator">${icon('leftPanel')}</button><button data-action="toggleRightPanel" title="${escape(t(rightOpen?'hideRightPanel':'showRightPanel'))}" aria-label="${escape(t(rightOpen?'hideRightPanel':'showRightPanel'))}" aria-pressed="${rightOpen}" aria-controls="story-relations">${icon('rightPanel')}</button></div></header>`:''}
     <nav class="menubar" aria-label="${escape(t('appMenu'))}">
       <details class="app-menu logo-menu"><summary class="menu-logo" aria-label="KOMYAKU Story Graph">${icon('graph')}</summary><div class="menu-popup">${button('preferences','preferences',null)}</div></details>
-      ${menu('file',[button('newWorkspace','newWorkspace',null,!native||busy),button('openWorkspace','openWorkspace',null,!native||busy),button('save','save',null,!native||busy),button('backup','backup',null,!native||busy),button('restoreBackup','restoreBackup',null,!native||busy)])}
+      ${menu('file',[button('newWorkspace','newWorkspace',null,!native||busy),button('openWorkspace','openWorkspace',null,!native||busy),button('save','save',null,!native||busy),exportMenu(),button('backup','backup',null,!native||busy),button('restoreBackup','restoreBackup',null,!native||busy)])}
       ${menu('edit',[button('undo','undo','undo',!native||busy),button('redo','redo','redo',!native||busy),button('remove','remove',null,!native||busy||!detail)])}
       ${menu('insert',[button('newBlock','newBlock',null,!native||busy),button('newSequence','newSequence',null,!native||busy||!model.nodes.some(n=>n.type==='story.block')),button('newScene','newScene',null,!native||busy||!model.nodes.some(n=>n.type==='story.sequence')),button('newCharacter','newCharacter',null,!native||busy),button('newRelation','createRelation',null,!native||busy||people.length<2)])}
       ${menu('view',[button('write','editor',null),button('read','reading',null),button('graph','graph',null,!native)])}
@@ -105,12 +122,13 @@ ${escape(latestDetail.properties.notes||'')}</pre><div>${button('applyDraft','ap
       <nav class="icon-rail" id="left-icon-menu" aria-label="${escape(t('view'))}">
         <div class="icon-menu-items">${[['scenes','book'],['characters','person'],['relationships','graph']].map(([key,ico])=>`<button data-tab="${key}" title="${escape(t(key))}" aria-label="${escape(t(key))}" aria-pressed="${tab===key}">${icon(ico)}</button>`).join('')}</div>
         <div class="icon-menu-extension"></div><button class="rail-graph" data-action="graph" title="${escape(t('graph'))}" aria-label="${escape(t('graph'))}" ${!native?'disabled':''}>${icon('graph')}</button>
+        <button class="rail-history" data-tab="history" title="${escape(t('history'))}" aria-label="${escape(t('history'))}" aria-pressed="${tab==='history'}">${icon('history')}</button>
       </nav>
     <main>
-      <nav class="navigator" id="story-navigator" aria-label="${escape(t('view'))}"><div class="navtabs">${['scenes','characters','relationships'].map(key=>`<button data-tab="${key}" aria-pressed="${tab===key}">${escape(t(key))}</button>`).join('')}</div>
-      ${tab==='scenes'?`<label class="route-label">${escape(t('route'))}<select id="path">${['main','alternative'].map(key=>`<option value="${key}" ${path===key?'selected':''}>${escape(t(key))}</option>`).join('')}</select></label>`:`<h2>${escape(t('people'))}</h2>`}
-      <div class="node-list" ${tab==='scenes'?'role="tree"':''}>${tab==='scenes'?`<label class="project-title-field"><span>${escape(t('workTitle'))}</span><input data-field="projectTitle" aria-label="${escape(t('workTitle'))}" value="${escape(draft?.projectTitle??model.projectTitle??'')}" placeholder="${escape(projectTitle)}" maxlength="200" ${native?'':'readonly'}></label>`:''}${list.map((node,i)=>`<div class="outline-row" ${tab==='scenes'?`role="treeitem" aria-level="${(node.depth||0)+1}" ${node.container?`aria-expanded="${!collapsedOutline.has(node.id)}"`:''}`:''}>${node.container?`<button class="outline-toggle" data-collapse="${node.id}" aria-label="${escape(t(collapsedOutline.has(node.id)?'expand':'collapse'))}" aria-expanded="${!collapsedOutline.has(node.id)}">${collapsedOutline.has(node.id)?'▸':'▾'}</button>`:''}<button class="node-row ${tab==='characters'?'character-row ':''}${node.id===selected?'active':''}" data-select="${node.id}" ${tab==='scenes'&&native?'draggable="true"':''} ${busy?'disabled':''}><span class="ordinal">${tab==='scenes'?icon(node.type==='story.block'?'block':node.type==='story.sequence'?'sequence':'scene'):tab==='characters'?characterIcon(node):icon('person')}</span><span><strong>${escape(node.title)}</strong><small>${escape(tab==='scenes'?t(node.type==='story.block'?'block':node.type==='story.sequence'?'sequence':node.path==='both'?'scene':node.path):tab==='characters'?(node.role||t('role')):t(node.kind))}</small></span></button></div>`).join('')||`<p class="empty">${escape(t(tab==='scenes'?'noScenes':'noRelations'))}</p>`}</div>
-      <div class="navbottom">${tab==='scenes'?`<div class="structure-actions">${[['newBlock','block'],['newSequence','sequence'],['newScene','scene']].map(([action,ico])=>`<button data-action="${action}" title="${escape(t(action))}" aria-label="${escape(t(action))}" ${!native||busy||(action==='newSequence'&&!model.nodes.some(n=>n.type==='story.block'))||(action==='newScene'&&!model.nodes.some(n=>n.type==='story.sequence'))?'disabled':''}>${icon(ico)}</button>`).join('')}</div>`:button(tab==='characters'?'newCharacter':'newRelation',tab==='characters'?'newCharacter':'createRelation','add',!native||busy||(tab==='relationships'&&people.length<2),'primary')}</div></nav>
+      <nav class="navigator" id="story-navigator" aria-label="${escape(t('view'))}"><div class="navtabs">${['scenes','characters','relationships','history'].map(key=>`<button data-tab="${key}" aria-pressed="${tab===key}">${escape(t(key))}</button>`).join('')}</div>
+      ${tab==='scenes'?`<label class="route-label">${escape(t('route'))}<select id="path">${['main','alternative'].map(key=>`<option value="${key}" ${path===key?'selected':''}>${escape(t(key))}</option>`).join('')}</select></label>`:`<h2>${escape(t(tab==='history'?'history':'people'))}</h2>`}
+      <div class="node-list" ${tab==='scenes'?'role="tree"':''}>${tab==='scenes'?`<label class="project-title-field"><span>${escape(t('workTitle'))}</span><input data-field="projectTitle" aria-label="${escape(t('workTitle'))}" value="${escape(draft?.projectTitle??model.projectTitle??'')}" placeholder="${escape(projectTitle)}" maxlength="200" ${native?'':'readonly'}></label>`:''}${list.map((node,i)=>`<div class="outline-row" ${tab==='scenes'?`role="treeitem" aria-level="${(node.depth||0)+1}" ${node.container?`aria-expanded="${!collapsedOutline.has(node.id)}"`:''}`:''}>${node.container?`<button class="outline-toggle" data-collapse="${node.id}" aria-label="${escape(t(collapsedOutline.has(node.id)?'expand':'collapse'))}" aria-expanded="${!collapsedOutline.has(node.id)}">${collapsedOutline.has(node.id)?'▸':'▾'}</button>`:''}<button class="node-row ${tab==='characters'?'character-row ':''}${node.id===selected?'active':''}" data-select="${node.id}" ${tab==='scenes'&&native?'draggable="true"':''} ${busy?'disabled':''}><span class="ordinal">${tab==='scenes'?icon(node.type==='story.block'?'block':node.type==='story.sequence'?'sequence':'scene'):tab==='characters'?characterIcon(node):icon('person')}</span><span><strong>${escape(node.title)}</strong><small>${escape(tab==='scenes'?t(node.type==='story.block'?'block':node.type==='story.sequence'?'sequence':node.path==='both'?'scene':node.path):tab==='characters'?(node.role||t('role')):t(node.kind))}</small></span></button></div>`).join('')||(tab==='history'?`<p class="empty">${escape(t('versionHelp'))}</p>`:`<p class="empty">${escape(t(tab==='scenes'?'noScenes':'noRelations'))}</p>`)}</div>
+      <div class="navbottom">${tab==='scenes'?`<div class="structure-actions">${[['newBlock','block'],['newSequence','sequence'],['newScene','scene']].map(([action,ico])=>`<button data-action="${action}" title="${escape(t(action))}" aria-label="${escape(t(action))}" ${!native||busy||(action==='newSequence'&&!model.nodes.some(n=>n.type==='story.block'))||(action==='newScene'&&!model.nodes.some(n=>n.type==='story.sequence'))?'disabled':''}>${icon(ico)}</button>`).join('')}</div>`:tab==='history'?'':button(tab==='characters'?'newCharacter':'newRelation',tab==='characters'?'newCharacter':'createRelation','add',!native||busy||(tab==='relationships'&&people.length<2),'primary')}</div></nav>
       <section class="writing"><div class="editor-toolbar"><div class="viewtabs"><button data-action="write" aria-pressed="${!reading}">${escape(t('editor'))}</button><button data-action="read" aria-pressed="${reading}">${escape(t('reading'))}</button></div><div class="editor-actions"><select data-writing-mode aria-label="${escape(t('writingMode'))}">${['horizontal','vertical'].map(key=>`<option value="${key}" ${preferences.writingMode===key?'selected':''}>${escape(t(key))}</option>`).join('')}</select>${button('dialogue','dialogue',null,!native||busy||reading||!writingScene()||(floating&&!floatingWindow))}${button(floatingWindow?'dock':'float',floatingWindow?'dock':'float','float',!native||busy)}</div></div>
       <div class="editor-content ${reading?'reading-content ':''}${!reading&&isContainer()&&(!floating||floatingWindow)?'group-writing ':''}${!reading&&detail?.type_id==='story.scene'&&(!floating||floatingWindow)?'scene-writing':''}">${reading?`<div class="reading-viewport"><article class="reading" id="reading"><h2>${escape(t(path))}</h2></article></div>`:floating&&!floatingWindow?`<div class="empty floating-message">${icon('float')}<p>${escape(t('floating'))}</p>${button('dock','dock',null,!native)}</div>`:detail?`
       ${isContainer()?'':detail.type_id==='story.scene'?sceneBreadcrumb(values):`<div class="selection-label">${escape(t(detail.type_id==='story.character'?'characters':'relationships'))}</div>${field('title',detail.type_id==='story.character'?'name':'title',values.title)}`}
@@ -122,15 +140,18 @@ ${escape(latestDetail.properties.notes||'')}</pre><div>${button('applyDraft','ap
   </div>`;
   shell.querySelector('.editor-content').scrollTop=preferences.writingMode==='vertical'&&(reading||detail?.type_id==='story.scene'||isContainer())?0:editorScroll;
   shell.querySelector('.node-list').scrollTop=listScroll;
+  resizeManuscript();
   if(cursor) {
     const scope=cursor.scene?shell.querySelector(`[data-scene="${cursor.scene}"]`):shell;
-    const input=scope?.querySelector(cursor.block?`[data-block="${cursor.block}"][data-fragment="${cursor.fragment??0}"]`:`[data-field="${cursor.key}"]`);
-    if(input){input.focus({preventScroll:true});if(typeof cursor.start==='number' && input.setSelectionRange)input.setSelectionRange(cursor.start,cursor.end);}
+    if(cursor.block)mountManuscriptInput(scope,cursor.block,cursor.fragment??0);
+    const input=scope?.querySelector(cursor.block?`[data-block="${cursor.block}"][data-fragment="${cursor.fragment??0}"]`:cursor.title?`[data-outline-title="${cursor.title}"]`:`[data-field="${cursor.key}"]`);
+    if(input){input.focus({preventScroll:true});if(typeof cursor.start==='number' && input.setSelectionRange)input.setSelectionRange(cursor.start,cursor.end,cursor.direction);}
   }
   shell.querySelector('.editor-actions').insertAdjacentHTML('afterbegin',button('writingAssist','writingAssist',null,!native||busy||reading||detail?.type_id!=='story.scene'||(floating&&!floatingWindow)));
-  resizeManuscript();
+  const sceneViewport=shell.querySelector('.scene-writing .manuscript-pages');if(sceneViewport&&preferences.writingMode==='vertical')sceneViewport.scrollLeft=sceneScroll;
   const groupViewport=shell.querySelector('.group-manuscript');if(groupViewport){groupViewport.scrollLeft=preferences.writingMode==='vertical'?groupScroll.left:0;groupViewport.scrollTop=preferences.writingMode==='horizontal'?groupScroll.top:0;}
   if(reading) renderReading();
+  if(tab==='history'&&!floatingWindow){const panel=shell.querySelector('.writing');panel.classList.add('history-panel');disposeHistory=mountHistory(panel,{native,invoke,t,escape,language,commit:commitDraft,revision:()=>model.revision,title:projectTitle});}
   if(reopenPreferences) showPreferences();
 }
 async function renderReading() {
@@ -138,14 +159,22 @@ async function renderReading() {
     const blocks = native ? await invoke('reading',{path}) : routeNodes(preview.nodes,path).map(n=>[n.id,n.title,canonicalText(preview.details[n.id].properties.canonical)]);
     const target=document.getElementById('reading');
     const documents=await Promise.all(blocks.map(async ([id])=>native?(await invoke('selected',{id})).properties.canonical:preview.details[id].properties.canonical));
-    if(target) target.innerHTML=`<h2>${escape(t(path))}</h2>${blocks.map(([,title],index)=>`<section><h3>${escape(title)}</h3>${documents[index].content.map(node=>node.type==='paragraph'?`<p>${escape(paragraphText(node))}</p>`:`<table class="dialogue-sheet reading-dialogue" data-width="${node.extensions?.['komyaku.dialogue']?.actorWidth??''}"><tbody><tr>${node.content[0].content.map(cell=>`<td>${escape(paragraphText(cell.content[0]))}</td>`).join('')}</tr></tbody></table>`).join('')}</section>`).join('')||`<p>${escape(t('emptyReading'))}</p>`}`;
+    let previousBlock=null,previousSequence=null;
+    if(target) target.innerHTML=`<h2>${escape(t(path))}</h2>${blocks.map(([id,title],index)=>{
+      const scene=model.nodes.find(node=>node.id===id),sequence=model.nodes.find(node=>node.id===scene?.parent),block=model.nodes.find(node=>node.id===sequence?.parent);
+      const heading=`${block&&block.id!==previousBlock?`<h2 class="reading-block-title">${escape(block.title)}</h2>`:''}${sequence&&sequence.id!==previousSequence?`<h2 class="reading-sequence-title">${escape(sequence.title)}</h2>`:''}`;
+      previousBlock=block?.id;previousSequence=sequence?.id;
+      return `${heading}<section><h3 class="reading-scene-title">${escape(title)}</h3>${documents[index].content.map(node=>node.type==='paragraph'?`<p>${escape(paragraphText(node))}</p>`:`<table class="dialogue-sheet reading-dialogue" data-width="${node.extensions?.['komyaku.dialogue']?.actorWidth??''}"><tbody><tr>${node.content[0].content.map(cell=>`<td>${escape(paragraphText(cell.content[0]))}</td>`).join('')}</tr></tbody></table>`).join('')}</section>`;
+    }).join('')||`<p>${escape(t('emptyReading'))}</p>`}`;
     resizeDialogueColumns();
   } catch(e) { const target=document.getElementById('reading');if(target)target.innerHTML=`<p class="error">${escape(t(String(e)))}</p>`; }
 }
 async function commitDraft() {
   if(commitInFlight){await commitInFlight;if(error)return false;return commitDraft();}
-  commitInFlight=(async()=>await saveDraft()&&await saveGroupDrafts())();
-  try{return await commitInFlight;}finally{commitInFlight=null;}
+  commitInFlight=(async()=>await saveDraft()&&await saveTitleDrafts()&&await saveGroupDrafts())();
+  let saved;
+  try{saved=await commitInFlight;}finally{commitInFlight=null;}
+  return saved&&native&&dirty()?commitDraft():saved;
 }
 async function saveDraft() {
   if(composing || widthDrag || error==='revision_conflict')return false;
@@ -166,6 +195,24 @@ async function saveDraft() {
     if(savingVersion===draftVersion){draft=null;wholeCanonicalDraft=false;}
     status=dirty()?'unsaved':'saved';return true;
   } catch(e) {error=String(e);status='unsaved';return false;} finally {busy=false;if(keepEditor&&!error){const notice=document.querySelector('.notice span');if(notice)notice.textContent=t(status);}else render();if(dirty()&&!error){clearTimeout(autosaveTimer);autosaveTimer=setTimeout(()=>commitDraft(),900);}}
+}
+async function saveTitleDrafts() {
+  if(composing||widthDrag||error==='revision_conflict')return false;
+  if(!titleEdits.size||busy||!native)return !busy;
+  busy=true;status='saving';error='';
+  try {
+    for(const [id,edit] of [...titleEdits]) {
+      model=await invoke('edit',{expectedRevision:model.revision,action:{kind:'property',id,key:'title',value:edit.value}});
+      if(detail?.id===id)detail.properties.title=edit.value;
+      const scene=groupDetails.find(scene=>scene.id===id);if(scene)scene.properties.title=edit.value;
+      if(titleEdits.get(id)===edit)titleEdits.delete(id);
+    }
+    status=dirty()?'unsaved':'saved';return true;
+  }catch(e){error=String(e);status='unsaved';return false;}
+  finally {
+    busy=false;render();
+    if(dirty()&&!error){clearTimeout(autosaveTimer);autosaveTimer=setTimeout(()=>commitDraft(),900);}
+  }
 }
 async function saveGroupDrafts() {
   if(composing||widthDrag||error==='revision_conflict')return false;
@@ -239,11 +286,11 @@ function groupEdit(id) {
 }
 function groupBody() {
   let previous=null;
-  return `<div class="group-manuscript"><header class="group-title"><span>${escape(t(detail.type_id==='story.block'?'block':'sequence'))}</span><textarea data-field="title" aria-label="${escape(t('heading'))}" maxlength="200" rows="1" ${native?'':'readonly'}>${escape(draft?.title??detail.properties.title)}</textarea></header>${groupDetails.map(scene=>{
+  return `<div class="group-manuscript"><header class="group-title ${detail.type_id==='story.block'?'block-title':'sequence-title'}"><span>${escape(t(detail.type_id==='story.block'?'block':'sequence'))}</span>${outlineTitle(detail.id,detail.properties.title,'group-title-input')}</header>${groupDetails.map(scene=>{
     const sequence=model.nodes.find(node=>node.id===scene.properties.parent);
-    const heading=sequence?.id!==previous&&detail.type_id==='story.block'?`<h2 class="group-sequence-heading">${escape(sequence?.title||'')}</h2>`:'';
+    const heading=sequence&&sequence.id!==previous&&detail.type_id==='story.block'?outlineTitle(sequence.id,sequence.title,'group-sequence-heading'):'';
     previous=sequence?.id;
-    return `${heading}<section class="group-scene" data-scene="${scene.id}"><h3 class="group-scene-title">${escape(scene.properties.title)}</h3>${sceneBody(groupEdits.get(scene.id)?.canonical??scene.properties.canonical)}</section>`;
+    return `${heading}<section class="group-scene" data-scene="${scene.id}">${outlineTitle(scene.id,scene.properties.title,'group-scene-title')}${sceneBody(groupEdits.get(scene.id)?.canonical??scene.properties.canonical)}</section>`;
   }).join('')||`<p class="empty">${escape(t('noScenes'))}</p>`}</div>`;
 }
 async function mutate(action) {
@@ -277,17 +324,28 @@ async function choose(id) {
   if(native) model=await invoke('choose',{id});else model={...model,selected:id};
   await loadDetail(id);render();
 }
-function paragraphMarkup(node) {
-  return fragments(paragraphText(node)).map((part,index)=>`<div class="manuscript-block" data-manuscript-block="${node.id}-${index}"><textarea class="manuscript-text" data-block="${node.id}" data-start="${part.start}" data-length="${part.text.length}" data-fragment="${index}" aria-label="${escape(t('body'))}" rows="1" ${native?'':'readonly'}>${escape(part.text)}</textarea></div>`).join('');
+function paragraphMarkup(node,lazy=false) {
+  return fragments(paragraphText(node)).map((part,index)=>{
+    const key=`${node.id}-${index}`,markup=()=>`<textarea class="manuscript-text" data-block="${node.id}" data-start="${part.start}" data-length="${part.text.length}" data-fragment="${index}" aria-label="${escape(t('body'))}" rows="1" ${native?'':'readonly'}>${escape(part.text)}</textarea>`;
+    virtualSources.set(key,{markup,text:part.text,start:part.start});
+    return `<div class="manuscript-block" data-manuscript-block="${key}" data-paragraph="${node.id}" data-start="${part.start}" data-length="${part.text.length}">${lazy?'':markup()}</div>`;
+  }).join('');
 }
 function sceneBody(doc) {
   const editable=native?'':'readonly';
   const input=(node,label,actor=false,part={start:0,text:paragraphText(node)},index=0)=>`<textarea class="${actor?'dialogue-actor':'manuscript-text'}" data-block="${node.id}" data-start="${part.start}" data-length="${part.text.length}" data-fragment="${index}" aria-label="${escape(t(label))}" placeholder="${label==='body'?'':escape(t(label))}" rows="1" ${editable}>${escape(part.text)}</textarea>`;
   const blocks=doc.content.flatMap(node=>{
-    if(node.type==='paragraph')return [paragraphMarkup(node)];
-    return [`<div class="manuscript-block" data-manuscript-block="${node.id}"><table class="dialogue-sheet" data-sheet="${node.id}" data-width="${node.extensions?.['komyaku.dialogue']?.actorWidth??''}" aria-label="${escape(t('dialogue'))}"><tbody><tr><td>${input(node.content[0].content[0].content[0],'actorName',true)}${native?`<span class="dialogue-divider" data-divider="${node.id}" role="separator" aria-orientation="vertical" aria-label="${escape(t('resizeActor'))}" tabindex="0"></span>`:''}</td><td>${input(node.content[0].content[1].content[0],'dialogueText')}</td></tr></tbody></table></div>`];
+    if(node.type==='paragraph')return [paragraphMarkup(node,lazyManuscript)];
+    const cells=node.content[0].content.map(cell=>cell.content[0]);
+    const markup=()=>`<table class="dialogue-sheet" data-sheet="${node.id}" data-width="${node.extensions?.['komyaku.dialogue']?.actorWidth??''}" aria-label="${escape(t('dialogue'))}"><tbody><tr><td>${input(cells[0],'actorName',true)}${native?`<span class="dialogue-divider" data-divider="${node.id}" role="separator" aria-orientation="vertical" aria-label="${escape(t('resizeActor'))}" tabindex="0"></span>`:''}</td><td>${input(cells[1],'dialogueText')}</td></tr></tbody></table>`;
+    virtualSources.set(node.id,{markup,texts:cells.map(paragraphText),paragraphs:cells.map(cell=>cell.id),actorWidth:node.extensions?.['komyaku.dialogue']?.actorWidth});
+    return [`<div class="manuscript-block" data-manuscript-block="${node.id}" data-sheet-block="${node.id}">${lazyManuscript?'':markup()}</div>`];
   });
   return `<div class="manuscript"><div class="manuscript-pages">${blocks.join('')}</div></div>`;
+}
+function mountManuscriptInput(scope,id,fragment=0) {
+  const block=scope?.querySelector(`[data-manuscript-block="${id}-${fragment}"]`)??[...scope?.querySelectorAll('[data-sheet-block]')??[]].find(block=>virtualSources.get(block.dataset.manuscriptBlock)?.paragraphs.includes(id));
+  if(block){manuscriptViewport?.mount(block);manuscriptViewport?.measureBlock(block);}
 }
 function resizeDialogueColumns(scope=document) {
   const context=document.createElement('canvas').getContext('2d');
@@ -324,13 +382,19 @@ document.addEventListener('selectionchange',updateEmptyColumnCaret);
 document.addEventListener('keyup',updateEmptyColumnCaret);
 document.addEventListener('focusin',updateEmptyColumnCaret);
 document.addEventListener('focusout',()=>requestAnimationFrame(updateEmptyColumnCaret));
+function resizeOutlineTitle(input) {
+  if(input.tagName!=='TEXTAREA')return;
+  if(preferences.writingMode==='vertical'){
+    const width=parseFloat(getComputedStyle(input).fontSize)*1.6;
+    input.style.width=`${width}px`;input.style.width=`${Math.max(width,input.scrollWidth)}px`;
+  }else {input.style.height='0px';input.style.height=`${input.scrollHeight}px`;}
+}
 function resizeManuscript(scope=null) {
   if(!scope) {
-    const heading=document.querySelector('.group-title>textarea');
-    if(heading&&preferences.writingMode==='horizontal'){heading.style.height='0px';heading.style.height=`${heading.scrollHeight}px`;}
+    document.querySelectorAll('textarea[data-outline-title]').forEach(resizeOutlineTitle);
     const blocks=[...document.querySelectorAll('.manuscript-block')];
-    if(blocks.length>80) {
-      if(!manuscriptObserver)observeManuscript();
+    if(manuscriptViewport||blocks.length>80||blocks.some(block=>!block.firstElementChild)) {
+      if(!manuscriptViewport)observeManuscript();
       blocks.filter(block=>block.classList.contains('block-visible')||block.contains(document.activeElement)).forEach(block=>resizeManuscript(block));
       return;
     }
@@ -348,18 +412,31 @@ function resizeManuscript(scope=null) {
   });
 }
 function observeManuscript() {
-  manuscriptObserver?.disconnect();
   const root=document.querySelector(isContainer()?'.group-manuscript':preferences.writingMode==='vertical'?'.manuscript-pages':'.editor-content');
-  manuscriptObserver=new IntersectionObserver(entries=>{
-    for(const entry of entries){entry.target.classList.toggle('block-visible',entry.isIntersecting);if(entry.isIntersecting)resizeManuscript(entry.target);}
-  },{root,rootMargin:'800px'});
-  for(const block of document.querySelectorAll('.manuscript-block'))manuscriptObserver.observe(block);
+  const vertical=preferences.writingMode==='vertical';
+  const virtualBlocks=[...document.querySelectorAll('.manuscript-block')];
+  manuscriptViewport?.disconnect();
+  manuscriptViewport=new ManuscriptViewport({root,blocks:virtualBlocks,vertical,
+    source:block=>virtualSources.get(block.dataset.manuscriptBlock).markup(),
+    estimate:(block,values,actorWidth)=>{
+      const source=virtualSources.get(block.dataset.manuscriptBlock),options={vertical,span:vertical?block.parentElement.clientHeight:block.parentElement.clientWidth,fontSize:preferences.bodySize,lineHeight:preferences.lineHeight,actorWidth:actorWidth??source?.actorWidth};
+      return block.dataset.sheetBlock?estimatedDialogueExtent(values??source.texts,options):estimatedExtent(values?.[0]??source?.text??'',options);
+    },
+    measure:block=>{resizeManuscript(block);if(paragraphSelection&&selectedParagraph(document.activeElement))paintParagraphSelection(document.activeElement);},
+    pinned:block=>block.contains(document.activeElement)||Boolean(compositionTarget&&block.contains(compositionTarget))||Boolean(widthDrag&&block.contains(widthDrag.table))
+  });
 }
 function sceneBreadcrumb(values) {
   const sequence=model.nodes.find(node=>node.id===values.parent);
   const block=model.nodes.find(node=>node.id===sequence?.parent);
   const ancestors=[block,sequence].filter(Boolean);
-  return `<nav class="scene-breadcrumb" aria-label="${escape(t('outline'))}">${ancestors.map(node=>`<span class="breadcrumb-parent" title="${escape(node.title)}">${escape(node.title)}</span><span class="breadcrumb-separator" aria-hidden="true">›</span>`).join('')}<input class="breadcrumb-title" data-field="title" aria-label="${escape(t('title'))}" aria-current="page" value="${escape(values.title)}" maxlength="200" ${native?'':'readonly'}></nav>`;
+  return `<nav class="scene-breadcrumb" aria-label="${escape(t('outline'))}">${ancestors.map(node=>`${outlineTitle(node.id,node.title,`breadcrumb-parent ${node.type==='story.block'?'block-title':'sequence-title'}`,true)}<span class="breadcrumb-separator" aria-hidden="true">›</span>`).join('')}${outlineTitle(detail.id,values.title,'breadcrumb-title',true)}</nav>`;
+}
+function outlineTitle(id,value,className,inline=false) {
+  const node=model.nodes.find(node=>node.id===id),kind=node?.type?.split('.')[1]||'scene';
+  const attributes=`class="outline-title ${className}" data-outline-title="${id}" aria-label="${escape(t(kind))}" maxlength="200" ${native?'':'readonly'}`;
+  const title=escape(titleEdits.get(id)?.value??value);
+  return inline?`<input ${attributes} value="${title}" ${kind==='scene'?'aria-current="page"':''}>`:`<textarea ${attributes} rows="1">${title}</textarea>`;
 }
 function createDialog(kind) {
   const dialog=document.getElementById('create-dialog');
@@ -388,41 +465,47 @@ document.addEventListener('pointerdown',event=>{
   const handle=event.target.closest('[data-divider]');if(!handle||busy||!native||event.button!==0)return;
   event.preventDefault();clearTimeout(autosaveTimer);
   const table=handle.closest('.dialogue-sheet');
-  widthDrag={id:handle.dataset.divider,table,handle,pointer:event.pointerId};handle.setPointerCapture(event.pointerId);
+  const vertical=preferences.writingMode==='vertical',bounds=table.getBoundingClientRect(),cell=table.rows[0].cells[0].getBoundingClientRect();
+  const offset=(vertical?event.clientY-bounds.top-cell.height:event.clientX-bounds.left-cell.width);
+  widthDrag={id:handle.dataset.divider,table,handle,pointer:event.pointerId,offset};handle.setPointerCapture(event.pointerId);
 });
 document.addEventListener('pointermove',event=>{
   if(!widthDrag||event.pointerId!==widthDrag.pointer)return;
-  const bounds=widthDrag.table.getBoundingClientRect(),width=Math.max(16,Math.min(preferences.writingMode==='vertical'?event.clientY-bounds.top:event.clientX-bounds.left,(preferences.writingMode==='vertical'?bounds.height:bounds.width)-32,4096));
+  const bounds=widthDrag.table.getBoundingClientRect(),width=Math.max(16,Math.min((preferences.writingMode==='vertical'?event.clientY-bounds.top:event.clientX-bounds.left)-widthDrag.offset,(preferences.writingMode==='vertical'?bounds.height:bounds.width)-32,4096));
   widthDrag.table.dataset.width=String(width);widthDrag.table.style.setProperty('--actor-width',`${width}px`);
   resizeManuscript(widthDrag.table);
 });
 async function finishWidthDrag(event) {
   if(!widthDrag||event.pointerId!==widthDrag.pointer)return;
-  const drag=widthDrag;widthDrag=null;
+  const drag=widthDrag;widthDrag=null;manuscriptViewport?.pruneSoon();
   if(event.type==='pointercancel'){resizeManuscript();render();return;}
   storeSheetWidth(drag.id,Number(drag.table.dataset.width)||drag.table.rows[0].cells[0].getBoundingClientRect().width,inputScene(drag.handle));
-  await commitDraft();document.querySelector(`[data-divider="${drag.id}"]`)?.focus({preventScroll:true});
+  await commitDraft();focusDialogueDivider(drag.id);
+}
+function focusDialogueDivider(id) {
+  const block=document.querySelector(`[data-sheet-block="${id}"]`);if(block){manuscriptViewport?.mount(block);manuscriptViewport?.measureBlock(block);}
+  document.querySelector(`[data-divider="${id}"]`)?.focus({preventScroll:true});
 }
 document.addEventListener('pointerup',finishWidthDrag);document.addEventListener('pointercancel',finishWidthDrag);
 document.addEventListener('keydown',async event=>{
   const handle=event.target.closest('[data-divider]');if(!handle||!(preferences.writingMode==='vertical'?['ArrowUp','ArrowDown']:['ArrowLeft','ArrowRight']).includes(event.key))return;
   event.preventDefault();const table=handle.closest('.dialogue-sheet');
   const width=Math.max(16,Math.min((preferences.writingMode==='vertical'?table.rows[0].cells[0].getBoundingClientRect().height:table.rows[0].cells[0].getBoundingClientRect().width)+(['ArrowRight','ArrowDown'].includes(event.key)?1:-1)*(event.shiftKey?10:2),(preferences.writingMode==='vertical'?table.clientHeight:table.clientWidth)-32,4096));
-  storeSheetWidth(handle.dataset.divider,width,inputScene(handle));await commitDraft();document.querySelector(`[data-divider="${handle.dataset.divider}"]`)?.focus({preventScroll:true});
+  const id=handle.dataset.divider;storeSheetWidth(id,width,inputScene(handle));await commitDraft();focusDialogueDivider(id);
 });
 document.addEventListener('dblclick',async event=>{
   const handle=event.target.closest('[data-divider]');if(!handle)return;
   storeSheetWidth(handle.dataset.divider,null,inputScene(handle));await commitDraft();
 });
-window.addEventListener('resize',()=>resizeManuscript());
+window.addEventListener('resize',()=>{resizeManuscript();manuscriptViewport?.resize();});
 document.addEventListener('wheel',event=>{if(preferences.writingMode!=='vertical')return;const pages=event.target.closest('.group-manuscript')??event.target.closest('.manuscript-pages,.reading-viewport');if(!pages||pages.scrollWidth<=pages.clientWidth||event.ctrlKey||Math.abs(event.deltaX)>Math.abs(event.deltaY))return;event.preventDefault();pages.scrollLeft-=event.deltaY;},{passive:false});
 document.addEventListener('toggle',event=>{if(event.target.matches?.('.scene-notes')){const id=event.target.dataset.notesId;event.target.open?expandedNotes.add(id):expandedNotes.delete(id);}},true);
-function paragraphInputs(input) {return [...input.closest('.manuscript').querySelectorAll('textarea[data-block]')].filter(next=>next.dataset.block===input.dataset.block);}
+function paragraphInputs(input) {return manuscriptViewport?manuscriptViewport.paragraphInputs(input):[...input.closest('.manuscript').querySelectorAll('textarea[data-block]')].filter(next=>next.dataset.block===input.dataset.block);}
 function paragraphDocument(input) {const scene=inputScene(input);return scene?(groupEdits.get(scene)?.canonical??groupDetails.find(item=>item.id===scene).properties.canonical):(draft?.canonical??detail.properties.canonical);}
 function paragraphValue(input) {return paragraphText(paragraphById(paragraphDocument(input),input.dataset.block));}
 function rawFragment(input) {return paragraphValue(input).slice(Number(input.dataset.start),Number(input.dataset.start)+Number(input.dataset.length));}
 function caretPosition(input,position=input.selectionStart) {return Number(input.dataset.start)+canonicalPosition(rawFragment(input),position);}
-function clearParagraphSelection() {paragraphSelection=null;document.querySelectorAll('.paragraph-selected').forEach(input=>input.classList.remove('paragraph-selected'));document.querySelectorAll('.paragraph-range-highlight').forEach(el=>el.remove());}
+function clearParagraphSelection() {paragraphSelection=null;document.querySelectorAll('.paragraph-selected').forEach(input=>input.classList.remove('paragraph-selected'));document.querySelectorAll('.paragraph-range-highlight').forEach(el=>el.remove());manuscriptViewport?.pruneSoon();}
 function selectedParagraph(input) {return paragraphSelection?.id===input.dataset.block&&paragraphSelection.scene===inputScene(input);}
 function paragraphOverlay(input) {
   const overlay=document.createElement('div');overlay.className='paragraph-range-highlight';overlay.setAttribute('aria-hidden','true');
@@ -438,7 +521,7 @@ function revealParagraphCaret(input,local) {
 function paintParagraphSelection(input) {
   paintingSelection=true;
   document.querySelectorAll('.paragraph-range-highlight').forEach(el=>el.remove());
-  const peers=paragraphInputs(input),{start,end}=selectionRange(paragraphSelection);
+  const peers=manuscriptViewport?manuscriptViewport.paragraphBlocks(input).flatMap(block=>{const peer=block.querySelector('textarea');return peer?[peer]:[];}):paragraphInputs(input),{start,end}=selectionRange(paragraphSelection);
   for(const peer of peers){
     const part={start:Number(peer.dataset.start),text:rawFragment(peer)},range=fragmentSelection(part,paragraphSelection);
     peer.classList.toggle('paragraph-selected',peer!==input&&range.start===0&&range.end===part.text.length&&range.end>range.start);
@@ -449,12 +532,13 @@ function paintParagraphSelection(input) {
     }
   }
   const raw=rawFragment(input),offset=Number(input.dataset.start),local=fragmentSelection({start:offset,text:raw},paragraphSelection);
-  input.setSelectionRange(raw.slice(0,local.start).replace(/\r\n?/g,'\n').length,raw.slice(0,local.end).replace(/\r\n?/g,'\n').length,paragraphSelection.focus<paragraphSelection.anchor?'backward':'forward');
+  const nativeStart=raw.slice(0,local.start).replace(/\r\n?/g,'\n').length,nativeEnd=raw.slice(0,local.end).replace(/\r\n?/g,'\n').length,direction=paragraphSelection.focus<paragraphSelection.anchor?'backward':'forward';
+  if(input.selectionStart!==nativeStart||input.selectionEnd!==nativeEnd||input.selectionDirection!==direction)input.setSelectionRange(nativeStart,nativeEnd,direction);
   paintingSelection=false;
   if(start===end)clearParagraphSelection();
 }
 function selectParagraphPosition(input,selection) {
-  const peers=paragraphInputs(input);reflowing=true;focusParagraphPosition(peers,selection.focus);reflowing=false;
+  reflowing=true;focusLogicalParagraph(input,selection.focus);reflowing=false;
   paragraphSelection={id:input.dataset.block,scene:inputScene(input),...selection};paintParagraphSelection(document.activeElement);
 }
 function queueParagraphPatch(input,change) {
@@ -470,21 +554,34 @@ function focusParagraphPosition(inputs,position) {
   const raw=rawFragment(input),local=raw.slice(0,Math.max(0,position-Number(input.dataset.start))).replace(/\r\n?/g,'\n').length;
   resizeManuscript(input.closest('.manuscript-block'));input.focus({preventScroll:true});input.setSelectionRange(local,local);revealParagraphCaret(input,local);updateEmptyColumnCaret();
 }
+function focusLogicalParagraph(input,position) {
+  focusParagraphPosition(manuscriptViewport?[manuscriptViewport.positionInput(input,position)]:paragraphInputs(input),position);
+}
 function reflowParagraph(input,position) {
   if(input.closest('.dialogue-sheet'))return;
-  const peers=paragraphInputs(input),node=paragraphById(paragraphDocument(input),input.dataset.block),template=document.createElement('template');template.innerHTML=paragraphMarkup(node);
-  const wrappers=[...template.content.children],first=peers[0].closest('.manuscript-block');
+  const oldBlocks=manuscriptViewport?[...manuscriptViewport.paragraphBlocks(input)]:paragraphInputs(input).map(peer=>peer.closest('.manuscript-block')),node=paragraphById(paragraphDocument(input),input.dataset.block),template=document.createElement('template');
+  for(const block of oldBlocks)virtualSources.delete(block.dataset.manuscriptBlock);
+  template.innerHTML=paragraphMarkup(node,Boolean(manuscriptViewport));
+  const wrappers=[...template.content.children],first=oldBlocks[0];
   reflowing=true;clearParagraphSelection();first.before(template.content);
-  for(const peer of peers){const block=peer.closest('.manuscript-block');manuscriptObserver?.unobserve(block);block.remove();}
-  for(const block of wrappers){manuscriptObserver?.observe(block);if(wrappers.length<=80)resizeManuscript(block);}
-  focusParagraphPosition(wrappers.map(block=>block.querySelector('textarea')),position);reflowing=false;
+  for(const block of oldBlocks){manuscriptViewport?.remove(block);block.remove();}
+  for(const block of wrappers){manuscriptViewport?.register(block);if(!manuscriptViewport)resizeManuscript(block);}
+  if(manuscriptViewport){
+    const target=wrappers.find(block=>{const part=virtualSources.get(block.dataset.manuscriptBlock);return position>=part.start&&position<=part.start+part.text.length;})??wrappers.at(-1);
+    manuscriptViewport.mount(target);focusParagraphPosition([target.querySelector('textarea')],position);
+  }else focusParagraphPosition(wrappers.map(block=>block.querySelector('textarea')),position);
+  reflowing=false;
 }
 document.addEventListener('pointerdown',event=>{
   pointerSelection=null;
   const input=event.target,active=document.activeElement;
-  if(native&&!composing&&event.button===0&&event.shiftKey&&input.dataset.block&&!input.closest('.dialogue-sheet')&&active?.dataset.block===input.dataset.block&&inputScene(active)===inputScene(input)&&paragraphInputs(input).length>1){
+  if(native&&!composing&&event.button===0&&event.shiftKey&&input.dataset.block&&!input.closest('.dialogue-sheet')&&active?.dataset.block===input.dataset.block&&inputScene(active)===inputScene(input)&&(manuscriptViewport?manuscriptViewport.paragraphBlocks(input).length:paragraphInputs(input).length)>1){
     const anchor=selectedParagraph(active)?paragraphSelection.anchor:caretPosition(active,active.selectionDirection==='backward'?active.selectionEnd:active.selectionStart);
-    pointerSelection={input,anchor,pointer:event.pointerId};return;
+    pointerSelection={input,anchor,pointer:event.pointerId};
+    // Some engines keep focus in the old textarea on Shift-click. Give the
+    // target native hit-testing a local anchor, retaining the logical anchor.
+    if(input!==active){reflowing=true;input.focus({preventScroll:true});input.setSelectionRange(0,0);reflowing=false;}
+    return;
   }
   clearParagraphSelection();
 },true);
@@ -503,7 +600,7 @@ document.addEventListener('pointercancel',()=>{if(pointerSelection){pointerSelec
 // macOS Edit > Select All can select the native textarea without a DOM keydown.
 document.addEventListener('select',event=>{
   const input=event.target;if(reflowing||paintingSelection||pointerSelection||paragraphSelection||composing||!native||!input.dataset.block||input.closest('.dialogue-sheet')||!input.value.length||input.selectionStart!==0||input.selectionEnd!==input.value.length)return;
-  const peers=paragraphInputs(input);if(peers.length<2)return;
+  if((manuscriptViewport?manuscriptViewport.paragraphBlocks(input).length:paragraphInputs(input).length)<2)return;
   paragraphSelection={id:input.dataset.block,scene:inputScene(input),anchor:0,focus:paragraphValue(input).length};paintParagraphSelection(input);
 },true);
 document.addEventListener('selectionchange',()=>{
@@ -520,7 +617,7 @@ function captureSelectionReplacement(input) {
 document.addEventListener('beforeinput',event=>captureSelectionReplacement(event.target));
 document.addEventListener('keydown',event=>{
   const input=event.target;if(!native||!input.dataset.block||composing||event.isComposing||event.keyCode===229||input.closest('.dialogue-sheet'))return;
-  const peers=paragraphInputs(input);if(peers.length<2)return;
+  if((manuscriptViewport?manuscriptViewport.paragraphBlocks(input).length:paragraphInputs(input).length)<2)return;
   if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='a'){event.preventDefault();selectParagraphPosition(input,{anchor:0,focus:paragraphValue(input).length});return;}
   const backward=preferences.writingMode==='vertical'?'ArrowUp':'ArrowLeft',forward=preferences.writingMode==='vertical'?'ArrowDown':'ArrowRight';
   if(event.shiftKey&&!event.metaKey&&!event.ctrlKey&&!event.altKey&&[backward,forward].includes(event.key)){
@@ -532,15 +629,15 @@ document.addEventListener('keydown',event=>{
   if(selectedParagraph(input)&&['Backspace','Delete'].includes(event.key)){
     event.preventDefault();const text=paragraphValue(input),{start,end}=selectionRange(paragraphSelection);clearParagraphSelection();queueParagraphPatch(input,{start,end,text:'',removed:text.slice(start,end)});reflowParagraph(input,start);return;
   }
-  if(selectedParagraph(input)&&[backward,forward].includes(event.key)){event.preventDefault();const range=selectionRange(paragraphSelection),position=event.key===forward?range.end:range.start;clearParagraphSelection();focusParagraphPosition(peers,position);return;}
-  if(input.selectionStart!==input.selectionEnd)return;
+  if(selectedParagraph(input)&&[backward,forward].includes(event.key)){event.preventDefault();const range=selectionRange(paragraphSelection),position=event.key===forward?range.end:range.start;clearParagraphSelection();focusLogicalParagraph(input,position);return;}
+  if(![backward,forward,'Backspace','Delete'].includes(event.key)||input.selectionStart!==input.selectionEnd)return;
   const start=input.selectionStart===0,end=input.selectionStart===input.value.length,pos=caretPosition(input),text=paragraphValue(input);
   const direction=(start&&[backward,'Backspace'].includes(event.key))?-1:(end&&[forward,'Delete'].includes(event.key))?1:0;
   if(!direction)return;
   const target=graphemeStep(text,pos,direction);if(target===pos)return;
   event.preventDefault();clearParagraphSelection();
   if(event.key==='Backspace'||event.key==='Delete'){const from=Math.min(pos,target),to=Math.max(pos,target);queueParagraphPatch(input,{start:from,end:to,text:'',removed:text.slice(from,to)});reflowParagraph(input,from);}
-  else focusParagraphPosition(peers,target);
+  else focusLogicalParagraph(input,target);
 });
 for(const type of ['copy','cut'])document.addEventListener(type,event=>{
   const input=document.activeElement;if(!input?.dataset.block||!selectedParagraph(input)||!event.clipboardData)return;
@@ -561,24 +658,33 @@ document.addEventListener('input',event=>{
       clearParagraphSelection();
       if(!composing){reflowParagraph(input,position);return;}
       const retained=replaceSelectionFragments(replacement.parts,replacement.parts.findIndex(part=>part.input===input),replacement.selection,inserted);
-      retained.forEach((part,index)=>{const peer=replacement.parts[index].input;if(!part){const block=peer.closest('.manuscript-block');manuscriptObserver?.unobserve(block);block.remove();return;}peer.dataset.start=String(part.start);peer.dataset.length=String(part.text.length);if(peer!==input)peer.value=part.text.replace(/\r\n?/g,'\n');});
+      retained.forEach((part,index)=>{const peer=replacement.parts[index].input;if(!part){const block=peer.closest('.manuscript-block');manuscriptViewport?.remove(block);block.remove();return;}peer.dataset.start=String(part.start);peer.dataset.length=String(part.text.length);if(peer!==input)peer.value=part.text.replace(/\r\n?/g,'\n');manuscriptViewport?.syncBlock(peer.closest('.manuscript-block'));});
       compositionReflow.add(input);
     }else {
       const delta=change.text.length-(change.end-change.start);input.dataset.length=String(Number(input.dataset.length)+delta);
-      for(const next of paragraphInputs(input))if(next!==input&&Number(next.dataset.start)>start)next.dataset.start=String(Number(next.dataset.start)+delta);
+      if(manuscriptViewport)manuscriptViewport.shiftOffsets(input,delta);
+      else for(const next of paragraphInputs(input))if(next!==input&&Number(next.dataset.start)>start)next.dataset.start=String(Number(next.dataset.start)+delta);
       if(!composing&&Number(input.dataset.length)>16384&&!input.closest('.dialogue-sheet')){reflowParagraph(input,position);return;}
     }
-    resizeManuscript(input.closest('.manuscript-block'));updateEmptyColumnCaret();return;
+    const block=input.closest('.manuscript-block');
+    if(manuscriptViewport)manuscriptViewport.measureBlock(block);else resizeManuscript(block);
+    updateEmptyColumnCaret();return;
+  }
+  if(event.target.dataset.outlineTitle){
+    titleEdits.set(event.target.dataset.outlineTitle,{value:event.target.value});
+    status='unsaved';clearTimeout(autosaveTimer);if(!composing)autosaveTimer=setTimeout(()=>commitDraft(),900);
+    resizeOutlineTitle(event.target);
+    const notice=document.querySelector('.notice span');if(notice)notice.textContent=t('unsaved');return;
   }
   const key=event.target.dataset.field;if(!key||(!detail&&key!=='projectTitle'))return;
   draft??={};draft[key]=event.target.type==='checkbox'?event.target.checked:event.target.value;draftVersion++;status='unsaved';clearTimeout(autosaveTimer);if(!composing)autosaveTimer=setTimeout(()=>commitDraft(),900);
   if(event.target.closest('.group-title')&&preferences.writingMode==='horizontal'){event.target.style.height='0px';event.target.style.height=`${event.target.scrollHeight}px`;}
   const notice=document.querySelector('.notice span');if(notice)notice.textContent=t('unsaved');
 });
-document.addEventListener('compositionstart',event=>{captureSelectionReplacement(event.target);composing=true;updateEmptyColumnCaret();clearTimeout(autosaveTimer);});
-document.addEventListener('compositionend',event=>{composing=false;selectionReplacements.delete(event.target);if(event.target.dataset.block&&(compositionReflow.has(event.target)||Number(event.target.dataset.length)>16384)){compositionReflow.delete(event.target);reflowParagraph(event.target,caretPosition(event.target));}updateEmptyColumnCaret();clearTimeout(autosaveTimer);autosaveTimer=setTimeout(()=>commitDraft(),900);});
+document.addEventListener('compositionstart',event=>{captureSelectionReplacement(event.target);composing=true;compositionTarget=event.target;updateEmptyColumnCaret();clearTimeout(autosaveTimer);});
+document.addEventListener('compositionend',event=>{composing=false;compositionTarget=null;selectionReplacements.delete(event.target);if(event.target.dataset.block&&(compositionReflow.has(event.target)||Number(event.target.dataset.length)>16384)){compositionReflow.delete(event.target);reflowParagraph(event.target,caretPosition(event.target));}manuscriptViewport?.pruneSoon();updateEmptyColumnCaret();clearTimeout(autosaveTimer);autosaveTimer=setTimeout(()=>commitDraft(),900);});
 document.addEventListener('focusin',event=>{const scene=inputScene(event.target);if(scene)groupFocus=scene;});
-document.addEventListener('focusout',event=>{if(reflowing)return;if(event.target.dataset.block){bodyCaret={scene:inputScene(event.target)??detail.id,id:event.target.dataset.block,start:caretPosition(event.target),end:caretPosition(event.target,event.target.selectionEnd)};if(!busy&&!composing&&!widthDrag)commitDraft();}if(event.target.dataset.field&&!busy&&!composing)commitDraft();});
+document.addEventListener('focusout',event=>{if(reflowing)return;manuscriptViewport?.pruneSoon();if(event.target.dataset.block){bodyCaret={scene:inputScene(event.target)??detail.id,id:event.target.dataset.block,start:caretPosition(event.target),end:caretPosition(event.target,event.target.selectionEnd)};if(!busy&&!composing&&!widthDrag)commitDraft();}if((event.target.dataset.field||event.target.dataset.outlineTitle)&&!busy&&!composing)commitDraft();});
 document.addEventListener('change',async event=>{
   if(event.target.matches('[data-writing-mode]')){if(!await commitDraft())return;await savePreferences({...preferences,writingMode:event.target.value});return;}
   if(event.target.id==='language'){if(!await commitDraft())return;await savePreferences({...preferences,language:event.target.value});}
@@ -673,13 +779,19 @@ window.addEventListener('resize',()=>closeOutlineMenu());
 document.addEventListener('scroll',()=>closeOutlineMenu(),true);
 document.addEventListener('dragend',()=>{draggingOutlineId=null;clearDropMarks();});
 document.addEventListener('click',async event=>{
-  if(event.target.closest('#preferences-dialog,.assistant-dialog,.rename-dialog,.workspace-dialog'))return;
+  if(event.target.closest('#preferences-dialog,.assistant-dialog,.rename-dialog,.workspace-dialog,.history-panel'))return;
   const element=event.target.closest('button');if(!element||element.disabled)return;
   try {
     if(element.dataset.collapse){if(!await commitDraft())return;const id=element.dataset.collapse;collapsedOutline.has(id)?collapsedOutline.delete(id):collapsedOutline.add(id);render();return;}
     if(element.dataset.select){await choose(element.dataset.select);return;}
     if(element.dataset.tab){if(!await commitDraft())return;tab=element.dataset.tab;reading=false;render();return;}
     const action=element.dataset.action;closeMenus();
+    if(action==='export'){
+      if(!native||busy||!await commitDraft())return;
+      busy=true;error='';render();
+      try{const destination=await invoke('export_manuscript',{format:element.dataset.format,language});if(destination)status='exportReady';}
+      catch(e){error=String(e);}finally{busy=false;render();}return;
+    }
     if(action==='toggleLeftPanel'||action==='toggleRightPanel'){const key=action==='toggleLeftPanel'?'leftPanelOpen':'rightPanelOpen';await savePreferences({...preferences,[key]:!preferences[key]});return;}
     if(action==='newWorkspace'){if(await commitDraft())await invoke('new_workspace');return;}
     if(action==='openWorkspace'){if(await commitDraft())await showWorkspaces();return;}
@@ -696,6 +808,7 @@ document.addEventListener('click',async event=>{
       else {wholeCanonicalDraft=true;draft={canonical:added.document};draftVersion++;}
       await commitDraft();
       const scope=isContainer()?document.querySelector(`[data-scene="${scene.id}"]`):document;
+      mountManuscriptInput(scope,added.focus);
       const actor=scope?.querySelector(`[data-block="${added.focus}"]`);actor?.focus();return;
     }
     if(action==='save'){await commitDraft();return;}
@@ -716,6 +829,9 @@ document.addEventListener('click',async event=>{
 document.addEventListener('click',event=>{if(!event.target.closest('.app-menu'))closeMenus();});
 document.addEventListener('toggle',event=>{if(event.target.matches?.('.app-menu')&&event.target.open)document.querySelectorAll('.app-menu[open]').forEach(menu=>{if(menu!==event.target)menu.open=false;});},true);
 document.addEventListener('keydown',event=>{if(event.key==='Escape')closeMenus();if(event.key==='ArrowDown'&&event.target.matches('.app-menu>summary')){event.preventDefault();event.target.parentElement.open=true;event.target.parentElement.querySelector('button:not(:disabled)')?.focus();}});
+document.addEventListener('pointerover',event=>{const submenu=event.target.closest('.export-submenu');if(submenu?.closest('.app-menu[open]'))submenu.open=true;});
+document.addEventListener('click',event=>{if(event.target.closest('.export-submenu>summary')){event.preventDefault();event.target.closest('.export-submenu').open=true;}});
+document.addEventListener('keydown',event=>{if(['ArrowRight','ArrowDown'].includes(event.key)&&event.target.matches('.export-submenu>summary')){event.preventDefault();event.target.parentElement.open=true;event.target.parentElement.querySelector('button:not(:disabled)')?.focus();}});
 document.addEventListener('keydown',async event=>{if(native&&(event.metaKey||event.ctrlKey)&&event.key==='n'){event.preventDefault();try {if(await commitDraft())await invoke('new_workspace');}catch(e){error=String(e);render();}return;}if((event.metaKey||event.ctrlKey)&&event.key==='s'){event.preventDefault();await commitDraft();}});
 document.addEventListener('keydown',async event=>{if(native&&(event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='o'){event.preventDefault();if(await commitDraft())await showWorkspaces();}});
 window.addEventListener('beforeunload',event=>{if(dirty()){event.preventDefault();event.returnValue='';}});
@@ -727,7 +843,7 @@ function showPreferences() {
   preferencesOpen=true;
   let dialog=document.getElementById('preferences-dialog');
   if(!dialog){dialog=document.createElement('dialog');dialog.id='preferences-dialog';dialog.className='preferences-dialog';document.getElementById('app').append(dialog);dialog.addEventListener('close',()=>{preferencesOpen=false;});}
-  dialog.innerHTML=`<div class="preferences-header"><h2 id="preferences-heading">${escape(t('preferences'))}</h2><button data-pref-close aria-label="${escape(t('close'))}">×</button></div><div class="preferences-layout"><nav class="preferences-tabs" role="tablist" aria-label="${escape(t('preferences'))}">${['languageSettings','appearance','ai'].map(key=>`<button id="pref-tab-${key}" role="tab" aria-selected="${preferencesTab===key}" aria-controls="preferences-content" data-pref-tab="${key}">${escape(t(key))}</button>`).join('')}</nav><section id="preferences-content" role="tabpanel" aria-labelledby="pref-tab-${preferencesTab}"><h3>${escape(t(preferencesTab))}</h3>${preferencesTab==='languageSettings'?`<label class="preference-field">${escape(t('languageSettings'))}<select data-preference="language">${Object.entries(languages).map(([key,label])=>`<option value="${key}" ${language===key?'selected':''}>${label}</option>`).join('')}</select></label>`:preferencesTab==='appearance'?`<p class="preferences-hint">${escape(t('preferencesHint'))}</p><label class="preference-field">${escape(t('writingMode'))}<select data-preference="writingMode">${['horizontal','vertical'].map(key=>`<option value="${key}" ${preferences.writingMode===key?'selected':''}>${escape(t(key))}</option>`).join('')}</select></label><label class="preference-field">${escape(t('bodyFont'))}<select data-preference="bodyFont">${['serif','sans','mono'].map(key=>`<option value="${key}" ${preferences.bodyFont===key?'selected':''}>${escape(t(key))}</option>`).join('')}</select></label><label class="preference-check"><input type="checkbox" data-preference="actorBold" ${preferences.actorBold?'checked':''}>${escape(t('actorBold'))}</label>${[['bodySize',10,40,1,'px'],['lineHeight',1,3,0.1,'×'],['titleSize',12,48,1,'px']].map(([key,min,max,step,unit])=>`<label class="preference-field">${escape(t(key))}<span class="preference-number"><input type="number" required data-preference="${key}" value="${preferences[key]}" min="${min}" max="${max}" step="${step}"><span>${unit}</span></span></label>`).join('')}<button data-pref-reset>${escape(t('resetPreferences'))}</button>`:`${authSettings()}`}<p class="preferences-error" role="status">${preferencesError?escape(t('preferencesSaveError')):''}</p></section></div><footer class="preferences-footer"><button data-pref-close>${escape(t('close'))}</button></footer>`;
+  dialog.innerHTML=`<div class="preferences-header"><h2 id="preferences-heading">${escape(t('preferences'))}</h2><button data-pref-close aria-label="${escape(t('close'))}">×</button></div><div class="preferences-layout"><nav class="preferences-tabs" role="tablist" aria-label="${escape(t('preferences'))}">${['languageSettings','appearance','ai'].map(key=>`<button id="pref-tab-${key}" role="tab" aria-selected="${preferencesTab===key}" aria-controls="preferences-content" data-pref-tab="${key}">${escape(t(key))}</button>`).join('')}</nav><section id="preferences-content" role="tabpanel" aria-labelledby="pref-tab-${preferencesTab}"><h3>${escape(t(preferencesTab))}</h3>${preferencesTab==='languageSettings'?`<label class="preference-field">${escape(t('languageSettings'))}<select data-preference="language">${Object.entries(languages).map(([key,label])=>`<option value="${key}" ${language===key?'selected':''}>${label}</option>`).join('')}</select></label>`:preferencesTab==='appearance'?`<p class="preferences-hint">${escape(t('preferencesHint'))}</p><label class="preference-field">${escape(t('writingMode'))}<select data-preference="writingMode">${['horizontal','vertical'].map(key=>`<option value="${key}" ${preferences.writingMode===key?'selected':''}>${escape(t(key))}</option>`).join('')}</select></label><label class="preference-field">${escape(t('bodyFont'))}<select data-preference="bodyFont">${['serif','sans','mono'].map(key=>`<option value="${key}" ${preferences.bodyFont===key?'selected':''}>${escape(t(key))}</option>`).join('')}</select></label><label class="preference-check"><input type="checkbox" data-preference="actorBold" ${preferences.actorBold?'checked':''}>${escape(t('actorBold'))}</label>${[['bodySize',10,40,1,'px'],['lineHeight',1,3,0.1,'×'],['blockSize',12,48,1,'px'],['sequenceSize',12,48,1,'px'],['titleSize',12,48,1,'px']].map(([key,min,max,step,unit])=>`<label class="preference-field">${escape(t(key))}<span class="preference-number"><input type="number" required data-preference="${key}" value="${preferences[key]}" min="${min}" max="${max}" step="${step}"><span>${unit}</span></span></label>`).join('')}<button data-pref-reset>${escape(t('resetPreferences'))}</button>`:`${authSettings()}`}<p class="preferences-error" role="status">${preferencesError?escape(t('preferencesSaveError')):''}</p></section></div><footer class="preferences-footer"><button data-pref-close>${escape(t('close'))}</button></footer>`;
   dialog.setAttribute('aria-labelledby','preferences-heading');
   dialog.querySelector('.chatgpt-auth')?.insertAdjacentHTML('beforeend',chatgpt.accounts.filter(a=>a.connected&&!a.planEnabled).map(a=>`<button data-auth="plan" data-account="${escape(a.id)}" ${!native||authBusy||chatgpt.pending?'disabled':''}>${escape(t('aiEnablePlan'))} · ${escape(a.email)}</button>`).join(''));
   dialog.querySelectorAll('[data-pref-close]').forEach(button=>button.onclick=()=>dialog.close());

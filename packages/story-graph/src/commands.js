@@ -62,3 +62,45 @@ export function applyStoryWorkspaceCommand(current, input) {
   const snapshot = encodeStoryWorkspaceSnapshot(workspace);
   return Object.freeze({ revision: current.revision + 1, ...snapshot });
 }
+
+const transactionSchema = z.object({
+  operationId: z.string().uuid(), command: commandSchema
+}).strict();
+
+function ordered(value) {
+  if (Array.isArray(value)) return value.map(ordered);
+  if (value && typeof value === "object") return Object.fromEntries(
+    Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, ordered(item)]));
+  return value;
+}
+
+/** Pure transaction reference. A native owner must atomically persist the returned
+ * state and receipt, and supply only its own previously persisted receipt.
+ * Replay never reapplies a command or rolls current state back to the receipt revision.
+ */
+export function applyStoryWorkspaceTransaction(current, input, receipt = null) {
+  let envelope;
+  try { envelope = JSON.stringify(input); } catch { fail("invalid_story_transaction"); }
+  if (typeof envelope !== "string") fail("invalid_story_transaction");
+  if (new TextEncoder().encode(envelope).byteLength > STORY_COMMAND_LIMITS.maxBytes) fail("story_command_too_large");
+  const parsed = transactionSchema.safeParse(input);
+  if (!parsed.success) fail("invalid_story_transaction");
+  const request = parsed.data;
+  const requestJson = JSON.stringify(ordered(request));
+  if (receipt) {
+    if (receipt.operationId !== request.operationId || receipt.requestJson !== requestJson) {
+      fail("story_operation_collision");
+    }
+    const workspace = encodeStoryWorkspaceSnapshot(current.workspace).workspace;
+    if (workspace.document.id !== request.command.documentId || workspace.graph.id !== request.command.graphId) {
+      fail("story_command_workspace_mismatch");
+    }
+    if (!Number.isSafeInteger(current.revision) || !Number.isSafeInteger(receipt.revision)
+      || receipt.revision !== request.command.expectedRevision + 1
+      || current.revision < receipt.revision) fail("invalid_story_transaction_receipt");
+    return Object.freeze({ state: current, receipt, replayed: true });
+  }
+  const state = applyStoryWorkspaceCommand(current, request.command);
+  return Object.freeze({ state, receipt: Object.freeze({ operationId: request.operationId,
+    requestJson, revision: state.revision }), replayed: false });
+}

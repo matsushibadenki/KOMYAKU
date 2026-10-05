@@ -140,7 +140,18 @@ impl Library {
             return Err("backup_title_invalid".into());
         }
         let path = backup_path(source, id)?;
-        let mut document = checked_snapshot(&path, registry)?;
+        let document = checked_snapshot(&path, registry)?;
+        self.restore_document(document, title, settings)
+    }
+    pub fn restore_document(
+        &self,
+        mut document: Document,
+        title: String,
+        settings: super::preferences::Preferences,
+    ) -> Result<PathBuf, String> {
+        if title.trim().is_empty() || title.chars().count() > 200 {
+            return Err("backup_title_invalid".into());
+        }
         document.title = title.trim().into();
         let parent = self.root.join("workspaces");
         std::fs::create_dir_all(&parent).map_err(|_| "backup_restore_failed")?;

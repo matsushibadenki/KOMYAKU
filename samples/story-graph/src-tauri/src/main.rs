@@ -1,6 +1,8 @@
 mod ai;
 mod chatgpt;
 mod domain;
+mod export;
+mod history;
 mod input;
 mod library;
 mod preferences;
@@ -1019,6 +1021,41 @@ async fn backup(
     .map_err(|_| "backup_restore_failed".to_owned())?
 }
 #[tauri::command]
+async fn export_manuscript(
+    window: tauri::WebviewWindow,
+    host: tauri::State<'_, Host>,
+    format: String,
+    language: String,
+) -> std::result::Result<Option<String>, String> {
+    allowed(&window)?;
+    let format = export::Format::parse(&format)?;
+    let host = host.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let document = {
+            let _lock = host.gate.lock().map_err(|_| "state_unavailable")?;
+            host.engine.snapshot().map_err(|e| e.code)?
+        };
+        let title = match language.as_str() {
+            "en" => "Export manuscript",
+            "zh-CN" => "导出作品",
+            _ => "作品を書き出す",
+        };
+        let Some(path) = rfd::FileDialog::new()
+            .set_title(title)
+            .set_file_name(export::filename(&document.title, format))
+            .add_filter(format.extension().to_uppercase(), &[format.extension()])
+            .save_file()
+        else {
+            return Ok(None);
+        };
+        let bytes = export::bytes(&document, format, &language)?;
+        export::write(&path, &bytes, format)?;
+        Ok(Some(path.to_string_lossy().into_owned()))
+    })
+    .await
+    .map_err(|_| "export_failed".to_owned())?
+}
+#[tauri::command]
 fn panel(
     window: tauri::WebviewWindow,
     host: tauri::State<Host>,
@@ -1285,6 +1322,10 @@ fn main() {
             open_workspace,
             saved_backups,
             restore_backup,
+            history::versions,
+            history::save_version,
+            history::version_detail,
+            history::restore_version,
             selected,
             choose,
             locale,
@@ -1292,6 +1333,7 @@ fn main() {
             import_portrait,
             reading,
             backup,
+            export_manuscript,
             panel,
             canvas,
             preferences::get_preferences,
