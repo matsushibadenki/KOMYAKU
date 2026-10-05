@@ -367,3 +367,53 @@ JS 12テスト、Rustアプリ34テスト、Clippy（warnings禁止）、macOS p
 - 表示修正: hostのSVGアイコン用18px規則によるグラフ圧縮を、実測SVG高さで修正。CSPが動的HTMLのstyle属性を拒否するため、色はlane CSSクラスへ変更。CSPを緩めず、最終WebKitスクリーンショットで青緑の線・headの丸・選択輪を確認。
 
 一時QAスクリプトは`/private/tmp/komyaku-history-qa.mjs`、画像は`/private/tmp/komyaku-history-{ja,en,zh-CN}.png`。永続化はローカル不変版、差分は変更項目の要約です。本文内diff、分岐・統合・履歴Archive・Gitリモートは今回の検証対象外。上限512版の性能計測とWindows/Linux実機検証は未実施です。使用者の通常作品・認証profileを変更していません。
+
+## 履歴の本文内差分 — 2026-10-05
+
+- `cargo test -p komyaku-story-graph --locked`: 48 pass / 0 fail / 2 ignored（従来PDF fixture）。差分テストで、空／一致／追加／削除、CRLF・結合文字・絵文字、日本語の複数変更、反復文字を含む短い入力7,225組の双方再構成、100万文字の範囲比較と4KiB未満の応答、長い周辺本文の省略数を確認。追加の単一巨大書記素テストでは10万結合文字を1書記素として丸ごと省略し、応答1KiB未満を確認。
+- `bun test test`: 22 pass、3言語の追加キー一致を含む。`cargo clippy -p komyaku-story-graph --locked -- -D warnings` と `bun run package` 成功。ビルド時にdistが置換されるためRustテストとは順番に実行。
+- Browserプラグイン不在のため既存Playwright/Chromiumを使用し、静的ビルドを`http://127.0.0.1:1449/`で配信。日本語／简体中文1100×820、英語760×820、`style-src 'self'`制約下でページ識別、非空、overlayなし、console/page errorなしを確認。
+- 一時QA `/private/tmp/komyaku-history-diff-qa.mjs`: 版作成→丸を開く→本文差分→追加／削除のDOM→書記素保持→HTML文字のescape→省略数→保存版へ比較先切替→指定compareIdで差分要求→復元の版ID維持→保存失敗／再試行。これはTauri bridge fixtureによるUI検証であり、実Rustの永続化とは分離。
+- 実Tauri/WebKitは `/private/tmp/komyaku-history-diff-native-20261005` の隔離作品。初稿を保存し、「差出人のない手紙」を「青い封筒」へ本文改稿。初稿→現在原稿で追加3／削除7の強調表示を確認。改稿を別の版として保存し、初稿の比較先を「青い封筒へ改稿」に切り替え、保存版同士でも同じ本文差分を確認。グラフの直下にある履歴アイコンから遷移。通常作品・認証profileは変更していません。
+
+単語や意味単位の差分ではなく書記素単位の比較です。大きな変更は範囲比較を明示し、省略本文の全文取得や全文転送を行いません。段落移動・セリフ構造差分、512版を使う性能計測、Windows/Linux実機QAは未実施。
+
+## 履歴ページ取得と512版メタデータ計測 — 2026-10-05
+
+- `cargo test -p komyaku-story-graph --locked`: 50 pass / 0 fail / 3 ignored。40件ページを通して512件のIDが重複・欠落しないこと、古い版を含む検索、取得headの固定、空検索結果を確認。追加のignored性能fixtureを明示実行し、履歴テスト5件成功。
+- debugビルド／macOS／ローカル一時ディレクトリに512個の有効なversion.jsonと親チェーンを生成。生成直後の最初の検証＋ページ化＋JSON応答化は13.75ms、応答10,765bytes。全metadata再検証を含む検索ページ20回の平均は12.79ms。OSキャッシュの冷却は行っていない。nodes=10,000/scenes=4,000はmetadata値であり、この計測ではsnapshot本文を生成・読込していない。大量本文の保存速度やディスク容量を測定した結果ではない。
+- `bun test test`: 22 pass / 490 assertions。clippy `-D warnings` とmacOS debug `.app` package成功。
+- Browser plugin not available。Playwright/Chromiumで静的ビルド `http://127.0.0.1:1449/`、ja/zh-CN 1100×820、en 760×820、CSP `style-src 'self'`を検証。512版bridge fixture→履歴→40件→次ページ→古い比較先追加→全履歴検索→検索結果の次ページ→該当なし→検索解除。常時最大40行、ページ識別・非空・overlayなし・console/page errorなし、ウインドウ全体の縦スクロールなし。画像 `/private/tmp/komyaku-history-page-{ja,en,zh-CN}.png`。
+- `/private/tmp/komyaku-history-page-regression.mjs`: 保存2版、丸の開閉、キーボード移動、debounce後検索、本文diff・HTML escape・Unicode保持、保存版同士比較、復元ID、保存失敗時の名前保持と再試行を3言語で再確認。
+
+本変更のUI検証はmock bridgeを使うChromium、永続化はRust実ファイルテスト。今回のページ操作そのもののTauri/WebKit実機QA、Windows/Linux、512版の全文snapshot保存は未実施。各ページ要求で全metadataを再検証し、版数上限512と全文snapshot方式を維持する。
+
+## 履歴の所属先と段落・セリフ構造差分 — 2026-10-05
+
+- Rust全体53 pass / 0 fail / 3 ignored。追加の所属先／順序投影テスト1件も成功（計54件）。構造比較は挿入による後続の位置ずれを移動扱いしないこと、残存IDの順序変更、削除、一致、役者名・台詞本文・列幅・段落本文の個別フラグを確認。20,000項目の追加は最大100件・省略19,900件、本文を含まないJSON応答32KiB未満。
+- JS22 pass / 490 assertions、3言語キー一致。clippy `-D warnings` とmacOS debug `.app` package成功。
+- Browser plugin not availableのためPlaywright/Chromium。静的ビルド http://127.0.0.1:1449/、日本語・简体中文1100×820、英語760×820、CSP style-src self。`/private/tmp/komyaku-history-structure-qa.mjs` はmock bridgeで所属先・順序→本文差分→保存版の比較先→構造差分→役者名／本文／列幅→省略数→開閉→復元版ID→保存失敗の入力保持→再保存を検証。文字中のHTMLをescapeし、ページ識別／非空／overlayなし／console・page errorなし。画像 `/private/tmp/komyaku-history-structure-{ja,en,zh-CN}.png`。
+- 実macOS/Tauri/WebKitは既存の隔離profile `/private/tmp/komyaku-history-diff-native-20261005` を使用。履歴の下部アイコンから保存済み2版を取得し、初稿→現在の原稿で「段落・セリフの変更」を開く。Rust RPC経由で「変更 段落 1 → 1 段落本文の変更」を実画面に表示。通常の使用者作品・認証profileは変更せず、原稿・版を追加保存せず終了。
+
+構造の移動は同じシーンのcanonical IDと残存項目の相対順位に基づく。シーンをまたぐ段落移動は追加／削除として表示。セリフ本文や役者名の全文は構造応答に含めず、別の本文差分から確認する。多数の移動を最小操作列へまとめる処理、Windows/Linux実機、実WebKitでのセリフ操作は追加QA。
+
+## 大規模保存・ストリーミングsnapshot — 2026-10-05
+
+`cargo test -p komyaku-story-graph --locked benchmark_large_snapshot_history -- --ignored --nocapture`を変更前と変更後に各1回実行。macOS、debug、ローカル一時ディレクトリ、同じ定義の初期作品へ1,000段落×1,000日本語文字を入れるfixture（別途段落区切りと初期の他シーンあり）。通常保存5回、タイトルを変えながら名前付き全文版30個、全30版のSHA-256検証・再読込・graph完全一致まで測定。fixture生成、正本clone、UI入力、レンダリングは保存計測区間に含めない。
+
+| 計測 | 従来 | 変更後 |
+| --- | ---: | ---: |
+| 通常保存5回平均 | 160.96ms | 160.73ms |
+| snapshotサイズ | 3,709,343bytes | 3,260,522bytes |
+| 30版保存合計 | 4.839s | 4.255s |
+| 版保存平均 | 161.30ms | 141.83ms |
+| 版保存p50 / p95 | 152.20 / 202.97ms | 139.04 / 170.27ms |
+| 全30版の検証再読込 | 1.738s | 1.599s |
+
+このfixtureの版保存平均とサイズは約12%減。通常保存速度はほぼ同じ。OSキャッシュの冷却・RSS計測・複数試行の統計は行っておらず、一般的な速度保証ではない。明示的な全文JSON Vecと履歴SHA用の全文再読込をコードから除いたが、正本／snapshot cloneや読込バッファは残る。二重保存抑制のアプリ全体の時間短縮はこの表に含めていない。
+
+- `cargo test -p komyaku-story-graph --locked`: 57 pass / 0 fail / 4 ignored。通常ignoredの大規模保存fixtureは別途成功。新しい3テストはUnicode（ZWJ絵文字・結合文字・CRLF）roundtrip、従来pretty形式の読込、書込Receiptと実ファイルSHAの一致、部分書込での正確なdigest、容量超過／publish失敗時の元ファイル保持と一時ファイルcleanupを検証。既存の履歴tamper検出と別作品復元も成功。
+- JS22 pass / 490 assertions、clippy `-D warnings`、macOS debug `.app` package成功。フロントエンドの画面・翻訳は変更なし。
+- 実Tauri/WebKitでは通常作品とは別のコピーprofile `/private/tmp/komyaku-save-stream-native-wifm1o92` を使用。日本語・ZWJ絵文字・改行・アクセント文字入り本文を編集し、保存済み表示→「保存方式確認」の版作成→再起動→本文と旧2版・新1版を再表示。新版は現在原稿と「変更なし」、旧初稿は本文変更を表示。独立したPython検証で新版snapshotと現在原稿のdocument一致、全3版のSHA-256とparentチェーン、旧snapshotのバイト不変、一時ファイル残留なしを確認。macOS貼付でアクセント文字はNFCのéとして入力され、結合文字を保持する保存単体テストとは分けて検証。
+
+通常使用者の原稿・履歴・認証profileには触れていない。Windows/Linux、グラフ操作イベントの二重保存回帰の実機計数、電源断のfault injectionは未実施。グラフ側のmain-thread保存と差分ジャーナルは次段階。

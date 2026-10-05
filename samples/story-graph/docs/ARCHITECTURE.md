@@ -136,6 +136,31 @@ Tauriの編集コマンドはblocking workerへ処理を移します。Rustの�
 
 `versions/<UUID>/workspace.story.json` と `version.json` を一時ディレクトリに書き、fsync後にディレクトリをrenameして公開します。未公開の`.`ディレクトリは一覧に含めません。metadataにはsequence、親版ID、理由、日時、タイトル、シーン数、ノード数、snapshotのSHA-256があります。親IDで因果順序を検証し、時刻で並べ替えません。読むときはハッシュ検証した同じbytesをdeserializeし、workspace形式、Document、domainを検証します。最大512版、snapshot128MiB。履歴一覧は本文を読みません。
 
-復元は元の版と作業原稿を残し、`Library::restore_document`で独立した作品を作り、新しいRustホストを起動します。元版への参照は`restored-version.json`へ記録し、異なる作品間の親edgeは作りません。現行の復元は「別作品として開く」であり、同一作品headの巻戻しではありません。本文内diff、branch/merge、リモートGit、History Archiveは未接続です。比較は現在原稿に対する追加・変更・削除の項目名と、作品名・接続・グループ・位置変更の要約です。
+復元は元の版と作業原稿を残し、`Library::restore_document`で独立した作品を作り、新しいRustホストを起動します。元版への参照は`restored-version.json`へ記録し、異なる作品間の親edgeは作りません。現行の復元は「別作品として開く」であり、同一作品headの巻戻しではありません。branch/merge、リモートGit、History Archiveは未接続です。項目比較は現在原稿または指定した保存版に対する追加・変更・削除の項目名と、作品名・接続・グループ・位置変更の要約です。
 
 UIは指定URLのGit client CSS/JSを`src/vendor/parts`へ取り込み、Compactの3rem行高・5.75remグラフ幅を保持します。親edge描画、検索、キーボード移動を再利用し、丸のhit targetは28pxのsemantic button、詳細はinline regionと`aria-expanded`で制御します。SVG高さは実測値を明示し、WebKit未対応の`light-dark()`には実色を設定します。動的HTMLのstyle属性はCSPで拒否されるため、laneの色はCSSクラスで適用し、`style-src`ポリシーを維持します。`mountHistory`のteardownでObserverを停止し、古い非同期取得を破棄します。ソースと変更点はvendor READMEへ記録しています。
+
+
+## 履歴の本文内差分 — 2026-10-05
+
+`version_detail` は任意の `compareId` を受け取り、未指定なら現在原稿、指定時はハッシュ検証した不変版を比較先にします。保存版同士の比較では作業原稿のsnapshotを複製しません。変更項目は `textAvailable` を持ち、シーンに限り本文差分を開けます。
+
+`version_text_diff` は安定したシーンIDから双方のCanonical本文をRustで取得します。現在原稿の比較では一覧取得時の期待revisionを検査し、変更後の本文を古い比較結果へ混ぜません。本文取得後は編集gateを解放してCPU計算します。Document・Canonicalの全文はWebViewへ送らず、表示用segmentと書記素数だけを返します。シーン追加／削除では存在しない側を空文字として扱います。
+
+`history_diff.rs` はextended grapheme（CRLF・絵文字・結合文字を含む）で分割し、共通の先頭／末尾を除いた領域だけLCS比較します。DP表は65,536セル以下、変更領域合計1,024書記素以下。それを超えると削除／追加の範囲比較へ切り替え、粗い比較であることをUIへ明示します。周辺の共通本文は各96書記素、長い変更segmentは最大先頭160＋末尾160書記素に限定し、省略数を表示します。さらに各segmentの本文を2KiB、応答全体の本文を16KiB以下に制限し、大量の結合文字で1書記素だけが巨大になる場合も、その書記素全体を省略します。元のUnicodeや改行は正規化しません。100万文字同士の置換は2segment、JSON4KiB未満ですが、Rustの書記素走査・配列・snapshot読込は本文長に比例します。
+
+UIは比較先selectorとシーンごとの「本文の差分」を持ち、追加は緑、削除は赤＋取消線で区別します。遅れて返る旧比較結果はgenerationとDOM接続状態で破棄します。メモや見出しだけの変更では本文一致を案内します。現行はセリフの役者名を含む平文比較であり、段落の移動やセリフの構造変更を独立した操作として表示するものではありません。
+
+### 履歴のページ取得
+
+`version_page(query, offset, head)` はRustで検証した全metadataを検索し、最大40件とtotal/offset/headを返す。headは最初の取得時のsequenceで、同じ検索の前後移動では固定する。更新・検索変更時はheadを取得し直す。snapshot本文は一覧で読み込まない。主一覧DOMは40行に制限し、180msの検索debounceと要求世代番号で古い応答を除外する。比較先の候補は独立した空検索ページを必要時に追加読み込みする。従来versions commandは互換のため残す。各取得で最大512件のmetadataを再検証し、外部変更や不正な親チェーンを隠すキャッシュは導入しない。保存の容量・版数上限は変更しない。
+
+### 履歴の構造差分
+
+version_detailの変更項目には、アウトラインのparent／outlineOrder変更をlocationで投影する。親タイトルは最大120文字、順序は保存値。version_structure_diff(id,nodeId,compareId,expectedRevision)は本文diffと同様に検証済みsnapshotと現在原稿／保存版を比較し、現在原稿の場合はrevision一致を必須とする。Rustゲート下で対象シーンのcanonicalだけを確保し、比較はゲート外で行う。段落・セリフのcanonical IDを基準に追加・削除を検出し、残存ID間の相対順位で移動を判定する。役者名、セリフ本文、手動列幅、段落本文の変更フラグを分離。応答には本文を含めず、最大100変更と全件数・省略数を返す。シーン間で移した段落の同一性照合は未対応（各シーンでは追加／削除）。
+
+### ストリーミングsnapshot保存
+
+persistence::saveはDocumentの検証後、保存先と同じフォルダのprivateな一時ファイルへcompact JSONを64KiB BufWriter経由で書く。内側のDigestWriterは実際に書けたバイトだけをSHA-256に追加し、128MiBを超える書込を拒否。flush・file fsync・atomic persist・parent directory fsyncの順で公開し、bytes/hashのReceiptを返す。通常保存と版保存で共用し、履歴metadataにはReceiptのhashを使うため全文ファイルの再読込は不要。serde_jsonの読込契約は変更せず、旧pretty JSONのsnapshot／履歴も読める。エラー時は未公開tempfileのDropでcleanupする（rename後のdirectory fsyncエラーは旧方式と同様、公開済みファイルが残る場合がある）。
+
+執筆edit workerは保存成功時にunge://changedへstorySaved=trueを付ける。受信側は描画だけ更新し、保存とstory://changedの二重発行を省く。グラフ側のイベントにはマーカーがなく、従来通り保存する。保存失敗イベントにはfalseを付けるため、既存の再保存経路を維持。UI投影の作品名は取得済みsnapshotから取り、追加の全文cloneを行わない。グラフイベントの保存は現段階ではmain threadに残る。Documentのclone、正本データ、読込バッファ、全文保存方式自体は残っており、ジャーナル方式の実装とは区別する。

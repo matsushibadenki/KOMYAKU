@@ -3,8 +3,11 @@ mod chatgpt;
 mod domain;
 mod export;
 mod history;
+mod history_diff;
+mod history_structure;
 mod input;
 mod library;
+mod persistence;
 mod preferences;
 const ICON_RAIL_WIDTH: f64 = 48.0;
 use serde::{Deserialize, Serialize};
@@ -32,33 +35,9 @@ struct SavedWorkspace {
     document: Document,
 }
 fn save(path: &std::path::Path, document: &Document) -> std::result::Result<(), String> {
-    use std::io::Write;
-    document.validate().map_err(|e| e.to_string())?;
-    #[derive(Serialize)]
-    struct Snapshot<'a> {
-        format: &'static str,
-        version: u32,
-        document: &'a Document,
-    }
-    let bytes = serde_json::to_vec_pretty(&Snapshot {
-        format: "komyaku-story-workspace",
-        version: 1,
-        document,
-    })
-    .map_err(|e| e.to_string())?;
-    let temporary = path.with_extension("pending");
-    let mut file = std::fs::File::create(&temporary).map_err(|e| e.to_string())?;
-    file.write_all(&bytes)
-        .and_then(|_| file.sync_all())
-        .map_err(|e| e.to_string())?;
-    std::fs::rename(&temporary, path).map_err(|e| e.to_string())?;
-    if let Some(parent) = path.parent() {
-        std::fs::File::open(parent)
-            .and_then(|f| f.sync_all())
-            .map_err(|e| e.to_string())?;
-    }
-    Ok(())
+    persistence::save(path, document).map(|_| ())
 }
+
 fn load(path: &std::path::Path) -> std::result::Result<Document, String> {
     if std::fs::metadata(path).map_err(|e| e.to_string())?.len() > 128 * 1024 * 1024 {
         return Err("limit_exceeded".into());
@@ -176,7 +155,7 @@ fn projection(engine: &Engine) -> std::result::Result<Value, String> {
         .next()
         .copied();
     Ok(
-        json!({"projectTitle":engine.snapshot().map_err(|e|e.code)?.title,"revision":summary.revision,"selected":selected,"nodes":nodes,"edges":edges,"untitled":std::env::var_os("STORY_GRAPH_NEW_WORKSPACE").is_some_and(|value|value=="1")}),
+        json!({"projectTitle":document.title,"revision":summary.revision,"selected":selected,"nodes":nodes,"edges":edges,"untitled":std::env::var_os("STORY_GRAPH_NEW_WORKSPACE").is_some_and(|value|value=="1")}),
     )
 }
 #[tauri::command]
@@ -983,7 +962,7 @@ fn edit_blocking(
         .map_err(|_| "event_error")?;
     window
         .app_handle()
-        .emit("unge://changed", json!({}))
+        .emit("unge://changed", json!({"storySaved":saved.is_ok()}))
         .map_err(|_| "event_error")?;
     if saved.is_err() {
         return Err("save_failed".into());
@@ -1323,8 +1302,11 @@ fn main() {
             saved_backups,
             restore_backup,
             history::versions,
+            history::version_page,
             history::save_version,
             history::version_detail,
+            history::version_text_diff,
+            history::version_structure_diff,
             history::restore_version,
             selected,
             choose,
@@ -1452,10 +1434,18 @@ fn main() {
                 gate: Arc::new(Mutex::new(())),
             });
             let handle = app.handle().clone();
-            app.listen("unge://changed", move |_| {
+            app.listen("unge://changed", move |event| {
+                // Story edits already saved and emitted their projection on the worker.
+                // Native graph edits lack this marker and still need persistence below.
+                let already_saved = serde_json::from_str::<Value>(event.payload())
+                    .ok()
+                    .is_some_and(|value| value["storySaved"] == true);
                 let main = handle.clone();
                 let _ = handle.run_on_main_thread(move || {
                     redraw(&main);
+                    if already_saved {
+                        return;
+                    }
                     let host = main.state::<Host>();
                     if let Ok(_guard) = host.gate.lock()
                         && let Ok(doc) = host.engine.snapshot()

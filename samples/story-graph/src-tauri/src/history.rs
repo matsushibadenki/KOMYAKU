@@ -128,14 +128,8 @@ fn record(
     std::fs::create_dir(&temporary).map_err(|_| "history_failed")?;
     let result = (|| {
         let path = temporary.join("workspace.story.json");
-        super::save(&path, document)?;
-        if std::fs::metadata(&path)
-            .map_err(|_| "history_failed")?
-            .len()
-            > 128 * 1024 * 1024
-        {
-            return Err("limit_exceeded".into());
-        }
+        let receipt = persistence::save(&path, document)?;
+        debug_assert!(receipt.bytes <= 128 * 1024 * 1024);
         let version = Version {
             id: id.clone(),
             message,
@@ -156,7 +150,7 @@ fn record(
                 .values()
                 .filter(|n| n.type_id == domain::SCENE)
                 .count(),
-            hash: hash(&std::fs::read(path).map_err(|_| "history_failed")?),
+            hash: receipt.hash,
         };
         let mut file =
             std::fs::File::create(temporary.join("version.json")).map_err(|_| "history_failed")?;
@@ -177,6 +171,50 @@ fn record(
     }
     result
 }
+#[tauri::command]
+pub async fn version_page(
+    window: tauri::WebviewWindow,
+    host: tauri::State<'_, Host>,
+    query: String,
+    offset: usize,
+    head: Option<u64>,
+) -> std::result::Result<serde_json::Value, String> {
+    allowed(&window)?;
+    if query.chars().count() > 200 || offset > 512 {
+        return Err("history_failed".into());
+    }
+    let host = host.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _gate = host.gate.lock().map_err(|_| "state_unavailable")?;
+        Ok(page(entries(&root(&host))?, &query, offset, head))
+    })
+    .await
+    .map_err(|_| "history_failed".to_owned())?
+}
+
+fn page(
+    versions: Vec<Version>,
+    query: &str,
+    offset: usize,
+    head: Option<u64>,
+) -> serde_json::Value {
+    let head = head.unwrap_or_else(|| versions.first().map_or(0, |v| v.sequence));
+    let query = query.trim().to_lowercase();
+    let matches: Vec<_> = versions
+        .into_iter()
+        .filter(|v| {
+            v.sequence <= head
+                && (query.is_empty()
+                    || [&v.id, &v.message, &v.title]
+                        .iter()
+                        .any(|s| s.to_lowercase().contains(&query)))
+        })
+        .collect();
+    let total = matches.len();
+    let items: Vec<_> = matches.into_iter().skip(offset).take(40).collect();
+    serde_json::json!({"items":items,"total":total,"head":head,"offset":offset})
+}
+
 #[tauri::command]
 pub async fn versions(
     window: tauri::WebviewWindow,
@@ -216,6 +254,7 @@ pub async fn version_detail(
     window: tauri::WebviewWindow,
     host: tauri::State<'_, Host>,
     id: String,
+    compare_id: Option<String>,
 ) -> std::result::Result<Value, String> {
     allowed(&window)?;
     let host = host.inner().clone();
@@ -223,23 +262,160 @@ pub async fn version_detail(
         let _gate=host.gate.lock().map_err(|_| "state_unavailable")?;
         let doc = snapshot(&root(&host), &id)?;
         domain::Validator(host.registry.clone()).validate(&doc).map_err(|_| "version_invalid")?;
-        let (current, summary) = host.engine.snapshot_with_summary().map_err(|e| e.code)?;
+        let (current, revision) = if let Some(id)=compare_id {(snapshot(&root(&host),&id)?,0)}else{let (document,summary)=host.engine.snapshot_with_summary().map_err(|e|e.code)?;(document,summary.revision)};
+        domain::Validator(host.registry.clone()).validate(&current).map_err(|_| "version_invalid")?;
         let mut changes = vec![];
         for (id,node) in current.graph().nodes() {
             let old = doc.graph().nodes().get(id);
             if old != Some(node) {
-                changes.push(json!({"id":id,"title":node.properties.get("title"),"kind":if old.is_some(){"changed"}else{"added"}}));
+                changes.push(json!({"id":id,"title":node.properties.get("title"),"kind":if old.is_some(){"changed"}else{"added"},"textAvailable":node.type_id==domain::SCENE,"structureAvailable":node.type_id==domain::SCENE,"location":location_change(&doc,&current,*id)}));
             }
         }
         for (id,node) in doc.graph().nodes() {
-            if !current.graph().nodes().contains_key(id) { changes.push(json!({"id":id,"title":node.properties.get("title"),"kind":"deleted"})); }
+            if !current.graph().nodes().contains_key(id) { changes.push(json!({"id":id,"title":node.properties.get("title"),"kind":"deleted","textAvailable":node.type_id==domain::SCENE,"structureAvailable":node.type_id==domain::SCENE})); }
         }
-        let before = serde_json::to_value(&doc).map_err(|_| "history_failed")?;
-        let after = serde_json::to_value(&current).map_err(|_| "history_failed")?;
         let structure_changed = doc.graph().edges()!=current.graph().edges()
-            || doc.graph().groups()!=current.graph().groups() || before["placement"]!=after["placement"];
-        Ok(json!({"changes":changes,"titleChanged":doc.title!=current.title,"structureChanged":structure_changed,"revision":summary.revision}))
+            || doc.graph().groups()!=current.graph().groups() || doc.placement()!=current.placement();
+        Ok(json!({"changes":changes,"titleChanged":doc.title!=current.title,"structureChanged":structure_changed,"revision":revision}))
     }).await.map_err(|_| "history_failed".to_owned())?
+}
+fn location_change(before: &Document, after: &Document, id: Id) -> Value {
+    let (Some(old), Some(new)) = (
+        before.graph().nodes().get(&id),
+        after.graph().nodes().get(&id),
+    ) else {
+        return Value::Null;
+    };
+    if ![domain::BLOCK, domain::SEQUENCE, domain::SCENE].contains(&new.type_id.as_str()) {
+        return Value::Null;
+    }
+    let parent_changed = old.properties.get("parent") != new.properties.get("parent");
+    let order_changed = old.properties.get("outlineOrder") != new.properties.get("outlineOrder");
+    if !parent_changed && !order_changed {
+        return Value::Null;
+    }
+    fn parent_title(doc: &Document, node: &Node) -> String {
+        node.properties
+            .get("parent")
+            .and_then(Value::as_str)
+            .and_then(|s| Id::parse_str(s).ok())
+            .and_then(|id| doc.graph().nodes().get(&id))
+            .and_then(|n| n.properties.get("title"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .chars()
+            .take(120)
+            .collect()
+    }
+    json!({"parentChanged":parent_changed,"orderChanged":order_changed,"beforeParent":parent_title(before,old),"afterParent":parent_title(after,new),"beforeOrder":old.properties.get("outlineOrder"),"afterOrder":new.properties.get("outlineOrder")})
+}
+#[tauri::command]
+pub async fn version_structure_diff(
+    window: tauri::WebviewWindow,
+    host: tauri::State<'_, Host>,
+    id: String,
+    node_id: String,
+    compare_id: Option<String>,
+    expected_revision: u64,
+) -> std::result::Result<history_structure::Diff, String> {
+    allowed(&window)?;
+    let host = host.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let (before, after) = {
+            let _gate = host.gate.lock().map_err(|_| "state_unavailable")?;
+            let before = snapshot(&root(&host), &id)?;
+            let after = if let Some(id) = compare_id {
+                snapshot(&root(&host), &id)?
+            } else {
+                let (doc, summary) = host.engine.snapshot_with_summary().map_err(|e| e.code)?;
+                if summary.revision != expected_revision {
+                    return Err("revision_conflict".into());
+                }
+                doc
+            };
+            domain::Validator(host.registry.clone())
+                .validate(&before)
+                .map_err(|_| "version_invalid")?;
+            domain::Validator(host.registry.clone())
+                .validate(&after)
+                .map_err(|_| "version_invalid")?;
+            let node_id = Id::parse_str(&node_id).map_err(|_| "version_invalid")?;
+            fn canonical(doc: &Document, id: Id) -> std::result::Result<Option<Value>, String> {
+                let Some(node) = doc.graph().nodes().get(&id) else {
+                    return Ok(None);
+                };
+                if node.type_id != domain::SCENE {
+                    return Err("version_invalid".into());
+                }
+                Ok(Some(
+                    node.properties
+                        .get("canonical")
+                        .ok_or("version_invalid")?
+                        .clone(),
+                ))
+            }
+            let pair = (canonical(&before, node_id)?, canonical(&after, node_id)?);
+            if pair.0.is_none() && pair.1.is_none() {
+                return Err("version_invalid".into());
+            }
+            pair
+        };
+        Ok(history_structure::compare(before.as_ref(), after.as_ref()))
+    })
+    .await
+    .map_err(|_| "history_failed".to_owned())?
+}
+fn scene_text(document: &Document, id: Id) -> std::result::Result<String, String> {
+    let Some(node) = document.graph().nodes().get(&id) else {
+        return Ok(String::new());
+    };
+    if node.type_id != domain::SCENE {
+        return Err("version_invalid".into());
+    }
+    domain::text(node.properties.get("canonical").ok_or("invalid_document")?)
+}
+#[tauri::command]
+pub async fn version_text_diff(
+    window: tauri::WebviewWindow,
+    host: tauri::State<'_, Host>,
+    id: String,
+    node_id: String,
+    compare_id: Option<String>,
+    expected_revision: u64,
+) -> std::result::Result<history_diff::Diff, String> {
+    allowed(&window)?;
+    let host = host.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let (before, after) = {
+            let _gate = host.gate.lock().map_err(|_| "state_unavailable")?;
+            let before = snapshot(&root(&host), &id)?;
+            let after = if let Some(id) = compare_id {
+                snapshot(&root(&host), &id)?
+            } else {
+                let (draft, summary) = host.engine.snapshot_with_summary().map_err(|e| e.code)?;
+                if summary.revision != expected_revision {
+                    return Err("revision_conflict".into());
+                }
+                draft
+            };
+            domain::Validator(host.registry.clone())
+                .validate(&before)
+                .map_err(|_| "version_invalid")?;
+            domain::Validator(host.registry.clone())
+                .validate(&after)
+                .map_err(|_| "version_invalid")?;
+            let id = Id::parse_str(&node_id).map_err(|_| "version_invalid")?;
+            if !before.graph().nodes().contains_key(&id) && !after.graph().nodes().contains_key(&id)
+            {
+                return Err("version_invalid".into());
+            }
+            (scene_text(&before, id)?, scene_text(&after, id)?)
+        };
+        // Comparison is CPU-only after capture; release the editing gate first.
+        Ok(history_diff::compare(&before, &after))
+    })
+    .await
+    .map_err(|_| "history_failed".to_owned())?
 }
 #[tauri::command]
 pub async fn restore_version(
@@ -280,6 +456,190 @@ pub async fn restore_version(
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    #[ignore = "manual million-character snapshot and history benchmark"]
+    fn benchmark_large_snapshot_history() {
+        let registry = domain::registry();
+        let initial = domain::initial_document(&registry);
+        let scene = initial
+            .graph()
+            .nodes()
+            .values()
+            .find(|n| n.type_id == domain::SCENE)
+            .unwrap();
+        let mut canonical = scene.properties["canonical"].clone();
+        let template = canonical["content"][0].clone();
+        canonical["content"] = json!((0..1000).map(|_| {
+            let mut p = template.clone();
+            p["id"] = json!(Id::new_v4());
+            p["content"] = json!([{"type":"text","text":"雨".repeat(1000),"marks":[],"metadata":{},"extensions":{}}]); p
+        }).collect::<Vec<_>>());
+        let mut editor = Editor::new(initial.clone(), 10).unwrap();
+        editor
+            .execute(Command::SetProperty {
+                id: scene.id,
+                key: "canonical".into(),
+                value: Some(canonical),
+            })
+            .unwrap();
+        let mut document = editor.document().clone();
+        domain::Validator(registry).validate(&document).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let start = std::time::Instant::now();
+        for _ in 0..5 {
+            super::super::save(&dir.path().join("workspace.story.json"), &document).unwrap();
+        }
+        eprintln!(
+            "million-character save average {:?}, bytes {}",
+            start.elapsed() / 5,
+            std::fs::metadata(dir.path().join("workspace.story.json"))
+                .unwrap()
+                .len()
+        );
+        let mut times = vec![];
+        let mut ids = vec![];
+        for i in 0..30 {
+            document.title = format!("Million-character version {i}");
+            let start = std::time::Instant::now();
+            ids.push(
+                record(
+                    &dir.path().join("versions"),
+                    &document,
+                    format!("Revision {i}"),
+                )
+                .unwrap()
+                .id,
+            );
+            times.push(start.elapsed());
+        }
+        let total: std::time::Duration = times.iter().sum();
+        times.sort();
+        eprintln!(
+            "30 full versions: total {:?}, average {:?}, p50 {:?}, p95 {:?}",
+            total,
+            total / 30,
+            times[14],
+            times[28]
+        );
+        let start = std::time::Instant::now();
+        for id in &ids {
+            let loaded = snapshot(&dir.path().join("versions"), id).unwrap();
+            assert_eq!(loaded.graph(), document.graph());
+        }
+        eprintln!("30 verified reloads: {:?}", start.elapsed());
+    }
+    #[test]
+    fn scene_location_changes_are_distinct_from_text_edits() {
+        let registry = domain::registry();
+        let before = domain::initial_document(&registry);
+        let id = before
+            .graph()
+            .nodes()
+            .values()
+            .find(|n| n.type_id == domain::SCENE)
+            .unwrap()
+            .id;
+        assert!(location_change(&before, &before, id).is_null());
+        let mut editor = Editor::new(before.clone(), 10).unwrap();
+        editor
+            .execute(Command::SetProperty {
+                id,
+                key: "outlineOrder".into(),
+                value: Some(json!(99)),
+            })
+            .unwrap();
+        let location = location_change(&before, editor.document(), id);
+        assert_eq!(location["orderChanged"], true);
+        assert_eq!(location["parentChanged"], false);
+        editor
+            .execute(Command::SetProperty {
+                id,
+                key: "parent".into(),
+                value: None,
+            })
+            .unwrap();
+        let location = location_change(&before, editor.document(), id);
+        assert_eq!(location["parentChanged"], true);
+        assert_eq!(location["afterParent"], "");
+        assert!(!location["beforeParent"].as_str().unwrap().is_empty());
+    }
+    #[test]
+    fn paged_search_is_complete_and_stable() {
+        let versions: Vec<_> = (1..=512)
+            .rev()
+            .map(|sequence| Version {
+                id: Id::new_v4().to_string(),
+                message: format!("版{sequence}"),
+                date: 0,
+                sequence,
+                parents: vec![],
+                title: "作品".into(),
+                nodes: 10,
+                scenes: 4,
+                hash: String::new(),
+            })
+            .collect();
+        let first = page(versions.clone(), "", 0, None);
+        assert_eq!(first["items"].as_array().unwrap().len(), 40);
+        let mut ids = std::collections::HashSet::new();
+        for offset in (0..512).step_by(40) {
+            let result = page(versions.clone(), "", offset, Some(512));
+            for item in result["items"].as_array().unwrap() {
+                assert!(ids.insert(item["id"].as_str().unwrap().to_owned()));
+            }
+        }
+        assert_eq!(ids.len(), 512);
+        let result = page(versions.clone(), "版1", 0, None);
+        assert!(result["total"].as_u64().unwrap() > 40);
+        assert_eq!(page(versions.clone(), "missing", 0, None)["total"], 0);
+        assert_eq!(page(versions, "", 0, Some(40))["items"][0]["sequence"], 40);
+    }
+
+    #[test]
+    #[ignore = "manual filesystem performance measurement"]
+    fn benchmark_history_metadata_pages() {
+        let root = std::env::temp_dir().join(format!("komyaku-history-bench-{}", Id::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let mut parent = vec![];
+        for sequence in 1..=512 {
+            let id = Id::new_v4().to_string();
+            let dir = root.join(&id);
+            std::fs::create_dir(&dir).unwrap();
+            let version = Version {
+                id: id.clone(),
+                message: format!("版{sequence}"),
+                date: 0,
+                sequence,
+                parents: parent,
+                title: "大規模作品".into(),
+                nodes: 10000,
+                scenes: 4000,
+                hash: "0".repeat(64),
+            };
+            std::fs::write(
+                dir.join("version.json"),
+                serde_json::to_vec(&version).unwrap(),
+            )
+            .unwrap();
+            parent = vec![id];
+        }
+        let start = std::time::Instant::now();
+        let first = page(entries(&root).unwrap(), "", 0, None);
+        eprintln!(
+            "512 metadata first page: {:?}, response {} bytes",
+            start.elapsed(),
+            serde_json::to_vec(&first).unwrap().len()
+        );
+        let start = std::time::Instant::now();
+        for _ in 0..20 {
+            let _ = page(entries(&root).unwrap(), "版1", 40, Some(512));
+        }
+        eprintln!(
+            "512 metadata search page average: {:?}",
+            start.elapsed() / 20
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
     use super::*;
     #[test]
     fn versions_survive_restart_and_tampering_is_rejected() {

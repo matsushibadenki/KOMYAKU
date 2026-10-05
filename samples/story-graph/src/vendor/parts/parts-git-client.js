@@ -108,6 +108,7 @@
       this.syncButton?.removeEventListener("click",this.onSync);
     }
     onSearch() {
+      if(this.options.search){this.options.search();return;}
       const query = this.search.value.trim().toLocaleLowerCase();
       this.filtered = query ? this.data.filter((commit) => [commit.id, commit.message, commit.author, ...(commit.refs || []).map((ref) => ref.name)].join(" ").toLocaleLowerCase().includes(query)) : this.data;
       if (!this.filtered.some((commit) => commit.id === this.selectedId)) this.selectedId = this.filtered[0]?.id;
