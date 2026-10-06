@@ -488,3 +488,23 @@ Journalに現在バイト列のdigestを保持。新規テストは初期checkpo
 既存benchmark_cached_savesを同条件で再実行し成功。100万字、タイトル変更10回、debug・ローカル実ファイル、中央値snapshot76.965ms／uncached86.075ms／cached66.086ms。差分10件2,215bytes、cached Vec.capacity 3,013,830bytes。単一試行・固定順序で、前回試行との差を単独要因の効果とは断定しない。RSS／release／実電源断は未測定。全文シリアライズとafter hash、snapshotコピーは依然残る。UI変更なし。
 
 最終変更のRust全体74 pass / 0 fail / 5 ignored、clippy -D warnings、macOS debug .app package、git diff --check成功。今回のdigest再利用後のネイティブ操作QAは再実施していない。
+
+
+## 段落／セリフセル編集の部分JSON変換 — 2026-10-06
+
+新規テストはUnicode・ZWJ・結合文字・改行を含む段落変更、candidateと正本の一致、重複patch拒否、別の作品タイトル変更検出、stale patchの全文fallback、保存後再読込一致を確認。初期checkpoint・既存形式・失敗後・graph保存は従来経路を維持。
+
+手動benchmark_paragraph_saves成功。1,000段落×1,000日本語文字のシーンで50番目の段落を10回変更。両経路は同じ初期fixture、Store、実ファイル。変更候補の構築・load検証は計測外。patched候補を採用できることも各回assert。中央値full_serializer74.683ms／paragraph_serializer43.205ms。debug・固定順序・単一試行、速度保証ではない。全文parse／比較・after SHA・snapshot cloneは残る。RSS・release・電源断、今回の部分serializerの実Tauri/WebKit操作は未確認。UI変更なし。
+
+最終変更のRust全体75 pass / 0 fail / 6 ignored、clippy -D warnings、macOS debug .app package、git diff --check成功。手動段落ベンチマークは別途成功。
+
+
+## 部分serializerの段落・セリフ編集ネイティブ回帰 — 2026-10-06
+
+専用bundle ID dev.komyaku.storygraph.paragraphqa、隔離コピーprofile /private/tmp/komyaku-paragraph-native-aywp4fj8。通常使用者の原稿・認証には触れず、現行debugビルドを別bundleへコピーしてCUAで検証した。
+
+本文の第1段落へ「段落保存実機確認。」を追加→「セリフ」から2列シートを挿入→役者名「高橋」→セリフ「雨の駅で待っています。」→保存済み表示→⌘Q→プロセス終了コード0→同じprofileで再起動。第1段落の追加文、役者名、セリフ、元の第2段落をAXと実画面で確認した。
+
+独立Python読み込みでcheckpointのSHAを世代識別に用い、全7差分レコード（元コピーの3件＋今回4件、計7,506bytes）のbefore/after SHA-256を逐次検証して復旧。追加文・役者名・セリフを確認し、checkpointバイト列はコピー元と同一。最終の検証用アプリも正常終了コード0。
+
+新しい実装変更なし。前工程のRust75 pass／6 ignored、clippy、package成功に加えた実操作QA。ウインドウ／原稿の読み込みと保存結果の検証であり、実UI操作中の部分serializer採用回数は計数していない。単体テストと手動benchmarkで採用可能な候補を直接検証している。今回のQAは横書き、日本語、macOS。縦書き・他OS・IME変換・保存失敗の実機再試験と電源断は未実施。

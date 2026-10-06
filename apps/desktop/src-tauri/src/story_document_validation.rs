@@ -1,5 +1,5 @@
 //! Strict normalized Canonical subset with prose, code, block math and files.
-//! Other rich blocks/marks/artifacts/provenance fail closed until implemented.
+//! Artifacts/provenance and non-PNG image formats remain unsupported.
 use serde_json::Value;
 use std::collections::BTreeSet;
 fn fields(value: &Value, names: &[&str]) -> Result<(), String> {
@@ -159,6 +159,7 @@ pub(crate) fn validate_document_subset(document: &Value) -> Result<BTreeSet<Stri
             "file",
             "horizontal_rule",
             "image",
+            "diagram",
         ]
         .contains(&kind)
         {
@@ -225,22 +226,81 @@ pub(crate) fn validate_document_subset(document: &Value) -> Result<BTreeSet<Stri
             if node_count > 100_000 || depth >= 64 {
                 return Err("story_document_limit_exceeded".into());
             }
-            if inline["type"] == "hard_break" {
-                fields(inline, &["type"])?;
-                continue;
-            }
-            if inline["type"] != "text" {
-                return Err("unsupported_story_document_node".into());
-            }
-            fields(inline, &["type", "text", "marks", "metadata", "extensions"])?;
-            if !inline["text"].is_string() || inline["marks"] != serde_json::json!([]) {
-                return Err("unsupported_story_document_node".into());
-            }
-            metadata(&inline["metadata"], false)?;
-            metadata(&inline["extensions"], true)?;
+            validate_inline(inline, &mut ids, document["id"].as_str().unwrap())?;
         }
     }
     Ok(ids)
+}
+
+fn validate_inline(
+    inline: &Value,
+    ids: &mut BTreeSet<String>,
+    document_id: &str,
+) -> Result<(), String> {
+    match inline["type"].as_str() {
+        Some("hard_break") => fields(inline, &["type"]),
+        Some("math_inline") => validate_source_block(inline, ids, document_id),
+        Some("text") => {
+            fields(inline, &["type", "text", "marks", "metadata", "extensions"])?;
+            if !inline["text"].is_string() {
+                return Err("invalid_story_document".into());
+            }
+            validate_marks(&inline["marks"])?;
+            metadata(&inline["metadata"], false)?;
+            metadata(&inline["extensions"], true)
+        }
+        _ => Err("unsupported_story_document_node".into()),
+    }
+}
+
+fn safe_link(href: &str) -> bool {
+    if href.starts_with('#') || href.starts_with("./") || href.starts_with("../") {
+        return true;
+    }
+    if href.starts_with('/') && !href.starts_with("//") && !href.starts_with("/\\") {
+        return true;
+    }
+    tauri::Url::parse(href).is_ok_and(|url| ["http", "https", "mailto"].contains(&url.scheme()))
+}
+fn validate_marks(value: &Value) -> Result<(), String> {
+    let marks = value.as_array().ok_or("invalid_story_document")?;
+    if marks.len() > 20 {
+        return Err("invalid_story_document".into());
+    }
+    let mut keys = BTreeSet::new();
+    for mark in marks {
+        let kind = mark["type"].as_str().ok_or("invalid_story_document")?;
+        let key = if kind == "link" {
+            let object = mark.as_object().ok_or("invalid_story_document")?;
+            if object
+                .keys()
+                .any(|key| !["type", "href", "title"].contains(&key.as_str()))
+                || !object.contains_key("href")
+            {
+                return Err("invalid_story_document".into());
+            }
+            let href = mark["href"].as_str().ok_or("invalid_story_document")?;
+            if !bounded_string(&mark["href"], 1, 2048, false)
+                || !safe_link(href)
+                || mark
+                    .get("title")
+                    .is_some_and(|title| !bounded_string(title, 0, 1000, true))
+            {
+                return Err("unsafe_story_document_link".into());
+            }
+            format!("link:{href}")
+        } else {
+            if !["bold", "italic", "underline", "strike", "code"].contains(&kind) {
+                return Err("unsupported_story_document_mark".into());
+            }
+            fields(mark, &["type"])?;
+            kind.to_string()
+        };
+        if !keys.insert(key) {
+            return Err("duplicate_story_document_mark".into());
+        }
+    }
+    Ok(())
 }
 
 fn validate_container(
@@ -322,6 +382,8 @@ fn validate_source_block(
     match kind {
         "code_block" => names.extend(["language", "source"]),
         "math_block" => names.extend(["sourceType", "source", "displayMode"]),
+        "math_inline" => names.extend(["sourceType", "source"]),
+        "diagram" => names.extend(["sourceType", "source", "altText", "caption"]),
         "file" => names.extend(["assetId", "mediaType", "fileName", "title", "description"]),
         "image" => names.extend([
             "assetId",
@@ -347,6 +409,14 @@ fn validate_source_block(
     }
     metadata(&block["metadata"], false)?;
     metadata(&block["extensions"], true)?;
+    if ["image", "diagram"].contains(&kind) {
+        for inline in block["caption"]
+            .as_array()
+            .ok_or("invalid_story_document")?
+        {
+            validate_inline(inline, ids, document_id)?;
+        }
+    }
     let valid = match kind {
         "code_block" => {
             bounded_string(&block["language"], 1, 100, true) && block["source"].is_string()
@@ -355,6 +425,12 @@ fn validate_source_block(
             block["sourceType"] == "latex"
                 && block["displayMode"] == "block"
                 && block["source"].is_string()
+        }
+        "math_inline" => block["sourceType"] == "latex" && block["source"].is_string(),
+        "diagram" => {
+            ["mermaid", "svg"].contains(&block["sourceType"].as_str().unwrap_or(""))
+                && block["source"].is_string()
+                && bounded_string(&block["altText"], 0, 10_000, false)
         }
         "file" => {
             block["assetId"]
@@ -366,25 +442,6 @@ fn validate_source_block(
                 && bounded_string(&block["description"], 0, 10_000, true)
         }
         "image" => {
-            if let Some(caption) = block["caption"].as_array() {
-                for inline in caption {
-                    if inline["type"] == "hard_break" {
-                        fields(inline, &["type"])?;
-                        continue;
-                    }
-                    fields(inline, &["type", "text", "marks", "metadata", "extensions"])?;
-                    if inline["type"] != "text"
-                        || !inline["text"].is_string()
-                        || inline["marks"] != serde_json::json!([])
-                    {
-                        return Err("unsupported_story_document_node".into());
-                    }
-                    metadata(&inline["metadata"], false)?;
-                    metadata(&inline["extensions"], true)?;
-                }
-            } else {
-                return Err("invalid_story_document".into());
-            }
             block["assetId"]
                 .as_str()
                 .is_some_and(super::valid_lower_uuid)
@@ -522,6 +579,57 @@ mod tests {
         assert_eq!(
             validate_document_subset(&value).unwrap_err(),
             "invalid_node_parent"
+        );
+    }
+    #[test]
+    fn validates_marks_and_safe_link_schemes() {
+        assert!(validate_marks(&json!([{"type":"bold"},{"type":"italic"},{"type":"link","href":"https://example.com","title":null}])).is_ok());
+        assert_eq!(
+            validate_marks(&json!([{"type":"bold"},{"type":"bold"}])).unwrap_err(),
+            "duplicate_story_document_mark"
+        );
+        for href in [
+            "javascript:alert(1)",
+            "data:text/html,hi",
+            "file:///tmp/x",
+            "//example.com",
+            "/\\example.com",
+        ] {
+            assert!(
+                validate_marks(&json!([{"type":"link","href":href}])).is_err(),
+                "{href}"
+            );
+        }
+        for href in [
+            "#scene",
+            "./draft",
+            "../draft",
+            "/draft",
+            "mailto:author@example.com",
+            "https://example.com",
+        ] {
+            assert!(
+                validate_marks(&json!([{"type":"link","href":href}])).is_ok(),
+                "{href}"
+            );
+        }
+        assert!(validate_marks(&json!([{"type":"bold","href":"https://example.com"}])).is_err());
+    }
+    #[test]
+    fn validates_diagram_and_inline_math_ids_as_opaque_source() {
+        let mut value = document();
+        let math = json!({"id":"00000000-0000-4000-8000-000000000003","schemaVersion":1,"type":"math_inline","sourceType":"latex","source":"x^2","metadata":{},"extensions":{},"renderArtifacts":[]});
+        let diagram = json!({"id":"00000000-0000-4000-8000-000000000002","schemaVersion":1,"type":"diagram","sourceType":"svg","source":"<svg><script>opaque</script></svg>","altText":"図","caption":[math.clone()],"metadata":{},"extensions":{},"renderArtifacts":[]});
+        value["content"] = json!([diagram]);
+        assert_eq!(validate_document_subset(&value).unwrap().len(), 2);
+        let mut invalid = value.clone();
+        invalid["content"][0]["sourceType"] = json!("html");
+        assert!(validate_document_subset(&invalid).is_err());
+        invalid = value.clone();
+        invalid["content"][0]["caption"] = json!([math.clone(), math]);
+        assert_eq!(
+            validate_document_subset(&invalid).unwrap_err(),
+            "duplicate_canonical_node_id"
         );
     }
 }

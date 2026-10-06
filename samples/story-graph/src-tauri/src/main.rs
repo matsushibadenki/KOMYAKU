@@ -283,6 +283,16 @@ struct ParagraphChange {
     #[serde(default)]
     end: Option<usize>,
 }
+fn find_paragraph(value: &Value, id: Id) -> Option<&Value> {
+    if value["type"] == "paragraph" && value["id"] == id.to_string() {
+        return Some(value);
+    }
+    value
+        .get("content")?
+        .as_array()?
+        .iter()
+        .find_map(|child| find_paragraph(child, id))
+}
 fn replace_paragraph_text(
     paragraph: &mut Value,
     change: &ParagraphChange,
@@ -952,16 +962,45 @@ fn edit_blocking(
     if revision != expected_revision {
         return Err("revision_conflict".into());
     }
+    let paragraph_edit = match &action {
+        Action::Paragraphs { id, changes } => Some((
+            *id,
+            changes.iter().map(|c| c.paragraph).collect::<Vec<_>>(),
+            host.engine
+                .inspect("controls", *id)
+                .map_err(|e| e.code)?
+                .properties["canonical"]
+                .clone(),
+        )),
+        _ => None,
+    };
     let request = build_command(&host, action, expected_revision)?;
     host.engine
         .dispatch(window.label(), request)
         .map_err(|e| e.code)?;
     let mut result = projection(&host.engine)?;
+    let snapshot = host.engine.snapshot().map_err(|e| e.code)?;
+    let patches = paragraph_edit.map_or_else(Vec::new, |(id, ids, before)| {
+        let Some(node) = snapshot.graph().nodes().get(&id) else {
+            return Vec::new();
+        };
+        let after = &node.properties["canonical"];
+        ids.into_iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .filter_map(|id| {
+                Some((
+                    find_paragraph(&before, id)?.clone(),
+                    find_paragraph(after, id)?.clone(),
+                ))
+            })
+            .collect::<Vec<_>>()
+    });
     let saved = host
         .saves
         .lock()
         .map_err(|_| "state_unavailable")?
-        .save(&host.path, &host.engine.snapshot().map_err(|e| e.code)?);
+        .save_patched(&host.path, &snapshot, &patches);
     result["saved"] = json!(saved.is_ok());
     drop(_lock);
     window

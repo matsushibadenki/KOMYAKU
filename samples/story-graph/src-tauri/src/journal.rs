@@ -221,6 +221,56 @@ struct Cache {
     recovery: Recovery,
     generation: Option<String>,
 }
+// Transform only supplied paragraph objects; accept only an exact canonical result.
+fn patched_bytes(
+    current: &[u8],
+    document: &unge_core::Document,
+    patches: &[(serde_json::Value, serde_json::Value)],
+) -> Option<Vec<u8>> {
+    if patches.is_empty() || patches.len() > 64 {
+        return None;
+    }
+    let text = std::str::from_utf8(current).ok()?;
+    let mut spans = Vec::new();
+    let mut converted = 0usize;
+    for (old, new) in patches {
+        let old = serde_json::to_string(old).ok()?;
+        let new = serde_json::to_vec(new).ok()?;
+        converted = converted.checked_add(old.len() + new.len())?;
+        if converted > current.len() / 4 {
+            return None;
+        }
+        let mut matches = text.match_indices(&old);
+        let offset = matches.next()?.0;
+        if matches.next().is_some() {
+            return None;
+        }
+        spans.push((offset, offset + old.len(), new));
+    }
+    spans.sort_by_key(|s| s.0);
+    let mut next = Vec::with_capacity(current.len() + 1024);
+    let mut cursor = 0;
+    for (start, end, bytes) in spans {
+        if start < cursor {
+            return None;
+        }
+        next.extend_from_slice(&current[cursor..start]);
+        next.extend(bytes);
+        cursor = end;
+        if next.len() > LIMIT {
+            return None;
+        }
+    }
+    next.extend_from_slice(&current[cursor..]);
+    if next.len() > LIMIT {
+        return None;
+    }
+    let saved: crate::SavedWorkspace = serde_json::from_slice(&next).ok()?;
+    if saved.document != *document {
+        return None;
+    }
+    Some(next)
+}
 #[derive(Default)]
 pub struct Store {
     cache: Option<Cache>,
@@ -236,6 +286,14 @@ impl Store {
         &mut self,
         path: &std::path::Path,
         document: &unge_core::Document,
+    ) -> Result<(), String> {
+        self.save_patched(path, document, &[])
+    }
+    pub fn save_patched(
+        &mut self,
+        path: &std::path::Path,
+        document: &unge_core::Document,
+        patches: &[(serde_json::Value, serde_json::Value)],
     ) -> Result<(), String> {
         use std::io::Write;
         document.validate().map_err(|e| e.to_string())?;
@@ -282,17 +340,22 @@ impl Store {
             version: u32,
             document: &'a unge_core::Document,
         }
-        let mut next = Vec::with_capacity(recovery.journal.bytes().len().saturating_add(1024));
-        serde_json::to_writer(
-            &mut next,
-            &Snapshot {
-                generation: &cache.generation,
-                format: "komyaku-story-workspace",
-                version: 1,
-                document,
-            },
-        )
-        .map_err(|e| e.to_string())?;
+        let next = if let Some(bytes) = patched_bytes(recovery.journal.bytes(), document, patches) {
+            bytes
+        } else {
+            let mut next = Vec::with_capacity(recovery.journal.bytes().len().saturating_add(1024));
+            serde_json::to_writer(
+                &mut next,
+                &Snapshot {
+                    generation: &cache.generation,
+                    format: "komyaku-story-workspace",
+                    version: 1,
+                    document,
+                },
+            )
+            .map_err(|e| e.to_string())?;
+            next
+        };
         if next.len() > LIMIT {
             return Err("limit_exceeded".into());
         }
@@ -353,6 +416,99 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "manual paragraph serialization benchmark"]
+    fn benchmark_paragraph_saves() {
+        let registry = crate::domain::registry();
+        let initial = crate::domain::initial_document(&registry);
+        let id = initial
+            .graph()
+            .nodes()
+            .values()
+            .find(|n| n.type_id == crate::domain::SCENE)
+            .unwrap()
+            .id
+            .to_string();
+        let mut value = serde_json::to_value(&initial).unwrap();
+        let canonical = &mut value["graph"]["nodes"][&id]["properties"]["canonical"];
+        let template = canonical["content"][0].clone();
+        canonical["content"] = serde_json::json!((0..1000).map(|_| {
+            let mut paragraph = template.clone();
+            paragraph["id"] = serde_json::json!(unge_core::Id::new_v4());
+            paragraph["content"] = serde_json::json!([{"type":"text","text":"雨".repeat(1000),"marks":[],"metadata":{},"extensions":{}}]);
+            paragraph
+        }).collect::<Vec<_>>());
+        for mode in ["full_serializer", "paragraph_serializer"] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("workspace.story.json");
+            let mut current = value.clone();
+            let doc: unge_core::Document = serde_json::from_value(current.clone()).unwrap();
+            let mut store = Store::default();
+            store.save(&path, &doc).unwrap();
+            let mut times = vec![];
+            for i in 0..10 {
+                let old = current["graph"]["nodes"][&id]["properties"]["canonical"]["content"][50]
+                    .clone();
+                current["graph"]["nodes"][&id]["properties"]["canonical"]["content"][50]["content"]
+                    [0]["text"] = serde_json::json!(format!("{}改稿{i}", "雨".repeat(1000)));
+                let new = current["graph"]["nodes"][&id]["properties"]["canonical"]["content"][50]
+                    .clone();
+                let doc: unge_core::Document = serde_json::from_value(current.clone()).unwrap();
+                if mode == "paragraph_serializer" {
+                    let bytes = read_workspace(&path).unwrap();
+                    assert!(patched_bytes(&bytes, &doc, &[(old.clone(), new.clone())]).is_some());
+                }
+                let start = std::time::Instant::now();
+                if mode == "full_serializer" {
+                    store.save(&path, &doc).unwrap();
+                } else {
+                    store.save_patched(&path, &doc, &[(old, new)]).unwrap();
+                }
+                times.push(start.elapsed().as_secs_f64() * 1000.);
+                assert_eq!(crate::load(&path).unwrap(), doc);
+            }
+            times.sort_by(f64::total_cmp);
+            println!("{mode}: median_ms={:.3}", (times[4] + times[5]) / 2.);
+        }
+    }
+    #[test]
+    fn paragraph_only_serialization_matches_canonical_document_and_falls_back_safely() {
+        fn paragraph(value: &mut serde_json::Value) -> Option<&mut serde_json::Value> {
+            if value["type"] == "paragraph" {
+                return Some(value);
+            }
+            match value {
+                serde_json::Value::Object(map) => map.values_mut().find_map(paragraph),
+                serde_json::Value::Array(items) => items.iter_mut().find_map(paragraph),
+                _ => None,
+            }
+        }
+        let registry = crate::domain::registry();
+        let mut doc = crate::domain::initial_document(&registry);
+        doc.title = "雨".repeat(10000);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("workspace.story.json");
+        let mut store = Store::default();
+        store.save(&path, &doc).unwrap();
+        let bytes = std::fs::read(&path).unwrap();
+        let mut value = serde_json::to_value(&doc).unwrap();
+        let p = paragraph(&mut value).unwrap();
+        let old = p.clone();
+        p["content"] = serde_json::json!([{"type":"text","text":"雨 👨‍👩‍👧‍👦 e\u{301}\n次の行","marks":[],"metadata":{},"extensions":{}}]);
+        let new = p.clone();
+        let next: unge_core::Document = serde_json::from_value(value).unwrap();
+        let patches = vec![(old.clone(), new.clone())];
+        assert!(patched_bytes(&bytes, &next, &patches).is_some());
+        assert!(patched_bytes(&bytes, &next, &[(old.clone(), new.clone()), (old, new)]).is_none());
+        let mut other = next.clone();
+        other.title.push_str("別の変更");
+        assert!(patched_bytes(&bytes, &other, &patches).is_none());
+        store.save_patched(&path, &next, &patches).unwrap();
+        assert_eq!(crate::load(&path).unwrap(), next);
+        // Stale patch must save all other changes through the full serializer.
+        store.save_patched(&path, &other, &patches).unwrap();
+        assert_eq!(crate::load(&path).unwrap(), other);
+    }
     #[test]
     fn cached_digest_stays_consistent_through_success_failure_and_recovery() {
         let mut journal = Journal::new("初稿".as_bytes().to_vec()).unwrap();

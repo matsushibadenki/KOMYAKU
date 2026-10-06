@@ -211,3 +211,10 @@ Host.savesはArc<Mutex<journal::Store>>で、執筆RPCとgraph autosave worker�
 ### 検証済みdigestの再利用
 
 Journal.current_hashはcurrentのSHA-256と常に一致する。checkpoint初期化時に計算し、recoverはbeforeを保持digestと照合、適用後のnextをhashしてafterを検証してから両方を更新する。prepareはbeforeを再hashせず、nextのafterだけ計算する。通常保存はprepareで得たafterをsync成功後にnextとともに採用する。失敗時は状態を進めず、Storeのキャッシュは破棄する。ファイル変更時は再読込・再検証するためディスク上のbefore／after検証を省略しない。
+
+
+### 段落編集の部分シリアライズ
+
+Paragraphs RPCはdispatch前のcanonicalから対象paragraph IDを取得し、dispatch後のsnapshotから同じ段落を取得する。セリフセル内の段落もcontentを再帰して取得する。Store.save_patchedは旧／新の段落objectだけをJSON変換し、旧objectが保存済みUTF-8バイト列に1回だけ現れる場合に差し込む。複数対象は位置順に適用し、重なりは拒否する。最大64段落、変換量は現在バイト数の4分の1まで。
+
+生成候補をSavedWorkspaceとしてparseし、candidate.documentとRustのsnapshotが完全一致した場合だけ採用する。前回保存失敗、別の未保存変更、共有IDの重複、旧段落が見つからない、対象欠落や大変更は従来の全文serializerへfallbackする。この安全確認により他の変更を落とさない。checksum・journal version・append/fsync・checkpoint切替は従来と同じ。全文parseとsnapshotコピー、after SHAはまだ必要で、意味的な操作recordへ移行したものではない。
