@@ -329,7 +329,13 @@ async fn generate(
             };
         }
     }
-    Err("ai_stream_interrupted".into())
+    parser.finish()?;
+    job.state.lock().map_err(|_| "state_unavailable")?.text = parser.text.clone();
+    if parser.text.trim().is_empty() {
+        Err("ai_empty_result".into())
+    } else {
+        Ok(())
+    }
 }
 fn api_error(body: &Value, status: u16) -> String {
     match body["error"]["code"].as_str() {
@@ -367,29 +373,66 @@ impl Stream {
             return Err("limit_exceeded".into());
         }
         self.buffer.extend_from_slice(chunk);
-        while let Some(end) = self.buffer.iter().position(|v| *v == b'\n') {
-            let line = String::from_utf8(self.buffer.drain(..=end).collect())
-                .map_err(|_| "ai_stream_interrupted")?;
-            let line = line.trim_end_matches(['\n', '\r']);
-            if line.is_empty() {
-                if !self.data.is_empty() {
-                    let data = std::mem::take(&mut self.data).join("\n");
-                    self.event(&data)?;
-                }
-            } else if let Some(data) = line.strip_prefix("data:") {
-                self.data
-                    .push(data.strip_prefix(' ').unwrap_or(data).into());
-            }
-            if self.completed {
-                break;
-            }
-        }
+        self.lines(false)?;
         if self.buffer.len() > 256 * 1024
             || self.data.iter().map(String::len).sum::<usize>() > 256 * 1024
         {
             return Err("limit_exceeded".into());
         }
         Ok(())
+    }
+    fn lines(&mut self, eof: bool) -> Result<()> {
+        while let Some(end) = self.buffer.iter().position(|v| matches!(v, b'\n' | b'\r')) {
+            if self.buffer[end] == b'\r' && end + 1 == self.buffer.len() && !eof {
+                break;
+            }
+            let consumed = end
+                + 1
+                + usize::from(
+                    self.buffer[end] == b'\r' && self.buffer.get(end + 1) == Some(&b'\n'),
+                );
+            let line = String::from_utf8(self.buffer[..end].to_vec())
+                .map_err(|_| "ai_stream_interrupted")?;
+            self.buffer.drain(..consumed);
+            self.line(&line)?;
+            if self.completed {
+                break;
+            }
+        }
+        Ok(())
+    }
+    fn line(&mut self, line: &str) -> Result<()> {
+        if line.is_empty() {
+            if !self.data.is_empty() {
+                let data = std::mem::take(&mut self.data).join("\n");
+                self.event(&data)?;
+            }
+        } else if let Some(data) = line.strip_prefix("data:") {
+            self.data
+                .push(data.strip_prefix(' ').unwrap_or(data).into());
+        }
+        Ok(())
+    }
+    fn finish(&mut self) -> Result<()> {
+        self.lines(true)?;
+        if !self.completed {
+            if !self.buffer.is_empty() {
+                let line = String::from_utf8(std::mem::take(&mut self.buffer))
+                    .map_err(|_| "ai_stream_interrupted")?;
+                self.line(&line)?;
+            }
+            // Accept only an explicit, complete response.completed JSON at EOF.
+            // A trailing delimiter is transport framing, never proof of generation completion.
+            if !self.data.is_empty() {
+                let data = std::mem::take(&mut self.data).join("\n");
+                self.event(&data)?;
+            }
+        }
+        if self.completed {
+            Ok(())
+        } else {
+            Err("ai_stream_interrupted".into())
+        }
     }
     fn event(&mut self, data: &str) -> Result<()> {
         if data == "[DONE]" {
@@ -500,6 +543,47 @@ mod tests {
             .unwrap();
         assert_eq!(s.feed(b"data: {\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"subscription_sharing_usage_limit_exceeded\"}}}\n\n").unwrap_err(),"ai_usage_limit");
         assert!(!s.completed);
+    }
+    #[test]
+    fn completion_at_eof_and_all_line_endings_survive_chunk_splits() {
+        for newline in ["\n", "\r\n", "\r"] {
+            for ending in ["", newline] {
+                let wire = format!(
+                    "data: {{\"type\":\"response.output_text.delta\",\"delta\":\"雨😀\"}}{newline}{newline}data: {{\"type\":\"response.completed\",\"response\":{{\"status\":\"completed\"}}}}{ending}"
+                );
+                for chunk_size in [1, 2, 7, wire.len()] {
+                    let mut stream = Stream::default();
+                    for chunk in wire.as_bytes().chunks(chunk_size) {
+                        stream.feed(chunk).unwrap();
+                    }
+                    stream.finish().unwrap();
+                    assert!(stream.completed);
+                    assert_eq!(stream.text, "雨😀");
+                }
+            }
+        }
+    }
+    #[test]
+    fn eof_cannot_turn_partial_or_failed_generation_into_success() {
+        for tail in [
+            "",
+            "data: [DONE]",
+            "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"in_progress\"}}",
+            "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}",
+        ] {
+            let mut stream = Stream::default();
+            stream
+                .feed(b"data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\n")
+                .unwrap();
+            stream.feed(tail.as_bytes()).unwrap();
+            assert!(stream.finish().is_err());
+            assert!(!stream.completed);
+        }
+        let mut stream = Stream::default();
+        stream
+            .feed(b"data: {\"type\":\"response.incomplete\"}")
+            .unwrap();
+        assert_eq!(stream.finish().unwrap_err(), "ai_incomplete");
     }
     #[test]
     fn stream_requires_completed_and_bounds_output() {

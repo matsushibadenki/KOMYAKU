@@ -25,6 +25,13 @@ pub(crate) async fn migrate(pool: &Pool<Sqlite>) -> Result<(), sqlx::Error> {
     )
     .execute(&mut *tx)
     .await?;
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS story_workspace_assets (
+        workspace_id TEXT NOT NULL REFERENCES story_workspace_states(workspace_id),
+        asset_id TEXT NOT NULL, PRIMARY KEY(workspace_id,asset_id))",
+    )
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await
 }
 
@@ -73,6 +80,7 @@ pub(crate) async fn commit(
             replayed: true,
         });
     }
+    let asset_ids = verify_workspace_assets(&mut tx, snapshot_json).await?;
     let revision = expected_revision + 1;
     if expected_revision == 0 {
         let inserted = sqlx::query("INSERT INTO story_workspace_states(workspace_id, revision, snapshot_json) VALUES (?, ?, ?) ON CONFLICT(workspace_id) DO NOTHING")
@@ -87,6 +95,19 @@ pub(crate) async fn commit(
         if updated.rows_affected() != 1 {
             return Err("stale_story_workspace_revision".into());
         }
+    }
+    sqlx::query("DELETE FROM story_workspace_assets WHERE workspace_id=?")
+        .bind(workspace_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    for asset_id in asset_ids {
+        sqlx::query("INSERT INTO story_workspace_assets(workspace_id,asset_id) VALUES (?,?)")
+            .bind(workspace_id)
+            .bind(asset_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
     }
     sqlx::query("INSERT INTO story_workspace_receipts(operation_id, workspace_id, request_json, revision, snapshot_json) VALUES (?, ?, ?, ?, ?)")
         .bind(operation_id).bind(workspace_id).bind(request_json).bind(revision).bind(snapshot_json)
@@ -229,5 +250,245 @@ mod tests {
         assert!(replay.replayed);
         reopened.close().await;
         std::fs::remove_file(path).unwrap();
+    }
+}
+
+/// Internal bridge: `document` must already have passed Canonical Document
+/// validation by the native owner. Graph schema/references are checked here.
+/// This is deliberately not an IPC command.
+pub(crate) async fn commit_workspace(
+    pool: &Pool<Sqlite>,
+    operation_id: &str,
+    expected_revision: i64,
+    document: &serde_json::Value,
+    graph: &serde_json::Value,
+) -> Result<Receipt, String> {
+    if !super::valid_lower_uuid(operation_id) {
+        return Err("invalid_story_operation_id".into());
+    }
+    let document_id = document["id"]
+        .as_str()
+        .filter(|id| super::valid_lower_uuid(id))
+        .ok_or("invalid_story_workspace_document")?;
+    if graph["documentId"].as_str() != Some(document_id) {
+        return Err("story_workspace_document_mismatch".into());
+    }
+    let mut ids = std::collections::BTreeSet::new();
+    let mut pending: Vec<&serde_json::Value> = document["content"]
+        .as_array()
+        .ok_or("invalid_story_workspace_document")?
+        .iter()
+        .collect();
+    let mut visited = 0;
+    while let Some(node) = pending.pop() {
+        visited += 1;
+        if visited > 100_000 {
+            return Err("story_document_limit_exceeded".into());
+        }
+        if let Some(id) = node["id"].as_str() {
+            ids.insert(id.to_string());
+        }
+        for field in ["content", "caption"] {
+            if let Some(children) = node.get(field).and_then(|v| v.as_array()) {
+                pending.extend(children);
+            }
+        }
+    }
+    super::story_graph_validation::validate_graph_schema(graph, &ids).map_err(str::to_string)?;
+    let workspace_id = graph["id"].as_str().ok_or("invalid_story_graph")?;
+    let workspace = serde_json::json!({"schemaId":"https://komyaku.example/schemas/story-workspace/v1",
+        "schemaVersion":1,"document":document,"graph":graph});
+    let snapshot = serde_json::to_string(&workspace).map_err(|e| e.to_string())?;
+    let request = serde_json::to_string(&serde_json::json!({"operationId":operation_id,
+        "expectedRevision":expected_revision,"workspace":workspace}))
+    .map_err(|e| e.to_string())?;
+    commit(
+        pool,
+        workspace_id,
+        operation_id,
+        expected_revision,
+        &request,
+        &snapshot,
+    )
+    .await
+}
+
+#[cfg(test)]
+mod workspace_tests {
+    use super::*;
+    use serde_json::json;
+    #[tokio::test]
+    async fn validates_graph_before_atomic_workspace_adoption() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        migrate(&pool).await.unwrap();
+        let document = json!({"id":"00000000-0000-4000-8000-000000000001","content":[]});
+        let mut graph = json!({"schemaId":"https://komyaku.example/schemas/story-graph/v1","schemaVersion":1,
+            "id":"00000000-0000-4000-8000-000000000002","documentId":document["id"],"nodes":[],"edges":[],"paths":[],"entities":[]});
+        let operation = "00000000-0000-4000-8000-000000000003";
+        let first = commit_workspace(&pool, operation, 0, &document, &graph)
+            .await
+            .unwrap();
+        assert!(
+            commit_workspace(&pool, operation, 0, &document, &graph)
+                .await
+                .unwrap()
+                .replayed
+        );
+        let saved: serde_json::Value = serde_json::from_str(&first.snapshot_json).unwrap();
+        assert_eq!(saved["document"], document);
+        assert_eq!(saved["graph"], graph);
+        graph["nodes"] = json!([{"id":"00000000-0000-4000-8000-000000000004","kind":"content","subtype":"scene","title":"Scene",
+            "documentRefs":[{"nodeId":"00000000-0000-4000-8000-000000000099"}],"preconditions":[],"effects":[]}]);
+        assert_eq!(
+            commit_workspace(
+                &pool,
+                "00000000-0000-4000-8000-000000000005",
+                1,
+                &document,
+                &graph
+            )
+            .await
+            .unwrap_err(),
+            "missing_canonical_node_reference"
+        );
+        let revision: i64 = sqlx::query_scalar("SELECT revision FROM story_workspace_states")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(revision, 1);
+    }
+}
+
+async fn verify_workspace_assets(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    snapshot: &str,
+) -> Result<Vec<String>, String> {
+    use sha2::{Digest, Sha256};
+    let value: serde_json::Value =
+        serde_json::from_str(snapshot).map_err(|_| "invalid_story_storage_request")?;
+    // Low-level test snapshots are opaque. Composite production snapshots have
+    // an explicit contract and collect only actual typed nodes, never metadata.
+    if value["schemaId"] != "https://komyaku.example/schemas/story-workspace/v1" {
+        return Ok(vec![]);
+    }
+    let mut pending: Vec<&serde_json::Value> = value["document"]["content"]
+        .as_array()
+        .ok_or("invalid_story_workspace_document")?
+        .iter()
+        .collect();
+    let mut references = std::collections::BTreeMap::new();
+    let mut count = 0;
+    while let Some(node) = pending.pop() {
+        count += 1;
+        if count > 100_000 {
+            return Err("story_document_limit_exceeded".into());
+        }
+        if node["type"] == "file" || node["type"] == "image" {
+            let id = node["assetId"]
+                .as_str()
+                .filter(|id| super::valid_lower_uuid(id))
+                .ok_or("invalid_story_asset_reference")?;
+            let media = node["mediaType"]
+                .as_str()
+                .ok_or("invalid_story_asset_reference")?;
+            if references.insert(id, media).is_some_and(|old| old != media) {
+                return Err("story_asset_media_mismatch".into());
+            }
+        }
+        for field in ["content", "caption"] {
+            if let Some(children) = node[field].as_array() {
+                pending.extend(children);
+            }
+        }
+    }
+    for (id, media) in &references {
+        let asset:Option<(Vec<u8>,i64,String,String)>=sqlx::query_as("SELECT bytes,byte_size,content_hash,media_type FROM local_archive_assets WHERE asset_id=?")
+            .bind(id).fetch_optional(&mut **tx).await.map_err(|e|e.to_string())?;
+        let (bytes, size, hash, stored_media) = asset.ok_or("missing_story_workspace_asset")?;
+        if stored_media != *media {
+            return Err("story_asset_media_mismatch".into());
+        }
+        if size != bytes.len() as i64
+            || bytes.is_empty()
+            || bytes.len() > 1024 * 1024
+            || Sha256::digest(&bytes)
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
+                != hash
+        {
+            return Err("story_asset_integrity_mismatch".into());
+        }
+    }
+    Ok(references.keys().map(|id| id.to_string()).collect())
+}
+
+#[cfg(test)]
+mod asset_tests {
+    use super::*;
+    use serde_json::json;
+    use sha2::{Digest, Sha256};
+    #[tokio::test]
+    async fn missing_or_corrupt_assets_cannot_adopt_workspace() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        migrate(&pool).await.unwrap();
+        sqlx::query("CREATE TABLE local_archive_assets(asset_id TEXT,bytes BLOB,byte_size INTEGER,content_hash TEXT,media_type TEXT)")
+            .execute(&pool).await.unwrap();
+        let asset = "00000000-0000-4000-8000-000000000009";
+        let snapshot=json!({"schemaId":"https://komyaku.example/schemas/story-workspace/v1","document":{"content":[{"type":"file","assetId":asset,"mediaType":"text/plain"}]}}).to_string();
+        assert_eq!(
+            commit(&pool, "w", "op", 0, "{}", &snapshot)
+                .await
+                .unwrap_err(),
+            "missing_story_workspace_asset"
+        );
+        sqlx::query("INSERT INTO local_archive_assets VALUES (?,?,?,?,?)")
+            .bind(asset)
+            .bind(b"hello".as_slice())
+            .bind(5i64)
+            .bind("0".repeat(64))
+            .bind("text/plain")
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            commit(&pool, "w", "op", 0, "{}", &snapshot)
+                .await
+                .unwrap_err(),
+            "story_asset_integrity_mismatch"
+        );
+        sqlx::query("UPDATE local_archive_assets SET content_hash=?")
+            .bind(
+                Sha256::digest(b"hello")
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<String>(),
+            )
+            .execute(&pool)
+            .await
+            .unwrap();
+        let saved = commit(&pool, "w", "op", 0, "{}", &snapshot).await.unwrap();
+        assert_eq!(saved.revision, 1);
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM story_workspace_assets")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(count, 1);
+        sqlx::query("CREATE TRIGGER reject_receipt BEFORE INSERT ON story_workspace_receipts BEGIN SELECT RAISE(ABORT,'fail'); END").execute(&pool).await.unwrap();
+        let empty=json!({"schemaId":"https://komyaku.example/schemas/story-workspace/v1","document":{"content":[]}}).to_string();
+        assert!(commit(&pool, "w", "op2", 1, "{}", &empty).await.is_err());
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM story_workspace_assets")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(count, 1);
     }
 }

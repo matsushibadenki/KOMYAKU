@@ -417,3 +417,48 @@ JS 12テスト、Rustアプリ34テスト、Clippy（warnings禁止）、macOS p
 - 実Tauri/WebKitでは通常作品とは別のコピーprofile `/private/tmp/komyaku-save-stream-native-wifm1o92` を使用。日本語・ZWJ絵文字・改行・アクセント文字入り本文を編集し、保存済み表示→「保存方式確認」の版作成→再起動→本文と旧2版・新1版を再表示。新版は現在原稿と「変更なし」、旧初稿は本文変更を表示。独立したPython検証で新版snapshotと現在原稿のdocument一致、全3版のSHA-256とparentチェーン、旧snapshotのバイト不変、一時ファイル残留なしを確認。macOS貼付でアクセント文字はNFCのéとして入力され、結合文字を保持する保存単体テストとは分けて検証。
 
 通常使用者の原稿・履歴・認証profileには触れていない。Windows/Linux、グラフ操作イベントの二重保存回帰の実機計数、電源断のfault injectionは未実施。グラフ側のmain-thread保存と差分ジャーナルは次段階。
+
+## AI生成完了イベントの末尾処理 — 2026-10-05
+
+報告されたai_stream_interruptedの原因候補として、正常EOF時に残ったdataを処理せず失敗にする経路を修正。最後のresponse.completed JSONに空行／末尾改行がなくても、status=completedを確認した場合だけ成功とする。改行コードLF／CRLF／CRと、CRLFがチャンク境界で分割される場合も処理する。ネットワークエラー時にはEOF救済をせず、途中提案は未完了のまま保持する。
+
+AIテスト7件成功。新しい再現fixtureでは日本語・絵文字を含むdeltaとcompletedを1／2／7／全バイト幅で送信し、各改行・末尾の形式を検証。EOFだけ、DONEだけ、status=in_progress、不正なJSON、incompleteは成功しない。既存の出力容量上限・遅れて届く失敗・原稿変更時の取り込み拒否も維持。公式仕様 https://developers.openai.com/api/reference/resources/responses/streaming-events のresponse.completedとstatus=completedに従う。
+
+使用者の実応答・request IDは未取得で、この報告の原因を確定したものではない。使用者の原稿・認証を使う外部生成は実行していない。モデル・要求・認証方式は変更していない。
+
+AI EOF修正後の全Rustテスト: 59 pass / 0 fail / 4 ignored。clippy -D warnings とmacOS debug .appの再ビルド成功。実サービスへの生成再現は未実施。
+
+
+## グラフの専用Rust autosave worker — 2026-10-06
+
+- Rust全体65 pass / 0 fail / 4 ignored。workerの6テストで100要求の集約、呼出元とは別スレッドでの保存、保存中の追加要求、終了時の排出、連続操作時の最大待機、保存失敗後の再試行と実ファイルの最新documentを検証。
+- JS22 pass / 490 assertions、clippy -D warnings、macOS debug .app package成功。180ms debounce、連続操作でも最大1秒で保存開始。キューは要求番号だけを保持し、保存時にRust正本のsnapshotを取得する。
+- 実macOS/Tauriは隔離profile /private/tmp/komyaku-autosave-native-i9cymvvw。灯ノードを移動→保存→終了→再起動で位置復元を確認。保存先をテスト用ディレクトリに置き換えて書込失敗を発生させ、再移動後の⌘Qでアプリが残ることを確認。保存先を元に戻して⌘Qを再実行し、最新位置y=527.5の保存を独立したPython読込で検証。graph／原稿は変更なし、placementは灯1件のみ変更、テストbackupの残留なし。
+- 初回fault injectionでmacOS標準Quitが終了保護を迂回することが判明。標準Quitをアプリ側の保存待機付きメニュー項目へ置換し、⌘Qも同じ経路に接続した後、上記の失敗・再試行を確認。
+
+通常使用者の原稿・履歴・認証profileは変更していない。Windows/Linux実機、電源断・強制終了、UIフレーム時間の定量計測は未実施。保存のディスクI/Oはmain threadから分離したが、終了時は保存完了を待機する。差分ジャーナルとチェックポイントは次段階。
+
+## 差分ジャーナル復旧codec（保存経路への接続前） — 2026-10-06
+
+- 新規4テスト成功。100万字（約3MB）の一部をZWJ絵文字・結合文字へ置換し、差分レコード1KB未満、準備時の状態不変、commit／replay後の元バイト列一致を確認。第2レコードの全切断位置で第1レコードまで復旧し、valid_bytesを検証。
+- 破損した完成レコード、異なるcheckpoint、順序違い、重複適用、改変後checksum不一致を拒否。失敗時に復旧状態は不変。空文字列への挿入・削除と256記録のcheckpoint境界を確認。
+- Rust全体69 pass / 0 fail / 4 ignored、clippy -D warnings、git diff --check成功。初回sandbox内実行では既存cancelled_listener_exitsのlocalhost bindがPermissionDenied。ローカル待受を許可した再実行で全件成功。
+
+この工程はcodecと復旧契約の実装。通常save/loadには未接続で、利用者の保存速度が向上したという計測ではない。実ファイルappend/fsync、checkpoint切替中の異常終了、既存作品・バックアップ・履歴との統合、実機の再起動QAは次工程。UI変更なし。
+
+## 差分ジャーナルの共通save/load接続 — 2026-10-06
+
+- Rust全体71 pass / 0 fail / 4 ignored。追加の実ファイル2テストは小変更時のcheckpointバイト不変、差分1KB未満、再読込の最新document一致、未完了末尾の読込と次変更時の切詰め、独立backup snapshot、checkpoint切替後の旧journal残留、完成レコード破損時の原本保持を確認。
+- 既存作品一覧テストも更新。小さなタイトル変更をjournalへ保存し、checkpointバイトが不変の状態で一覧に最新タイトルが表示されることを確認。履歴・バックアップ・Undo・文字／人物／階層永続化の既存回帰テストは成功。
+- clippy -D warnings、macOS debug .app package、git diff --check成功。フロントエンド変更なし。
+
+実ファイルfault injectionは未完了末尾と古い世代の残留を再現するもので、実電源断の証明ではない。今回の新journal形式の実Tauri/WebKit再起動操作は未実施。保存時の全文読込・JSON変換・ハッシュを残しており、アプリ全体の保存時間／RSSの改善は未計測。checkpointに固有generationを追加し、現コードで従来形式を読めるが、旧アプリへのダウングレードは保証しない。手動コピーにはworkspaceと該当世代journalの両方が必要。アプリ内バックアップは単独snapshot。
+
+
+## ホスト共有保存キャッシュとネイティブ復旧 — 2026-10-06
+
+- Rust全体72 pass / 0 fail / 4 ignored、clippy -D warnings、macOS debug .app package成功。新規テストは同じStoreで2回の差分保存、連番更新、再読込一致、外部journal破損検出とキャッシュ破棄、修復後再試行、checkpoint外部置換後の新世代保存を検証。
+- 実macOS/Tauri/WebKitは専用bundle ID dev.komyaku.storygraph.cacheqaとコピーprofile /private/tmp/komyaku-cache-native-cou89y9r。シーン名を「起 · 雨の駅 キャッシュ確認」へ変更、本文へ「ジャーナル再起動確認。」を追加、灯ノードを下へ70画面px移動。差分3件／889バイトを独立Pythonでbefore／after SHA-256を確認して復旧。⌘Q後のプロセス終了コード0、再起動後の本文・シーン名と灯の新位置を実画面で確認。通常使用者の作品・認証profileには変更なし。
+- sandbox内のGUI起動は終了コード134。専用QA bundleを通常GUI実行へ切り替えて検証。再起動時のmacOSウインドウ復元通知を閉じ、最新原稿を確認した。ネイティブUIはCUA、ブラウザーmockは使っていない。
+
+cache hit時にcheckpoint／journal全文readと全replayを省く。全文JSON変換・SHA・snapshot取得と、保存済みバイト列の常駐は残る。RSS・時間の比較計測、Windows/Linux、電源断は未実施。外部更新の検出はlen／mtime／Unix inodeで、メタデータを意図的に保持した改変の検知保証ではない。

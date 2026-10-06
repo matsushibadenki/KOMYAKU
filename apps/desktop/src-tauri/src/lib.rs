@@ -1,3 +1,12 @@
+#[allow(dead_code)]
+mod story_document_validation;
+
+#[allow(dead_code)]
+mod story_workspace_commands;
+
+#[allow(dead_code)]
+mod story_graph_validation;
+
 // Internal groundwork; enable runtime use after native composite validation.
 #[allow(dead_code)]
 mod story_workspace_store;

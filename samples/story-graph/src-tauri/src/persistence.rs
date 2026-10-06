@@ -65,6 +65,7 @@ fn save_with_limit(path: &Path, document: &Document, limit: u64) -> Result<Recei
     document.validate().map_err(|e| e.to_string())?;
     #[derive(Serialize)]
     struct Snapshot<'a> {
+        generation: String,
         format: &'static str,
         version: u32,
         document: &'a Document,
@@ -82,6 +83,7 @@ fn save_with_limit(path: &Path, document: &Document, limit: u64) -> Result<Recei
     let result = serde_json::to_writer(
         &mut writer,
         &Snapshot {
+            generation: unge_core::Id::new_v4().to_string(),
             format: "komyaku-story-workspace",
             version: 1,
             document,
@@ -129,6 +131,7 @@ mod tests {
         assert_eq!(receipt.hash, digest);
         assert_eq!(crate::load(&path).unwrap(), document);
         let old = crate::SavedWorkspace {
+            generation: None,
             format: "komyaku-story-workspace".into(),
             version: 1,
             document: document.clone(),

@@ -1,4 +1,5 @@
 mod ai;
+mod autosave;
 mod chatgpt;
 mod domain;
 mod export;
@@ -6,6 +7,7 @@ mod history;
 mod history_diff;
 mod history_structure;
 mod input;
+mod journal;
 mod library;
 mod persistence;
 mod preferences;
@@ -26,16 +28,19 @@ struct Host {
     registry: Arc<unge_executor::Registry>,
     path: PathBuf,
     gate: Arc<Mutex<()>>,
+    saves: Arc<Mutex<journal::Store>>,
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SavedWorkspace {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    generation: Option<String>,
     format: String,
     version: u32,
     document: Document,
 }
 fn save(path: &std::path::Path, document: &Document) -> std::result::Result<(), String> {
-    persistence::save(path, document).map(|_| ())
+    journal::save_workspace(path, document)
 }
 
 fn load(path: &std::path::Path) -> std::result::Result<Document, String> {
@@ -43,8 +48,7 @@ fn load(path: &std::path::Path) -> std::result::Result<Document, String> {
         return Err("limit_exceeded".into());
     }
     let saved: SavedWorkspace =
-        serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)
-            .map_err(|e| e.to_string())?;
+        serde_json::from_slice(&journal::read_workspace(path)?).map_err(|e| e.to_string())?;
     if saved.format != "komyaku-story-workspace" || saved.version != 1 {
         return Err("unsupported_workspace".into());
     }
@@ -953,7 +957,11 @@ fn edit_blocking(
         .dispatch(window.label(), request)
         .map_err(|e| e.code)?;
     let mut result = projection(&host.engine)?;
-    let saved = save(&host.path, &host.engine.snapshot().map_err(|e| e.code)?);
+    let saved = host
+        .saves
+        .lock()
+        .map_err(|_| "state_unavailable")?
+        .save(&host.path, &host.engine.snapshot().map_err(|e| e.code)?);
     result["saved"] = json!(saved.is_ok());
     drop(_lock);
     window
@@ -1432,34 +1440,87 @@ fn main() {
                 registry,
                 path,
                 gate: Arc::new(Mutex::new(())),
+                saves: Arc::new(Mutex::new(journal::Store::default())),
             });
-            let handle = app.handle().clone();
-            app.listen("unge://changed", move |event| {
-                // Story edits already saved and emitted their projection on the worker.
-                // Native graph edits lack this marker and still need persistence below.
-                let already_saved = serde_json::from_str::<Value>(event.payload())
-                    .ok()
-                    .is_some_and(|value| value["storySaved"] == true);
-                let main = handle.clone();
-                let _ = handle.run_on_main_thread(move || {
-                    redraw(&main);
-                    if already_saved {
-                        return;
+            let save_host = app.state::<Host>().inner().clone();
+            let save_app = app.handle().clone();
+            app.manage(autosave::Worker::new(move || {
+                let _gate = save_host
+                    .gate
+                    .lock()
+                    .map_err(|_| "state_unavailable".to_string())?;
+                let (doc, summary) = save_host
+                    .engine
+                    .snapshot_with_summary()
+                    .map_err(|e| e.code)?;
+                let result = save_host
+                    .saves
+                    .lock()
+                    .map_err(|_| "state_unavailable")?
+                    .save(&save_host.path, &doc);
+                if result.is_err() {
+                    let _ = save_app.emit("story://save-error", "save_failed");
+                }
+                if let Ok(mut projection) = projection(&save_host.engine) {
+                    projection["saved"] =
+                        json!(result.is_ok() && projection["revision"] == summary.revision);
+                    let _ = save_app.emit("story://changed", projection);
+                }
+                result
+            })?);
+            #[cfg(target_os = "macos")]
+            {
+                // The predefined macOS Quit item terminates through AppKit directly.
+                // A regular item lets the host drain autosave before requesting exit.
+                let menu = tauri::menu::Menu::default(app.handle())?;
+                if let Some(tauri::menu::MenuItemKind::Submenu(application)) = menu.items()?.first()
+                {
+                    let count = application.items()?.len();
+                    if count > 0 {
+                        application.remove_at(count - 1)?;
                     }
-                    let host = main.state::<Host>();
-                    if let Ok(_guard) = host.gate.lock()
-                        && let Ok(doc) = host.engine.snapshot()
-                    {
-                        let error = save(&host.path, &doc).err();
-                        if error.is_some() {
-                            let _ = main.emit("story://save-error", "save_failed");
-                        }
-                        if let Ok(mut result) = projection(&host.engine) {
-                            result["saved"] = json!(error.is_none());
-                            let _ = main.emit("story://changed", result);
+                    let language = app
+                        .state::<preferences::Store>()
+                        .value
+                        .lock()
+                        .map_err(|_| "state_unavailable")?
+                        .language
+                        .clone();
+                    let label = match language.as_str() {
+                        "ja" => "KOMYAKUを終了",
+                        "zh-CN" => "退出KOMYAKU",
+                        _ => "Quit KOMYAKU",
+                    };
+                    let quit = tauri::menu::MenuItem::with_id(
+                        app,
+                        "story-quit",
+                        label,
+                        true,
+                        Some("CmdOrCtrl+Q"),
+                    )?;
+                    application.append(&quit)?;
+                }
+                app.set_menu(menu)?;
+                app.on_menu_event(|app, event| {
+                    if event.id().as_ref() == "story-quit" {
+                        if app.state::<autosave::Worker>().flush().is_ok() {
+                            app.exit(0);
+                        } else {
+                            let _ = app.emit("story://save-error", "save_failed");
                         }
                     }
                 });
+            }
+            let handle = app.handle().clone();
+            app.listen("unge://changed", move |event| {
+                let already_saved = serde_json::from_str::<Value>(event.payload())
+                    .ok()
+                    .is_some_and(|value| value["storySaved"] == true);
+                if !already_saved {
+                    handle.state::<autosave::Worker>().request();
+                }
+                let main = handle.clone();
+                let _ = handle.run_on_main_thread(move || redraw(&main));
             });
             let handle = app.handle().clone();
             app.listen("story://view-changed", move |_| {
@@ -1479,6 +1540,16 @@ fn main() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if window.label() == "controls"
+                && let tauri::WindowEvent::CloseRequested { api, .. } = event
+                && let Some(worker) = window.app_handle().try_state::<autosave::Worker>()
+                && worker.flush().is_err()
+            {
+                api.prevent_close();
+                let _ = window
+                    .app_handle()
+                    .emit("story://save-error", "save_failed");
+            }
             if window.label() == "canvas"
                 && matches!(
                     event,
@@ -1513,8 +1584,24 @@ fn main() {
                 window.app_handle().exit(0);
             }
         })
-        .run(tauri::generate_context!())
-        .expect("Story Graph startup failed; saved workspace was not overwritten");
+        .build(tauri::generate_context!())
+        .expect("Story Graph startup failed; saved workspace was not overwritten")
+        .run(|app, event| match event {
+            tauri::RunEvent::ExitRequested { api, .. } => {
+                if let Some(worker) = app.try_state::<autosave::Worker>()
+                    && worker.flush().is_err()
+                {
+                    api.prevent_exit();
+                    let _ = app.emit("story://save-error", "save_failed");
+                }
+            }
+            tauri::RunEvent::Exit => {
+                if let Some(worker) = app.try_state::<autosave::Worker>() {
+                    let _ = worker.shutdown();
+                }
+            }
+            _ => {}
+        });
 }
 #[cfg(test)]
 mod persistence_tests {
@@ -1873,6 +1960,7 @@ mod persistence_tests {
             registry,
             path: std::env::temp_dir().join(format!("story-host-{}.json", Id::new_v4())),
             gate: Arc::new(Mutex::new(())),
+            saves: Arc::new(Mutex::new(journal::Store::default())),
         }
     }
     #[test]

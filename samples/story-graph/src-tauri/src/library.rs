@@ -249,9 +249,8 @@ impl Library {
             if !path.exists() {
                 continue;
             }
-            let modified = std::fs::metadata(&path)
+            let modified = super::journal::modified(&path)
                 .ok()
-                .and_then(|meta| meta.modified().ok())
                 .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
                 .map_or(0, |time| time.as_secs());
             let is_current = current.is_some() && directory.canonicalize().ok() == current;
@@ -364,9 +363,13 @@ mod tests {
         doc.title = "星の旅".into();
         let path = directory.join("workspace.story.json");
         super::super::save(&path, &doc).unwrap();
+        let checkpoint = std::fs::read(&path).unwrap();
+        doc.title = "星の旅 第二稿".into();
+        super::super::save(&path, &doc).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), checkpoint);
         let entries = library.entries(&directory, registry.clone()).unwrap();
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].title, "星の旅");
+        assert_eq!(entries[0].title, "星の旅 第二稿");
         assert!(entries[0].current);
         assert_eq!(
             library
