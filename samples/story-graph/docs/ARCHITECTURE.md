@@ -201,3 +201,13 @@ prepareは状態を進めず、呼出側がappendとfsyncに成功した後にco
 Host.savesはArc<Mutex<journal::Store>>で、執筆RPCとgraph autosave workerが同じ保存状態を使う。既存のgateで編集／保存の順序を維持し、各ウインドウはキャッシュを所有しない。Storeは最後の保存バイト列、generation、連番、journalのパス・有効バイト数とファイルstampを保持する。checkpointとjournalの長さ／mtime／Unix inodeが一致すれば再読込と全レコードreplayを省く。appendとsync成功後に状態を進める。checkpoint切替、ファイル変更、保存失敗時は破棄して次回検証し直す。
 
 ファイルstampは通常の外部更新・原子的置換の検出用で、同じ長さとmtimeを意図的に維持した改変の認証機構ではない。cacheは保存済み本文のバイト列を1つ保持するため、その常駐メモリと全文JSON変換／checksumの負荷は今後計測する。作品一覧や別作品読込は独立に検証し、キャッシュから古い原稿を返さない。
+
+
+### 差分生成・保存成功後の負荷削減
+
+共通prefix/suffixは1KiBのスライス比較後に境界のバイトを調べる。prepareがbefore/after hashを生成した自分のレコードは、sync成功後に元のnextバイト列と連番を採用し、commitによる再parse・replay・二重hashをしない。ディスクからのrecoverには従来commit検証を必ず適用する。JSON Vecは直前の保存バイト数＋1KiBを初期容量とし、不要な倍増を抑える。全文JSON生成とprepareのchecksum、snapshotコピーは次工程。
+
+
+### 検証済みdigestの再利用
+
+Journal.current_hashはcurrentのSHA-256と常に一致する。checkpoint初期化時に計算し、recoverはbeforeを保持digestと照合、適用後のnextをhashしてafterを検証してから両方を更新する。prepareはbeforeを再hashせず、nextのafterだけ計算する。通常保存はprepareで得たafterをsync成功後にnextとともに採用する。失敗時は状態を進めず、Storeのキャッシュは破棄する。ファイル変更時は再読込・再検証するためディスク上のbefore／after検証を省略しない。

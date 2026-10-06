@@ -41,3 +41,11 @@
 [Done] Current references are stored in `story_workspace_assets` in the state/receipt transaction. The receipt-stage injected failure rolls the reference replacement back. Native tests reject missing/corrupt bytes and preserve prior reference rows after failure. Rust suite: 45 passed, one performance fixture ignored.
 
 [Next] The new table is internal groundwork, not a registered production migration. Existing Asset quarantine/lifecycle routines and immutable Version Asset closure do not yet consume these references. Image Document validation is still unsupported despite this storage check understanding typed image references. Do not expose runtime adoption until those contracts are connected.
+
+## PNG Document node validation — 2026-10-06
+
+[Done] The normalized Document subset now supports PNG image nodes with Asset UUIDs, bounded alternative text, null or positive integer display dimensions and unmarked text/hard-break captions. Rendering artifacts/provenance remain unsupported. Tests reject zero/fractional dimensions, non-PNG formats and malformed captions. Rust suite passes 46 tests with one explicit performance fixture ignored.
+
+[Next] This schema stage does not decode PNG bytes. The existing Workspace storage stage checks stored Asset bytes/hash/media type, while normal Archive Asset creation supplies the decoder-backed inspection contract. A dedicated composite image adoption/recovery fixture, full rich Canonical support and production IPC integration remain unfinished. Earlier notes that all image Document nodes are unsupported are superseded only for this normalized PNG subset.
+
+[Done] 2026-10-06: Native subset now accepts tables/rows/cells, bullet and ordered lists/items, and blockquotes with nested supported blocks. Validation enforces strict container fields, nonempty children, row/cell/item parent constraints, required child types, cell spans (1–100), ordered starts (1–1,000,000), global Node identity and iterative limits. Inline content and image captions count toward node/depth budgets. Tests cover a valid nested table/list, invalid spans and misplaced cells/items. Rust suite: 47 passed, one performance fixture ignored. This does not assert rectangular table geometry beyond the shared schema.

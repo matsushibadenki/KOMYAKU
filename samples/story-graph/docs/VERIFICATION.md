@@ -462,3 +462,29 @@ AI EOF修正後の全Rustテスト: 59 pass / 0 fail / 4 ignored。clippy -D war
 - sandbox内のGUI起動は終了コード134。専用QA bundleを通常GUI実行へ切り替えて検証。再起動時のmacOSウインドウ復元通知を閉じ、最新原稿を確認した。ネイティブUIはCUA、ブラウザーmockは使っていない。
 
 cache hit時にcheckpoint／journal全文readと全replayを省く。全文JSON変換・SHA・snapshot取得と、保存済みバイト列の常駐は残る。RSS・時間の比較計測、Windows/Linux、電源断は未実施。外部更新の検出はlen／mtime／Unix inodeで、メタデータを意図的に保持した改変の検知保証ではない。
+
+
+## 長文保存の比較計測と重複処理削減 — 2026-10-06
+
+`cargo test -p komyaku-story-graph --locked benchmark_cached_saves -- --ignored --nocapture`。実ファイル、一時ディレクトリ、macOS debug、初期作品の1つのtextノードへ100万字の日本語を配置。作品タイトルを10回変更し、各保存後に独立loadとdocument一致を確認。snapshot／キャッシュ無しjournal／キャッシュ付きjournalを同じfixture定義で順次測定。compileと検証loadはsave時間の外。
+
+| 最終実装 | 10回の中央値 | checkpoint | 差分10件 | 保存済みバッファ容量 |
+| --- | ---: | ---: | ---: | ---: |
+| 全文snapshot | 81.557ms | 3,012,859 bytes | 0 | 0 |
+| journal・cache無し | 95.380ms | 3,012,852 bytes | 2,215 bytes | 0 |
+| journal・cache有り | 74.263ms | 3,012,852 bytes | 2,215 bytes | 3,013,883 bytes |
+
+初回実装計測はsnapshot106.360ms／uncached474.483ms／cached162.231ms。キャッシュだけでは全文snapshotより遅かった。自生成差分の保存後commitに伴う再parse／全文hash／全文割当を除去し、prepare済みのnextをsync成功後にそのまま保持。共通部分の比較を1KiB単位にし、Vecの不要な倍増を避けて最終表の結果を得た。別試行間でOS負荷・cache状態は統制しておらず、この前後数値は単独要因の速度保証ではない。最終表も1試行、順序固定、release・RSS・電源断未測定。容量はVec.capacityで、プロセス総メモリ／peak RSSではない。
+
+Rust73 pass / 0 fail / 5 ignored。新規境界テストは0／1／1023／1024／1025／2048／末尾位置、挿入・削除・同一文字列・Unicodeの差分replay一致を確認。手動benchmarkも成功。通常ロードのchecksum／連番検証、破損拒否、失敗時のキャッシュ破棄は維持。UI変更なし。
+
+最終変更後のclippy -D warnings、macOS debug .app package、git diff --checkも成功。今回の最適化後のUI操作QAは再実施していない。
+
+
+## 検証済みchecksumの再利用 — 2026-10-06
+
+Journalに現在バイト列のdigestを保持。新規テストは初期checkpoint、日本語・ZWJ絵文字・空文字・結合文字の変更、準備のみ、commit成功、重複commit失敗、全レコード復旧でcurrent_hashと実バイトSHAの一致を検証。変更前の再hashを除き、復旧の適用後hash検証は維持。
+
+既存benchmark_cached_savesを同条件で再実行し成功。100万字、タイトル変更10回、debug・ローカル実ファイル、中央値snapshot76.965ms／uncached86.075ms／cached66.086ms。差分10件2,215bytes、cached Vec.capacity 3,013,830bytes。単一試行・固定順序で、前回試行との差を単独要因の効果とは断定しない。RSS／release／実電源断は未測定。全文シリアライズとafter hash、snapshotコピーは依然残る。UI変更なし。
+
+最終変更のRust全体74 pass / 0 fail / 5 ignored、clippy -D warnings、macOS debug .app package、git diff --check成功。今回のdigest再利用後のネイティブ操作QAは再実施していない。

@@ -100,10 +100,75 @@ pub(crate) fn validate_document_subset(document: &Value) -> Result<BTreeSet<Stri
         return Err("story_document_limit_exceeded".into());
     }
     let mut ids = BTreeSet::new();
-    for block in blocks {
+    let mut pending: Vec<(&Value, &str, usize)> = blocks
+        .iter()
+        .rev()
+        .map(|node| (node, "document", 1))
+        .collect();
+    let mut node_count = 0;
+    while let Some((block, parent, depth)) = pending.pop() {
+        node_count += 1;
+        if node_count > 100_000 || depth > 64 {
+            return Err("story_document_limit_exceeded".into());
+        }
         let kind = block["type"].as_str().ok_or("invalid_story_document")?;
-        if ["code_block", "math_block", "file", "horizontal_rule"].contains(&kind) {
+        let required_parent = match kind {
+            "list_item" => Some(&["bullet_list", "ordered_list"][..]),
+            "table_row" => Some(&["table"][..]),
+            "table_cell" => Some(&["table_row"][..]),
+            _ => None,
+        };
+        if required_parent.is_some_and(|parents| !parents.contains(&parent)) {
+            return Err("invalid_node_parent".into());
+        }
+        if [
+            "blockquote",
+            "list_item",
+            "bullet_list",
+            "ordered_list",
+            "table",
+            "table_row",
+            "table_cell",
+        ]
+        .contains(&kind)
+        {
+            validate_container(block, &mut ids, document["id"].as_str().unwrap())?;
+            let children = block["content"]
+                .as_array()
+                .ok_or("invalid_story_document")?;
+            if children.is_empty() {
+                return Err("invalid_story_document".into());
+            }
+            let child_kind = match kind {
+                "bullet_list" | "ordered_list" => Some("list_item"),
+                "table" => Some("table_row"),
+                "table_row" => Some("table_cell"),
+                _ => None,
+            };
+            if child_kind
+                .is_some_and(|required| children.iter().any(|child| child["type"] != required))
+            {
+                return Err("invalid_node_parent".into());
+            }
+            pending.extend(children.iter().rev().map(|child| (child, kind, depth + 1)));
+            continue;
+        }
+        if [
+            "code_block",
+            "math_block",
+            "file",
+            "horizontal_rule",
+            "image",
+        ]
+        .contains(&kind)
+        {
             validate_source_block(block, &mut ids, document["id"].as_str().unwrap())?;
+            if let Some(caption) = block["caption"].as_array() {
+                node_count += caption.len();
+                if node_count > 100_000 || (!caption.is_empty() && depth >= 64) {
+                    return Err("story_document_limit_exceeded".into());
+                }
+            }
             continue;
         }
         if !["paragraph", "heading"].contains(&kind) {
@@ -156,6 +221,10 @@ pub(crate) fn validate_document_subset(document: &Value) -> Result<BTreeSet<Stri
             .as_array()
             .ok_or("invalid_story_document")?
         {
+            node_count += 1;
+            if node_count > 100_000 || depth >= 64 {
+                return Err("story_document_limit_exceeded".into());
+            }
             if inline["type"] == "hard_break" {
                 fields(inline, &["type"])?;
                 continue;
@@ -172,6 +241,61 @@ pub(crate) fn validate_document_subset(document: &Value) -> Result<BTreeSet<Stri
         }
     }
     Ok(ids)
+}
+
+fn validate_container(
+    block: &Value,
+    ids: &mut BTreeSet<String>,
+    document_id: &str,
+) -> Result<(), String> {
+    let kind = block["type"].as_str().ok_or("invalid_story_document")?;
+    let mut names = vec![
+        "id",
+        "schemaVersion",
+        "type",
+        "content",
+        "metadata",
+        "extensions",
+        "renderArtifacts",
+    ];
+    if ["ordered_list", "table_cell"].contains(&kind) {
+        names.push("attrs");
+    }
+    fields(block, &names)?;
+    let id = block["id"]
+        .as_str()
+        .filter(|id| super::valid_lower_uuid(id))
+        .ok_or("invalid_story_document")?;
+    if id == document_id || !ids.insert(id.to_string()) {
+        return Err("duplicate_canonical_node_id".into());
+    }
+    if block["schemaVersion"] != 1 || block["renderArtifacts"] != serde_json::json!([]) {
+        return Err("unsupported_story_document_node".into());
+    }
+    metadata(&block["metadata"], false)?;
+    metadata(&block["extensions"], true)?;
+    if kind == "ordered_list" {
+        fields(&block["attrs"], &["start"])?;
+        if !block["attrs"]["start"]
+            .as_i64()
+            .is_some_and(|n| (1..=1_000_000).contains(&n))
+        {
+            return Err("invalid_story_document".into());
+        }
+    }
+    if kind == "table_cell" {
+        fields(&block["attrs"], &["header", "colspan", "rowspan"])?;
+        if !block["attrs"]["header"].is_boolean()
+            || ["colspan", "rowspan"].iter().any(|key| {
+                !block["attrs"][*key]
+                    .as_i64()
+                    .is_some_and(|n| (1..=100).contains(&n))
+            })
+        {
+            return Err("invalid_story_document".into());
+        }
+    }
+    Ok(())
 }
 
 fn bounded_string(value: &Value, min: usize, max: usize, nullable: bool) -> bool {
@@ -199,6 +323,14 @@ fn validate_source_block(
         "code_block" => names.extend(["language", "source"]),
         "math_block" => names.extend(["sourceType", "source", "displayMode"]),
         "file" => names.extend(["assetId", "mediaType", "fileName", "title", "description"]),
+        "image" => names.extend([
+            "assetId",
+            "mediaType",
+            "altText",
+            "caption",
+            "width",
+            "height",
+        ]),
         "horizontal_rule" => {}
         _ => return Err("unsupported_story_document_node".into()),
     }
@@ -233,6 +365,38 @@ fn validate_source_block(
                 && bounded_string(&block["title"], 0, 1000, true)
                 && bounded_string(&block["description"], 0, 10_000, true)
         }
+        "image" => {
+            if let Some(caption) = block["caption"].as_array() {
+                for inline in caption {
+                    if inline["type"] == "hard_break" {
+                        fields(inline, &["type"])?;
+                        continue;
+                    }
+                    fields(inline, &["type", "text", "marks", "metadata", "extensions"])?;
+                    if inline["type"] != "text"
+                        || !inline["text"].is_string()
+                        || inline["marks"] != serde_json::json!([])
+                    {
+                        return Err("unsupported_story_document_node".into());
+                    }
+                    metadata(&inline["metadata"], false)?;
+                    metadata(&inline["extensions"], true)?;
+                }
+            } else {
+                return Err("invalid_story_document".into());
+            }
+            block["assetId"]
+                .as_str()
+                .is_some_and(super::valid_lower_uuid)
+                && block["mediaType"] == "image/png"
+                && bounded_string(&block["altText"], 0, 10_000, false)
+                && ["width", "height"].iter().all(|field| {
+                    block[*field].is_null()
+                        || block[*field]
+                            .as_i64()
+                            .is_some_and(|n| n > 0 && n <= 9_007_199_254_740_991)
+                })
+        }
         "horizontal_rule" => true,
         _ => false,
     };
@@ -259,7 +423,7 @@ mod tests {
         value["attrs"]["language"] = json!("");
         assert!(validate_document_subset(&value).is_err());
         value = original.clone();
-        value["content"] = json!([{"type":"image"}]);
+        value["content"] = json!([{"type":"unknown-block"}]);
         assert_eq!(
             validate_document_subset(&value).unwrap_err(),
             "unsupported_story_document_node"
@@ -307,5 +471,57 @@ mod tests {
                 "duplicate_canonical_node_id"
             );
         }
+    }
+    #[test]
+    fn validates_png_caption_and_dimensions_without_rendering() {
+        let mut value = document();
+        value["content"] = json!([{"id":"00000000-0000-4000-8000-000000000002","schemaVersion":1,"type":"image",
+            "metadata":{},"extensions":{},"renderArtifacts":[],"assetId":"00000000-0000-4000-8000-000000000003",
+            "mediaType":"image/png","altText":"画像の説明","caption":[{"type":"text","text":"説明","marks":[],"metadata":{},"extensions":{}}],"width":320,"height":null}]);
+        assert!(validate_document_subset(&value).is_ok());
+        for (field, bad) in [
+            ("width", json!(0)),
+            ("height", json!(1.5)),
+            ("mediaType", json!("image/svg+xml")),
+            ("caption", json!(null)),
+        ] {
+            let mut invalid = value.clone();
+            invalid["content"][0][field] = bad;
+            assert!(validate_document_subset(&invalid).is_err(), "{field}");
+        }
+    }
+    #[test]
+    fn validates_nested_tables_and_lists_without_implicit_repairs() {
+        fn node(n: u32, kind: &str, children: Value) -> Value {
+            json!({"id":format!("00000000-0000-4000-8000-{n:012x}"),"schemaVersion":1,"type":kind,"content":children,"metadata":{},"extensions":{},"renderArtifacts":[]})
+        }
+        let mut paragraph = node(5, "paragraph", json!([]));
+        paragraph["attrs"] = json!({"lang":null,"dir":"auto"});
+        let mut cell = node(4, "table_cell", json!([paragraph.clone()]));
+        cell["attrs"] = json!({"header":false,"colspan":1,"rowspan":1});
+        let row = node(3, "table_row", json!([cell.clone()]));
+        let table = node(2, "table", json!([row]));
+        let mut value = document();
+        value["content"] = json!([table]);
+        assert_eq!(validate_document_subset(&value).unwrap().len(), 4);
+        let mut broken = value.clone();
+        broken["content"][0]["content"][0]["content"][0]["attrs"]["colspan"] = json!(0);
+        assert!(validate_document_subset(&broken).is_err());
+        broken = document();
+        broken["content"] = json!([cell]);
+        assert_eq!(
+            validate_document_subset(&broken).unwrap_err(),
+            "invalid_node_parent"
+        );
+        let item = node(7, "list_item", json!([paragraph]));
+        let list = node(6, "bullet_list", json!([item.clone()]));
+        value = document();
+        value["content"] = json!([list]);
+        assert!(validate_document_subset(&value).is_ok());
+        value["content"] = json!([item]);
+        assert_eq!(
+            validate_document_subset(&value).unwrap_err(),
+            "invalid_node_parent"
+        );
     }
 }

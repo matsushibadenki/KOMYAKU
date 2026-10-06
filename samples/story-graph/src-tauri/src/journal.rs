@@ -1,4 +1,4 @@
-//! Versioned byte-delta recovery contract. Runtime integration follows fault tests.
+//! Versioned byte-delta persistence with bounded, verified recovery.
 use ring::digest::{SHA256, digest};
 use serde::{Deserialize, Serialize};
 
@@ -25,6 +25,7 @@ fn hash(bytes: &[u8]) -> String {
 /// The checkpoint bytes are the generation identity; replay never mutates them.
 pub struct Journal {
     current: Vec<u8>,
+    current_hash: String,
     sequence: u64,
 }
 pub struct Recovery {
@@ -38,7 +39,9 @@ impl Journal {
         if checkpoint.len() > LIMIT {
             return Err("limit_exceeded".into());
         }
+        let current_hash = hash(&checkpoint);
         Ok(Self {
+            current_hash,
             current: checkpoint,
             sequence: 0,
         })
@@ -50,27 +53,45 @@ impl Journal {
         self.sequence >= RECORDS as u64
     }
     /// Prepare without advancing: only commit after the caller syncs the record.
+    #[cfg(test)]
     pub fn prepare(&self, next: &[u8]) -> Result<Vec<u8>, String> {
+        self.prepare_hashed(next).map(|(bytes, _)| bytes)
+    }
+    fn prepare_hashed(&self, next: &[u8]) -> Result<(Vec<u8>, String), String> {
         if next.len() > LIMIT || self.needs_checkpoint() {
             return Err("limit_exceeded".into());
         }
-        let offset = self
-            .current
+        let common = self.current.len().min(next.len());
+        let mut offset = 0;
+        while offset + 1024 <= common
+            && self.current[offset..offset + 1024] == next[offset..offset + 1024]
+        {
+            offset += 1024;
+        }
+        offset += self.current[offset..]
             .iter()
-            .zip(next)
+            .zip(&next[offset..])
             .take_while(|(a, b)| a == b)
             .count();
-        let suffix = self.current[offset..]
+        let mut suffix = 0;
+        while suffix + 1024 <= common - offset
+            && self.current[self.current.len() - suffix - 1024..self.current.len() - suffix]
+                == next[next.len() - suffix - 1024..next.len() - suffix]
+        {
+            suffix += 1024;
+        }
+        suffix += self.current[offset..self.current.len() - suffix]
             .iter()
             .rev()
-            .zip(next[offset..].iter().rev())
+            .zip(next[offset..next.len() - suffix].iter().rev())
             .take_while(|(a, b)| a == b)
             .count();
+        let after = hash(next);
         let record = Delta {
             version: 1,
             sequence: self.sequence + 1,
-            before: hash(&self.current),
-            after: hash(next),
+            before: self.current_hash.clone(),
+            after: after.clone(),
             offset,
             removed: self.current.len() - offset - suffix,
             inserted: next[offset..next.len() - suffix].to_vec(),
@@ -80,7 +101,7 @@ impl Journal {
             return Err("limit_exceeded".into());
         }
         bytes.push(b'\n');
-        Ok(bytes)
+        Ok((bytes, after))
     }
     pub fn commit(&mut self, record: &[u8]) -> Result<(), String> {
         if record.len() > LIMIT + 1 || record.last() != Some(&b'\n') || self.needs_checkpoint() {
@@ -90,7 +111,7 @@ impl Journal {
             serde_json::from_slice(&record[..record.len() - 1]).map_err(|_| "journal_invalid")?;
         if delta.version != 1
             || delta.sequence != self.sequence + 1
-            || delta.before != hash(&self.current)
+            || delta.before != self.current_hash
         {
             return Err("journal_invalid".into());
         }
@@ -114,6 +135,7 @@ impl Journal {
             return Err("journal_invalid".into());
         }
         self.current = next;
+        self.current_hash = delta.after;
         self.sequence = delta.sequence;
         Ok(())
     }
@@ -260,12 +282,16 @@ impl Store {
             version: u32,
             document: &'a unge_core::Document,
         }
-        let next = serde_json::to_vec(&Snapshot {
-            generation: &cache.generation,
-            format: "komyaku-story-workspace",
-            version: 1,
-            document,
-        })
+        let mut next = Vec::with_capacity(recovery.journal.bytes().len().saturating_add(1024));
+        serde_json::to_writer(
+            &mut next,
+            &Snapshot {
+                generation: &cache.generation,
+                format: "komyaku-story-workspace",
+                version: 1,
+                document,
+            },
+        )
         .map_err(|e| e.to_string())?;
         if next.len() > LIMIT {
             return Err("limit_exceeded".into());
@@ -274,14 +300,14 @@ impl Store {
             self.cache = Some(cache);
             return Ok(());
         }
-        let delta = recovery.journal.prepare(&next);
+        let delta = recovery.journal.prepare_hashed(&next);
         // Bound replay cost and disk growth. A new checkpoint chooses a new hash generation.
-        let delta = match delta {
-            Ok(delta)
+        let (delta, after_hash) = match delta {
+            Ok((delta, after_hash))
                 if delta.len() < next.len() / 2
                     && recovery.valid_bytes + delta.len() < 4 * 1024 * 1024 =>
             {
-                delta
+                (delta, after_hash)
             }
             _ => {
                 crate::persistence::save(path, document)?;
@@ -311,7 +337,12 @@ impl Store {
         std::fs::File::open(path.parent().unwrap_or(std::path::Path::new(".")))
             .and_then(|f| f.sync_all())
             .map_err(|e| e.to_string())?;
-        recovery.journal.commit(&delta)?;
+        // prepare already computed both digests from these validated bytes.
+        // After durable publication, adopt the exact source instead of parsing,
+        // hashing and allocating the whole document again through replay.
+        recovery.journal.current = next;
+        recovery.journal.current_hash = after_hash;
+        recovery.journal.sequence += 1;
         recovery.valid_bytes += delta.len();
         recovery.incomplete_tail = false;
         cache.journal_stamp = stamp(&cache.journal_path);
@@ -322,6 +353,104 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cached_digest_stays_consistent_through_success_failure_and_recovery() {
+        let mut journal = Journal::new("初稿".as_bytes().to_vec()).unwrap();
+        assert_eq!(journal.current_hash, hash(journal.bytes()));
+        let mut records = vec![];
+        for next in ["改稿 👨‍👩‍👧‍👦", "", "最終稿 e\u{301}"] {
+            let (record, after) = journal.prepare_hashed(next.as_bytes()).unwrap();
+            assert_eq!(journal.current_hash, hash(journal.bytes()));
+            journal.commit(&record).unwrap();
+            assert_eq!(journal.current_hash, after);
+            assert_eq!(after, hash(journal.bytes()));
+            let before = journal.current_hash.clone();
+            assert!(journal.commit(&record).is_err());
+            assert_eq!(journal.current_hash, before);
+            records.extend(record);
+        }
+        let recovered = Journal::recover("初稿".as_bytes().to_vec(), &records).unwrap();
+        assert_eq!(recovered.journal.current_hash, journal.current_hash);
+        assert_eq!(
+            recovered.journal.current_hash,
+            hash(recovered.journal.bytes())
+        );
+    }
+    #[test]
+    fn chunk_boundaries_insert_delete_and_identical_bytes_replay_exactly() {
+        let base = vec![b'a'; 5000];
+        for offset in [0, 1, 1023, 1024, 1025, 2048, 4999, 5000] {
+            for removed in [0, 1, 1024] {
+                if offset + removed > base.len() {
+                    continue;
+                }
+                for inserted in [b"".as_slice(), b"xy", "雨👨‍👩‍👧‍👦".as_bytes()] {
+                    let mut next = base.clone();
+                    next.splice(offset..offset + removed, inserted.iter().copied());
+                    let mut journal = Journal::new(base.clone()).unwrap();
+                    let record = journal.prepare(&next).unwrap();
+                    journal.commit(&record).unwrap();
+                    assert_eq!(journal.bytes(), next);
+                }
+            }
+        }
+    }
+    #[test]
+    #[ignore = "manual real-file saving benchmark"]
+    fn benchmark_cached_saves() {
+        fn fill(value: &mut serde_json::Value) -> bool {
+            if value["type"] == "text" && value["text"].is_string() {
+                value["text"] = serde_json::json!("雨".repeat(1_000_000));
+                return true;
+            }
+            match value {
+                serde_json::Value::Object(map) => map.values_mut().any(fill),
+                serde_json::Value::Array(items) => items.iter_mut().any(fill),
+                _ => false,
+            }
+        }
+        let registry = crate::domain::registry();
+        let mut value = serde_json::to_value(crate::domain::initial_document(&registry)).unwrap();
+        assert!(fill(&mut value));
+        let initial: unge_core::Document = serde_json::from_value(value).unwrap();
+        for mode in ["snapshot", "uncached", "cached"] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("workspace.story.json");
+            crate::persistence::save(&path, &initial).unwrap();
+            let mut store = Store::default();
+            let mut doc = initial.clone();
+            let mut samples = vec![];
+            for i in 0..10 {
+                doc.title = format!("改稿{i}");
+                let start = std::time::Instant::now();
+                match mode {
+                    "snapshot" => {
+                        crate::persistence::save(&path, &doc).unwrap();
+                    }
+                    "uncached" => save_workspace(&path, &doc).unwrap(),
+                    _ => store.save(&path, &doc).unwrap(),
+                }
+                samples.push(start.elapsed().as_secs_f64() * 1000.);
+                assert_eq!(crate::load(&path).unwrap(), doc);
+            }
+            samples.sort_by(f64::total_cmp);
+            let journal_bytes: u64 = std::fs::read_dir(dir.path())
+                .unwrap()
+                .map(|e| e.unwrap())
+                .filter(|e| e.path().extension().is_some_and(|s| s == "journal"))
+                .map(|e| e.metadata().unwrap().len())
+                .sum();
+            let cache_capacity = store
+                .cache
+                .as_ref()
+                .map_or(0, |c| c.recovery.journal.current.capacity());
+            println!(
+                "{mode}: median_ms={:.3} checkpoint_bytes={} journal_bytes={journal_bytes} cache_capacity={cache_capacity}",
+                (samples[4] + samples[5]) / 2.,
+                std::fs::metadata(&path).unwrap().len()
+            );
+        }
+    }
     #[test]
     fn cached_saves_advance_and_external_changes_invalidate_the_cache() {
         let dir = tempfile::tempdir().unwrap();
