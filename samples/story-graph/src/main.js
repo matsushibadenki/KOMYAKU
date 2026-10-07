@@ -326,8 +326,9 @@ async function choose(id) {
 }
 function paragraphMarkup(node,lazy=false) {
   return fragments(paragraphText(node)).map((part,index)=>{
-    const key=`${node.id}-${index}`,markup=()=>`<textarea class="manuscript-text" data-block="${node.id}" data-start="${part.start}" data-length="${part.text.length}" data-fragment="${index}" aria-label="${escape(t('body'))}" rows="1" ${native?'':'readonly'}>${escape(part.text)}</textarea>`;
-    virtualSources.set(key,{markup,text:part.text,start:part.start});
+    const key=`${node.id}-${index}`,source={text:part.text,start:part.start};
+    const markup=()=>`<textarea class="manuscript-text" data-block="${node.id}" data-start="${source.start}" data-length="${source.text.length}" data-fragment="${index}" aria-label="${escape(t('body'))}" rows="1" ${native?'':'readonly'}>${escape(source.text)}</textarea>`;
+    source.markup=markup;virtualSources.set(key,source);
     return `<div class="manuscript-block" data-manuscript-block="${key}" data-paragraph="${node.id}" data-start="${part.start}" data-length="${part.text.length}">${lazy?'':markup()}</div>`;
   }).join('');
 }
@@ -612,7 +613,7 @@ document.addEventListener('selectionchange',()=>{
 });
 function captureSelectionReplacement(input) {
   if(!input.dataset.block||!selectedParagraph(input)||selectionReplacements.has(input))return;
-  selectionReplacements.set(input,{selection:{...paragraphSelection},before:input.value,start:input.selectionStart,end:input.selectionEnd,parts:paragraphInputs(input).map(peer=>({input:peer,start:Number(peer.dataset.start),text:rawFragment(peer)}))});
+  selectionReplacements.set(input,{selection:{...paragraphSelection},before:input.value,start:input.selectionStart,end:input.selectionEnd,parts:manuscriptViewport?manuscriptViewport.replacementParts(input,paragraphValue(input)):paragraphInputs(input).map(peer=>({input:peer,block:peer.closest('.manuscript-block'),start:Number(peer.dataset.start),text:rawFragment(peer)}))});
 }
 document.addEventListener('beforeinput',event=>captureSelectionReplacement(event.target));
 document.addEventListener('keydown',event=>{
@@ -658,7 +659,13 @@ document.addEventListener('input',event=>{
       clearParagraphSelection();
       if(!composing){reflowParagraph(input,position);return;}
       const retained=replaceSelectionFragments(replacement.parts,replacement.parts.findIndex(part=>part.input===input),replacement.selection,inserted);
-      retained.forEach((part,index)=>{const peer=replacement.parts[index].input;if(!part){const block=peer.closest('.manuscript-block');manuscriptViewport?.remove(block);block.remove();return;}peer.dataset.start=String(part.start);peer.dataset.length=String(part.text.length);if(peer!==input)peer.value=part.text.replace(/\r\n?/g,'\n');manuscriptViewport?.syncBlock(peer.closest('.manuscript-block'));});
+      retained.forEach((part,index)=>{
+        const {input:peer,block}=replacement.parts[index];
+        if(!part){manuscriptViewport?.remove(block);virtualSources.delete(block.dataset.manuscriptBlock);block.remove();return;}
+        const source=virtualSources.get(block.dataset.manuscriptBlock);if(source){source.start=part.start;source.text=part.text;}
+        if(peer){peer.dataset.start=String(part.start);peer.dataset.length=String(part.text.length);if(peer!==input)peer.value=part.text.replace(/\r\n?/g,'\n');}
+        manuscriptViewport?.updateFragment(block,part);
+      });
       compositionReflow.add(input);
     }else {
       const delta=change.text.length-(change.end-change.start);input.dataset.length=String(Number(input.dataset.length)+delta);

@@ -3,7 +3,8 @@
   "description": "Local authoring panels",
   "windows": [
     "controls",
-    "editor"
+    "editor",
+    "canvas"
   ],
   "permissions": [
     "core:default",
@@ -11,5 +12,11 @@
     "core:window:allow-destroy",
     "core:window:allow-set-title",
     "core:window:allow-start-dragging"
+  ],
+  "webviews": [
+    "controls",
+    "editor",
+    "graph-rail",
+    "graph-inspector"
   ]
 }

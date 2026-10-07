@@ -146,18 +146,27 @@ impl Plugin<EventLoopMessage> for Input {
                 let Some(position) = self.position else {
                     return false;
                 };
-                if position[0] < super::ICON_RAIL_WIDTH as f32 && self.button.is_none() {
+                if (position[0] < super::ICON_RAIL_WIDTH as f32
+                    || super::graph_tools::blocks_pointer(&self.app, position))
+                    && self.button.is_none()
+                {
                     return false;
                 }
                 if *state == ElementState::Pressed && self.button.is_none() {
                     if let Ok(summary) = self.engine.dispatch("controls", Request::Summary) {
                         self.revision = summary.revision;
                     }
+                    if *button == MouseButton::Left && super::graph_tools::connecting(&self.app) {
+                        super::graph_tools::click(&self.app, &self.engine, position);
+                        return false;
+                    }
                     self.button = Some(*button);
                     self.send(PointerEvent::Down {
                         pointer: 0,
                         position,
-                        button: if *button == MouseButton::Left {
+                        button: if *button == MouseButton::Left
+                            && !super::graph_tools::pan(&self.app)
+                        {
                             PointerButton::Primary
                         } else {
                             PointerButton::Pan
@@ -170,13 +179,16 @@ impl Plugin<EventLoopMessage> for Input {
                         position,
                     });
                     self.button = None;
+                    super::graph_tools::click(&self.app, &self.engine, position);
                 }
             }
             WindowEvent::MouseWheel { delta, .. } if self.button.is_none() => {
                 if let (Some(position), Ok(state)) =
                     (self.position, self.engine.view_state("controls"))
                 {
-                    if position[0] < super::ICON_RAIL_WIDTH as f32 {
+                    if position[0] < super::ICON_RAIL_WIDTH as f32
+                        || super::graph_tools::blocks_pointer(&self.app, position)
+                    {
                         return false;
                     }
                     let dy = match delta {

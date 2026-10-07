@@ -218,3 +218,21 @@ Journal.current_hashはcurrentのSHA-256と常に一致する。checkpoint初期
 Paragraphs RPCはdispatch前のcanonicalから対象paragraph IDを取得し、dispatch後のsnapshotから同じ段落を取得する。セリフセル内の段落もcontentを再帰して取得する。Store.save_patchedは旧／新の段落objectだけをJSON変換し、旧objectが保存済みUTF-8バイト列に1回だけ現れる場合に差し込む。複数対象は位置順に適用し、重なりは拒否する。最大64段落、変換量は現在バイト数の4分の1まで。
 
 生成候補をSavedWorkspaceとしてparseし、candidate.documentとRustのsnapshotが完全一致した場合だけ採用する。前回保存失敗、別の未保存変更、共有IDの重複、旧段落が見つからない、対象欠落や大変更は従来の全文serializerへfallbackする。この安全確認により他の変更を落とさない。checksum・journal version・append/fsync・checkpoint切替は従来と同じ。全文parseとsnapshotコピー、after SHAはまだ必要で、意味的な操作recordへ移行したものではない。
+
+
+### 同期失敗後の同一内容再試行 — 2026-10-07
+
+write_allで全レコードを追加した後のsync失敗は、次のrecoverで最新本文として読めても未確認の保存として扱う。Storeの同一バイト列分岐もcheckpoint／該当journal／親ディレクトリをsyncし、すべて成功してからcacheを戻して成功応答する。新規差分も共通sync経路を使う。同期失敗時のcache破棄とUIへの保存失敗通知・終了保護は既存経路を維持。全文checkpointの作成・原子的置換はpersistence側の同期契約を維持する。
+
+
+### 範囲置換／composition準備の仮想化 — 2026-10-07
+
+captureSelectionReplacementはManuscriptViewport.replacementPartsでparagraphのblock位置情報とcanonical文字列の断片を取得し、paragraphInputsによる全peer mountをしない。composition中は入力中textareaを保持し、存在するpeerのみ値・offsetを更新。未生成peerはsourceの文字列／offset、entry.values、placeholder寸法を更新し、古いhtmlを無効化する。削除peerはviewportとvirtualSourcesの両方から除く。確定後は既存reflowへ接続する。paragraphMarkupのclosureは更新可能なsourceを読むので、後のmountで古い置換前文字列を表示しない。位置情報配列・文字列断片・placeholder DOMは残る。Rust正本と保存形式は変更しない。
+
+## Native graph tools
+
+`graph_tools.rs` owns tool mode, pending character endpoint, selected edge, and inspector visibility in Rust. `graph-rail` and `graph-inspector` child WebViews only show metadata projections and input drafts. The inspector is a 300px panel on the right of the canvas, can be closed, and follows native window resize. Native input excludes both WebView regions, and routes selection/pan/click-to-connect through the shared engine.
+
+Click picking samples the same cubic curve as the renderer, with an eight screen-pixel tolerance. Edge selection is ephemeral Engine view metadata, rendered as a colored halo. Reconnection is one Disconnect+Connect batch, so invalid ports, types or cycles roll back without losing the old cable; relationship endpoints cannot duplicate the other character. Form property changes are one validated batch and one Undo step. Saving uses the existing journal store and save worker retry notifications. No image/frame data crosses IPC.
+
+Hidden canvas panels return only a hidden marker instead of cloning the workspace projection on manuscript-save events. Opening the canvas emits a refresh event to resume the tools. Inspector metadata is read from the Rust snapshot without transferring scene canonical text.

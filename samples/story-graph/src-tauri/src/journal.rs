@@ -281,6 +281,19 @@ pub fn save_workspace(
 ) -> Result<(), String> {
     Store::default().save(path, document)
 }
+fn sync_workspace(path: &std::path::Path, journal: &std::path::Path) -> Result<(), String> {
+    std::fs::File::open(path)
+        .and_then(|f| f.sync_all())
+        .map_err(|e| e.to_string())?;
+    match std::fs::File::open(journal) {
+        Ok(file) => file.sync_all().map_err(|e| e.to_string())?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.to_string()),
+    }
+    std::fs::File::open(path.parent().unwrap_or(std::path::Path::new(".")))
+        .and_then(|f| f.sync_all())
+        .map_err(|e| e.to_string())
+}
 impl Store {
     pub fn save(
         &mut self,
@@ -294,6 +307,15 @@ impl Store {
         path: &std::path::Path,
         document: &unge_core::Document,
         patches: &[(serde_json::Value, serde_json::Value)],
+    ) -> Result<(), String> {
+        self.save_with_sync(path, document, patches, sync_workspace)
+    }
+    fn save_with_sync(
+        &mut self,
+        path: &std::path::Path,
+        document: &unge_core::Document,
+        patches: &[(serde_json::Value, serde_json::Value)],
+        mut sync: impl FnMut(&std::path::Path, &std::path::Path) -> Result<(), String>,
     ) -> Result<(), String> {
         use std::io::Write;
         document.validate().map_err(|e| e.to_string())?;
@@ -360,6 +382,9 @@ impl Store {
             return Err("limit_exceeded".into());
         }
         if next == recovery.journal.bytes() {
+            // An earlier fsync may have failed after publishing all bytes.
+            // Equality alone does not establish durability.
+            sync(path, &cache.journal_path)?;
             self.cache = Some(cache);
             return Ok(());
         }
@@ -396,10 +421,7 @@ impl Store {
         use std::io::{Seek, SeekFrom};
         file.seek(SeekFrom::End(0)).map_err(|e| e.to_string())?;
         file.write_all(&delta).map_err(|e| e.to_string())?;
-        file.sync_all().map_err(|e| e.to_string())?;
-        std::fs::File::open(path.parent().unwrap_or(std::path::Path::new(".")))
-            .and_then(|f| f.sync_all())
-            .map_err(|e| e.to_string())?;
+        sync(path, &cache.journal_path)?;
         // prepare already computed both digests from these validated bytes.
         // After durable publication, adopt the exact source instead of parsing,
         // hashing and allocating the whole document again through replay.
@@ -416,6 +438,65 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn retry_after_sync_failure_requires_sync_even_when_bytes_match() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("workspace.story.json");
+        let mut doc = unge_core::Document::default();
+        doc.title = "雨".repeat(10000);
+        let mut store = Store::default();
+        store.save(&path, &doc).unwrap();
+        doc.title.push_str("改稿");
+        let error = store
+            .save_with_sync(&path, &doc, &[], |_, _| Err("injected_sync_failure".into()))
+            .unwrap_err();
+        assert_eq!(error, "injected_sync_failure");
+        assert!(store.cache.is_none());
+        // Complete bytes are readable, but the preceding save was not acknowledged.
+        assert_eq!(crate::load(&path).unwrap(), doc);
+        let checkpoint = std::fs::read(&path).unwrap();
+        let journal = sidecar(&path, &checkpoint);
+        let records = std::fs::read(&journal).unwrap();
+        let mut calls = 0;
+        assert!(
+            store
+                .save_with_sync(&path, &doc, &[], |_, _| {
+                    calls += 1;
+                    Err("still_failing".into())
+                })
+                .is_err()
+        );
+        assert_eq!(calls, 1);
+        assert!(store.cache.is_none());
+        store
+            .save_with_sync(&path, &doc, &[], |p, j| {
+                calls += 1;
+                sync_workspace(p, j)
+            })
+            .unwrap();
+        assert_eq!(calls, 2);
+        assert!(store.cache.is_some());
+        assert_eq!(std::fs::read(journal).unwrap(), records);
+        assert_eq!(crate::load(&path).unwrap(), doc);
+    }
+    #[test]
+    fn unchanged_checkpoint_also_requires_durable_acknowledgement() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("workspace.story.json");
+        let doc = unge_core::Document::default();
+        crate::persistence::save(&path, &doc).unwrap();
+        let mut store = Store::default();
+        assert!(
+            store
+                .save_with_sync(&path, &doc, &[], |_, _| Err(
+                    "injected_directory_sync_failure".into()
+                ))
+                .is_err()
+        );
+        assert!(store.cache.is_none());
+        store.save(&path, &doc).unwrap();
+        assert_eq!(crate::load(&path).unwrap(), doc);
+    }
     #[test]
     #[ignore = "manual paragraph serialization benchmark"]
     fn benchmark_paragraph_saves() {

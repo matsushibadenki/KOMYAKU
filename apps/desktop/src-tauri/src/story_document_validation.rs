@@ -1,5 +1,5 @@
 //! Strict normalized Canonical subset with prose, code, block math and files.
-//! Artifacts/provenance and non-PNG image formats remain unsupported.
+//! Non-PNG image formats and external-input normalization remain unsupported.
 use serde_json::Value;
 use std::collections::BTreeSet;
 fn fields(value: &Value, names: &[&str]) -> Result<(), String> {
@@ -9,6 +9,96 @@ fn fields(value: &Value, names: &[&str]) -> Result<(), String> {
     }
     Ok(())
 }
+// Mirrors the shared Zod offset datetime contract, including optional seconds.
+fn provenance_datetime(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    if !value.is_ascii()
+        || bytes.len() < 17
+        || bytes.get(4) != Some(&b'-')
+        || bytes.get(7) != Some(&b'-')
+        || bytes.get(10) != Some(&b'T')
+    {
+        return false;
+    }
+    fn number(bytes: &[u8]) -> Option<u32> {
+        if !bytes.iter().all(u8::is_ascii_digit) {
+            return None;
+        }
+        Some(bytes.iter().fold(0, |n, c| n * 10 + u32::from(c - b'0')))
+    }
+    let (Some(year), Some(month), Some(day)) = (
+        number(&bytes[..4]),
+        number(&bytes[5..7]),
+        number(&bytes[8..10]),
+    ) else {
+        return false;
+    };
+    let days = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) => 29,
+        2 => 28,
+        _ => return false,
+    };
+    if day == 0 || day > days {
+        return false;
+    }
+    let time = &bytes[11..];
+    let clock = if time.last() == Some(&b'Z') {
+        &time[..time.len() - 1]
+    } else {
+        if time.len() < 11 {
+            return false;
+        }
+        let offset = &time[time.len() - 6..];
+        if ![b'+', b'-'].contains(&offset[0])
+            || offset[3] != b':'
+            || !number(&offset[1..3]).is_some_and(|n| n <= 23)
+            || !number(&offset[4..6]).is_some_and(|n| n <= 59)
+        {
+            return false;
+        }
+        &time[..time.len() - 6]
+    };
+    if clock.len() < 5
+        || clock[2] != b':'
+        || !number(&clock[..2]).is_some_and(|n| n <= 23)
+        || !number(&clock[3..5]).is_some_and(|n| n <= 59)
+    {
+        return false;
+    }
+    if clock.len() == 5 {
+        return true;
+    }
+    if clock.len() < 8 || clock[5] != b':' || !number(&clock[6..8]).is_some_and(|n| n <= 59) {
+        return false;
+    }
+    clock.len() == 8
+        || (clock.len() > 9 && clock[8] == b'.' && clock[9..].iter().all(u8::is_ascii_digit))
+}
+
+fn node_fields(value: &Value, names: &[&str]) -> Result<(), String> {
+    let object = value.as_object().ok_or("invalid_story_document")?;
+    let mut allowed = names.to_vec();
+    if let Some(provenance) = object.get("provenance") {
+        allowed.push("provenance");
+        let provenance = provenance.as_object().ok_or("invalid_story_document")?;
+        for (key, value) in provenance {
+            let valid = match key.as_str() {
+                "createdAt" => value.as_str().is_some_and(provenance_datetime),
+                "createdBy" | "sourceNodeId" | "sourceVersionId" => {
+                    value.as_str().is_some_and(super::valid_lower_uuid)
+                }
+                _ => false,
+            };
+            if !valid {
+                return Err("invalid_story_document".into());
+            }
+        }
+    }
+    fields(value, &allowed)
+}
+
 fn language(value: &Value) -> bool {
     value.as_str().is_some_and(|s| {
         !s.is_empty()
@@ -96,6 +186,9 @@ pub(crate) fn validate_document_subset(document: &Value) -> Result<BTreeSet<Stri
     let blocks = document["content"]
         .as_array()
         .ok_or("invalid_story_document")?;
+    if blocks.is_empty() {
+        return Err("invalid_story_document".into());
+    }
     if blocks.len() > 100_000 {
         return Err("story_document_limit_exceeded".into());
     }
@@ -175,7 +268,7 @@ pub(crate) fn validate_document_subset(document: &Value) -> Result<BTreeSet<Stri
         if !["paragraph", "heading"].contains(&kind) {
             return Err("unsupported_story_document_node".into());
         }
-        fields(
+        node_fields(
             block,
             &[
                 "id",
@@ -195,9 +288,10 @@ pub(crate) fn validate_document_subset(document: &Value) -> Result<BTreeSet<Stri
         if id == document["id"].as_str().unwrap() || !ids.insert(id.to_string()) {
             return Err("duplicate_canonical_node_id".into());
         }
-        if block["schemaVersion"] != 1 || block["renderArtifacts"] != serde_json::json!([]) {
+        if block["schemaVersion"] != 1 {
             return Err("unsupported_story_document_node".into());
         }
+        validate_artifacts(&block["renderArtifacts"])?;
         metadata(&block["metadata"], false)?;
         metadata(&block["extensions"], true)?;
         let attrs = &block["attrs"];
@@ -321,7 +415,7 @@ fn validate_container(
     if ["ordered_list", "table_cell"].contains(&kind) {
         names.push("attrs");
     }
-    fields(block, &names)?;
+    node_fields(block, &names)?;
     let id = block["id"]
         .as_str()
         .filter(|id| super::valid_lower_uuid(id))
@@ -329,9 +423,10 @@ fn validate_container(
     if id == document_id || !ids.insert(id.to_string()) {
         return Err("duplicate_canonical_node_id".into());
     }
-    if block["schemaVersion"] != 1 || block["renderArtifacts"] != serde_json::json!([]) {
+    if block["schemaVersion"] != 1 {
         return Err("unsupported_story_document_node".into());
     }
+    validate_artifacts(&block["renderArtifacts"])?;
     metadata(&block["metadata"], false)?;
     metadata(&block["extensions"], true)?;
     if kind == "ordered_list" {
@@ -365,6 +460,55 @@ fn bounded_string(value: &Value, min: usize, max: usize, nullable: bool) -> bool
             n >= min && n <= max
         })
 }
+fn validate_artifacts(value: &Value) -> Result<(), String> {
+    let artifacts = value.as_array().ok_or("invalid_story_document")?;
+    if artifacts.len() > 20 {
+        return Err("invalid_story_document".into());
+    }
+    for artifact in artifacts {
+        let object = artifact.as_object().ok_or("invalid_story_document")?;
+        if ["assetId", "role", "mediaType"]
+            .iter()
+            .any(|key| !object.contains_key(*key))
+            || object.keys().any(|key| {
+                ![
+                    "assetId",
+                    "role",
+                    "mediaType",
+                    "renderer",
+                    "rendererVersion",
+                    "sourceHash",
+                ]
+                .contains(&key.as_str())
+            })
+            || !artifact["assetId"]
+                .as_str()
+                .is_some_and(super::valid_lower_uuid)
+            || !["preview", "thumbnail", "generated-pdf", "render-cache"]
+                .contains(&artifact["role"].as_str().unwrap_or(""))
+            || !bounded_string(&artifact["mediaType"], 1, 200, false)
+        {
+            return Err("invalid_story_document".into());
+        }
+        for (key, limit) in [("renderer", 200), ("rendererVersion", 100)] {
+            if object.contains_key(key) && !bounded_string(&artifact[key], 1, limit, false) {
+                return Err("invalid_story_document".into());
+            }
+        }
+        if object.contains_key("sourceHash")
+            && !artifact["sourceHash"].as_str().is_some_and(|hash| {
+                hash.len() == 64
+                    && hash
+                        .bytes()
+                        .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+            })
+        {
+            return Err("invalid_story_document".into());
+        }
+    }
+    Ok(())
+}
+
 fn validate_source_block(
     block: &Value,
     ids: &mut BTreeSet<String>,
@@ -396,7 +540,7 @@ fn validate_source_block(
         "horizontal_rule" => {}
         _ => return Err("unsupported_story_document_node".into()),
     }
-    fields(block, &names)?;
+    node_fields(block, &names)?;
     let id = block["id"]
         .as_str()
         .filter(|id| super::valid_lower_uuid(id))
@@ -404,9 +548,10 @@ fn validate_source_block(
     if id == document_id || !ids.insert(id.to_string()) {
         return Err("duplicate_canonical_node_id".into());
     }
-    if block["schemaVersion"] != 1 || block["renderArtifacts"] != serde_json::json!([]) {
+    if block["schemaVersion"] != 1 {
         return Err("unsupported_story_document_node".into());
     }
+    validate_artifacts(&block["renderArtifacts"])?;
     metadata(&block["metadata"], false)?;
     metadata(&block["extensions"], true)?;
     if ["image", "diagram"].contains(&kind) {
@@ -464,13 +609,13 @@ fn validate_source_block(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use serde_json::json;
     pub(crate) fn document() -> Value {
         json!({"schemaId":"https://komyaku.example/schemas/document/v1","schemaVersion":1,
         "id":"00000000-0000-4000-8000-000000000001","type":"document","attrs":{"language":"ja","direction":"auto","writingMode":"horizontal-tb"},
-        "metadata":{},"extensions":{},"content":[]})
+        "metadata":{},"extensions":{},"content":[{"id":"00000000-0000-4000-8000-000000000002","schemaVersion":1,"type":"paragraph","attrs":{"lang":null,"dir":"auto"},"content":[],"metadata":{},"extensions":{},"renderArtifacts":[]}]})
     }
     #[test]
     fn rejects_unsupported_and_invalid_fields() {
@@ -631,5 +776,40 @@ mod tests {
             validate_document_subset(&invalid).unwrap_err(),
             "duplicate_canonical_node_id"
         );
+    }
+    #[test]
+    fn validates_render_artifact_contract() {
+        let artifact = json!({"assetId":"00000000-0000-4000-8000-000000000009","role":"preview","mediaType":"image/png","renderer":"wgpu","sourceHash":"a".repeat(64)});
+        let mut value = document();
+        value["content"] = json!([{ "id":"00000000-0000-4000-8000-000000000002", "schemaVersion":1,"type":"horizontal_rule","metadata":{},"extensions":{},"renderArtifacts":[artifact.clone()]}]);
+        assert!(validate_document_subset(&value).is_ok());
+        for (key, bad) in [
+            ("role", json!("unknown")),
+            ("renderer", Value::Null),
+            ("sourceHash", json!("A".repeat(64))),
+            ("extra", json!(true)),
+        ] {
+            let mut invalid = artifact.clone();
+            invalid[key] = bad;
+            assert!(validate_artifacts(&json!([invalid])).is_err());
+        }
+        assert!(validate_artifacts(&json!(vec![artifact; 21])).is_err());
+    }
+    #[test]
+    fn shared_normalized_conformance_corpus() {
+        let corpus: Value = serde_json::from_str(include_str!(
+            "../../../../packages/document-schema/test/fixtures/native-conformance.json"
+        ))
+        .unwrap();
+        for case in corpus.as_array().unwrap() {
+            let result = validate_document_subset(&case["document"]);
+            assert_eq!(
+                result.is_ok(),
+                case["valid"].as_bool().unwrap(),
+                "{}: {:?}",
+                case["name"],
+                result
+            );
+        }
     }
 }

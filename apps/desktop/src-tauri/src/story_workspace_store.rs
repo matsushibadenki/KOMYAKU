@@ -253,8 +253,8 @@ mod tests {
     }
 }
 
-/// Internal bridge: `document` must already have passed Canonical Document
-/// validation by the native owner. Graph schema/references are checked here.
+/// Internal bridge: validates the supported normalized Canonical subset and
+/// Graph schema/reference closure before deriving the snapshot in Rust.
 /// This is deliberately not an IPC command.
 pub(crate) async fn commit_workspace(
     pool: &Pool<Sqlite>,
@@ -273,27 +273,7 @@ pub(crate) async fn commit_workspace(
     if graph["documentId"].as_str() != Some(document_id) {
         return Err("story_workspace_document_mismatch".into());
     }
-    let mut ids = std::collections::BTreeSet::new();
-    let mut pending: Vec<&serde_json::Value> = document["content"]
-        .as_array()
-        .ok_or("invalid_story_workspace_document")?
-        .iter()
-        .collect();
-    let mut visited = 0;
-    while let Some(node) = pending.pop() {
-        visited += 1;
-        if visited > 100_000 {
-            return Err("story_document_limit_exceeded".into());
-        }
-        if let Some(id) = node["id"].as_str() {
-            ids.insert(id.to_string());
-        }
-        for field in ["content", "caption"] {
-            if let Some(children) = node.get(field).and_then(|v| v.as_array()) {
-                pending.extend(children);
-            }
-        }
-    }
+    let ids = super::story_document_validation::validate_document_subset(document)?;
     super::story_graph_validation::validate_graph_schema(graph, &ids).map_err(str::to_string)?;
     let workspace_id = graph["id"].as_str().ok_or("invalid_story_graph")?;
     let workspace = serde_json::json!({"schemaId":"https://komyaku.example/schemas/story-workspace/v1",
@@ -325,7 +305,7 @@ mod workspace_tests {
             .await
             .unwrap();
         migrate(&pool).await.unwrap();
-        let document = json!({"id":"00000000-0000-4000-8000-000000000001","content":[]});
+        let document = super::super::story_document_validation::tests::document();
         let mut graph = json!({"schemaId":"https://komyaku.example/schemas/story-graph/v1","schemaVersion":1,
             "id":"00000000-0000-4000-8000-000000000002","documentId":document["id"],"nodes":[],"edges":[],"paths":[],"entities":[]});
         let operation = "00000000-0000-4000-8000-000000000003";
@@ -360,6 +340,61 @@ mod workspace_tests {
             .await
             .unwrap();
         assert_eq!(revision, 1);
+    }
+    #[tokio::test]
+    async fn invalid_initial_documents_leave_no_workspace_or_receipt() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        migrate(&pool).await.unwrap();
+        let document = super::super::story_document_validation::tests::document();
+        let graph = json!({"schemaId":"https://komyaku.example/schemas/story-graph/v1","schemaVersion":1,
+            "id":"00000000-0000-4000-8000-000000000020","documentId":document["id"],"nodes":[],"edges":[],"paths":[],"entities":[]});
+        let mut empty = document.clone();
+        empty["content"] = json!([]);
+        let mut unsupported = document.clone();
+        unsupported["content"][0]["type"] = json!("unknown");
+        let mut duplicate = document.clone();
+        duplicate["content"] = json!([document["content"][0], document["content"][0]]);
+        let mut unsafe_link = document.clone();
+        unsafe_link["content"][0]["content"] = json!([{"type":"text","text":"link","marks":[{"type":"link","href":"javascript:alert(1)"}],"metadata":{},"extensions":{}}]);
+        for invalid in [empty, unsupported, duplicate, unsafe_link] {
+            assert!(commit_workspace(
+                &pool,
+                "00000000-0000-4000-8000-000000000030",
+                0,
+                &invalid,
+                &graph
+            )
+            .await
+            .is_err());
+            for table in [
+                "story_workspace_states",
+                "story_workspace_receipts",
+                "story_workspace_assets",
+            ] {
+                let count: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table}"))
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap();
+                assert_eq!(count, 0, "{table}");
+            }
+        }
+        assert_eq!(
+            commit_workspace(
+                &pool,
+                "00000000-0000-4000-8000-000000000030",
+                0,
+                &document,
+                &graph
+            )
+            .await
+            .unwrap()
+            .revision,
+            1
+        );
     }
 }
 
@@ -399,6 +434,23 @@ async fn verify_workspace_assets(
                 return Err("story_asset_media_mismatch".into());
             }
         }
+        if let Some(artifacts) = node["renderArtifacts"].as_array() {
+            if artifacts.len() > 20 {
+                return Err("invalid_story_asset_reference".into());
+            }
+            for artifact in artifacts {
+                let id = artifact["assetId"]
+                    .as_str()
+                    .filter(|id| super::valid_lower_uuid(id))
+                    .ok_or("invalid_story_asset_reference")?;
+                let media = artifact["mediaType"]
+                    .as_str()
+                    .ok_or("invalid_story_asset_reference")?;
+                if references.insert(id, media).is_some_and(|old| old != media) {
+                    return Err("story_asset_media_mismatch".into());
+                }
+            }
+        }
         for field in ["content", "caption"] {
             if let Some(children) = node[field].as_array() {
                 pending.extend(children);
@@ -433,7 +485,7 @@ mod asset_tests {
     use serde_json::json;
     use sha2::{Digest, Sha256};
     #[tokio::test]
-    async fn missing_or_corrupt_assets_cannot_adopt_workspace() {
+    async fn missing_or_corrupt_render_artifacts_cannot_adopt_workspace() {
         let pool = sqlx::sqlite::SqlitePoolOptions::new()
             .max_connections(1)
             .connect("sqlite::memory:")
@@ -443,9 +495,16 @@ mod asset_tests {
         sqlx::query("CREATE TABLE local_archive_assets(asset_id TEXT,bytes BLOB,byte_size INTEGER,content_hash TEXT,media_type TEXT)")
             .execute(&pool).await.unwrap();
         let asset = "00000000-0000-4000-8000-000000000009";
-        let snapshot=json!({"schemaId":"https://komyaku.example/schemas/story-workspace/v1","document":{"content":[{"type":"file","assetId":asset,"mediaType":"text/plain"}]}}).to_string();
+        let snapshot=json!({"schemaId":"https://komyaku.example/schemas/story-workspace/v1","document":{"content":[{"type":"horizontal_rule","renderArtifacts":[{"assetId":asset,"role":"render-cache","mediaType":"text/plain"}]}]}}).to_string();
         assert_eq!(
             commit(&pool, "w", "op", 0, "{}", &snapshot)
+                .await
+                .unwrap_err(),
+            "missing_story_workspace_asset"
+        );
+        let file_snapshot=json!({"schemaId":"https://komyaku.example/schemas/story-workspace/v1","document":{"content":[{"type":"file","assetId":asset,"mediaType":"text/plain"}]}}).to_string();
+        assert_eq!(
+            commit(&pool, "w", "file-op", 0, "{}", &file_snapshot)
                 .await
                 .unwrap_err(),
             "missing_story_workspace_asset"
@@ -482,6 +541,20 @@ mod asset_tests {
             .await
             .unwrap();
         assert_eq!(count, 1);
+        let conflicting=json!({"schemaId":"https://komyaku.example/schemas/story-workspace/v1","document":{"content":[{"type":"file","assetId":asset,"mediaType":"text/plain","renderArtifacts":[{"assetId":asset,"role":"preview","mediaType":"image/png"}]}]}}).to_string();
+        assert_eq!(
+            commit(&pool, "w", "conflict", 1, "{}", &conflicting)
+                .await
+                .unwrap_err(),
+            "story_asset_media_mismatch"
+        );
+        let revision: i64 = sqlx::query_scalar(
+            "SELECT revision FROM story_workspace_states WHERE workspace_id='w'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(revision, 1);
         sqlx::query("CREATE TRIGGER reject_receipt BEFORE INSERT ON story_workspace_receipts BEGIN SELECT RAISE(ABORT,'fail'); END").execute(&pool).await.unwrap();
         let empty=json!({"schemaId":"https://komyaku.example/schemas/story-workspace/v1","document":{"content":[]}}).to_string();
         assert!(commit(&pool, "w", "op2", 1, "{}", &empty).await.is_err());

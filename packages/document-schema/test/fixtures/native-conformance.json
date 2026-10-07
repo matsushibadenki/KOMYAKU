@@ -1,0 +1,1782 @@
+[
+  {
+    "name": "empty document",
+    "valid": false,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": []
+    }
+  },
+  {
+    "name": "multilingual prose",
+    "valid": true,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "valid provenance 2024-02-29T12:34Z",
+    "valid": true,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "provenance": {
+            "createdAt": "2024-02-29T12:34Z",
+            "createdBy": "00000000-0000-4000-8000-000000000009",
+            "sourceNodeId": "00000000-0000-4000-8000-00000000000a",
+            "sourceVersionId": "00000000-0000-4000-8000-00000000000b"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "valid provenance 2000-02-29T23:59:59.123+09:00",
+    "valid": true,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "provenance": {
+            "createdAt": "2000-02-29T23:59:59.123+09:00",
+            "createdBy": "00000000-0000-4000-8000-000000000009",
+            "sourceNodeId": "00000000-0000-4000-8000-00000000000a",
+            "sourceVersionId": "00000000-0000-4000-8000-00000000000b"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "valid provenance 0000-02-29T00:00-00:00",
+    "valid": true,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "provenance": {
+            "createdAt": "0000-02-29T00:00-00:00",
+            "createdBy": "00000000-0000-4000-8000-000000000009",
+            "sourceNodeId": "00000000-0000-4000-8000-00000000000a",
+            "sourceVersionId": "00000000-0000-4000-8000-00000000000b"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "valid provenance 2026-10-07T00:00:00Z",
+    "valid": true,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "provenance": {
+            "createdAt": "2026-10-07T00:00:00Z",
+            "createdBy": "00000000-0000-4000-8000-000000000009",
+            "sourceNodeId": "00000000-0000-4000-8000-00000000000a",
+            "sourceVersionId": "00000000-0000-4000-8000-00000000000b"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid provenance 2023-02-29T12:34Z",
+    "valid": false,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "provenance": {
+            "createdAt": "2023-02-29T12:34Z"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid provenance 1900-02-29T00:00Z",
+    "valid": false,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "provenance": {
+            "createdAt": "1900-02-29T00:00Z"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid provenance 2026-04-31T00:00Z",
+    "valid": false,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "provenance": {
+            "createdAt": "2026-04-31T00:00Z"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid provenance 2026-10-07T24:00Z",
+    "valid": false,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "provenance": {
+            "createdAt": "2026-10-07T24:00Z"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid provenance 2026-10-07T00:60Z",
+    "valid": false,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "provenance": {
+            "createdAt": "2026-10-07T00:60Z"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid provenance 2026-10-07T00:00:60Z",
+    "valid": false,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "provenance": {
+            "createdAt": "2026-10-07T00:00:60Z"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid provenance 2026-10-07T00:00:00.Z",
+    "valid": false,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "provenance": {
+            "createdAt": "2026-10-07T00:00:00.Z"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid provenance 2026-10-07T00:00",
+    "valid": false,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "provenance": {
+            "createdAt": "2026-10-07T00:00"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid provenance 2026-10-07T00:00+24:00",
+    "valid": false,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "provenance": {
+            "createdAt": "2026-10-07T00:00+24:00"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid provenance 2026-10-07T00:00+0900",
+    "valid": false,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "provenance": {
+            "createdAt": "2026-10-07T00:00+0900"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid provenance 2026-10-07t00:00Z",
+    "valid": false,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "provenance": {
+            "createdAt": "2026-10-07t00:00Z"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid provenance 2026-10-07T00:00z",
+    "valid": false,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "provenance": {
+            "createdAt": "2026-10-07T00:00z"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "optional provenance {}",
+    "valid": true,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "provenance": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "optional provenance {'createdBy': '00000000-0000-4000-8000-000000000009'}",
+    "valid": true,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "provenance": {
+            "createdBy": "00000000-0000-4000-8000-000000000009"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "optional provenance {'sourceNodeId': '00000000-0000-4000-8000-00000000000a'}",
+    "valid": true,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "provenance": {
+            "sourceNodeId": "00000000-0000-4000-8000-00000000000a"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid provenance fields None",
+    "valid": false,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "provenance": null
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid provenance fields {'createdBy': 'bad'}",
+    "valid": false,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "provenance": {
+            "createdBy": "bad"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid provenance fields {'createdAt': None}",
+    "valid": false,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "provenance": {
+            "createdAt": null
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid provenance fields {'unknown': True}",
+    "valid": false,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ],
+          "provenance": {
+            "unknown": true
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "complete render artifact",
+    "valid": true,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [
+            {
+              "assetId": "00000000-0000-4000-8000-000000000014",
+              "role": "preview",
+              "mediaType": "image/png",
+              "renderer": "wgpu",
+              "rendererVersion": "1",
+              "sourceHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid artifact role",
+    "valid": false,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [
+            {
+              "assetId": "00000000-0000-4000-8000-000000000014",
+              "role": "unknown",
+              "mediaType": "image/png",
+              "renderer": "wgpu",
+              "rendererVersion": "1",
+              "sourceHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid artifact renderer",
+    "valid": false,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [
+            {
+              "assetId": "00000000-0000-4000-8000-000000000014",
+              "role": "preview",
+              "mediaType": "image/png",
+              "renderer": null,
+              "rendererVersion": "1",
+              "sourceHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid artifact sourceHash",
+    "valid": false,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [
+            {
+              "assetId": "00000000-0000-4000-8000-000000000014",
+              "role": "preview",
+              "mediaType": "image/png",
+              "renderer": "wgpu",
+              "rendererVersion": "1",
+              "sourceHash": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            }
+          ],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid artifact extra",
+    "valid": false,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [
+            {
+              "assetId": "00000000-0000-4000-8000-000000000014",
+              "role": "preview",
+              "mediaType": "image/png",
+              "renderer": "wgpu",
+              "rendererVersion": "1",
+              "sourceHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "extra": true
+            }
+          ],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [],
+              "metadata": {},
+              "extensions": {}
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "source node provenance code_block",
+    "valid": true,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "code_block",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "language": "rust",
+          "source": "opaque",
+          "provenance": {
+            "createdAt": "2026-10-07T12:34Z"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "source node provenance math_block",
+    "valid": true,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "math_block",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "sourceType": "latex",
+          "source": "x^2",
+          "displayMode": "block",
+          "provenance": {
+            "createdAt": "2026-10-07T12:34Z"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "source node provenance horizontal_rule",
+    "valid": true,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "horizontal_rule",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "provenance": {
+            "createdAt": "2026-10-07T12:34Z"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "source node provenance file",
+    "valid": true,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "file",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "assetId": "00000000-0000-4000-8000-000000000014",
+          "mediaType": "text/plain",
+          "fileName": "origin.md",
+          "title": null,
+          "description": null,
+          "provenance": {
+            "createdAt": "2026-10-07T12:34Z"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "source node provenance diagram",
+    "valid": true,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "diagram",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "sourceType": "svg",
+          "source": "<svg/>",
+          "altText": "図",
+          "caption": [],
+          "provenance": {
+            "createdAt": "2026-10-07T12:34Z"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "source node provenance image",
+    "valid": true,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "image",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "assetId": "00000000-0000-4000-8000-000000000014",
+          "mediaType": "image/png",
+          "altText": "画像",
+          "caption": [],
+          "width": null,
+          "height": null,
+          "provenance": {
+            "createdAt": "2026-10-07T12:34Z"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "container provenance",
+    "valid": true,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "schemaVersion": 1,
+          "type": "blockquote",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "content": [
+            {
+              "id": "00000000-0000-4000-8000-000000000002",
+              "schemaVersion": 1,
+              "type": "paragraph",
+              "metadata": {},
+              "extensions": {},
+              "renderArtifacts": [],
+              "attrs": {
+                "lang": null,
+                "dir": "auto"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "日本語 English 简体中文 😀",
+                  "marks": [],
+                  "metadata": {},
+                  "extensions": {}
+                }
+              ]
+            }
+          ],
+          "provenance": {
+            "sourceVersionId": "00000000-0000-4000-8000-00000000000b"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "inline math provenance",
+    "valid": true,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "id": "00000000-0000-4000-8000-000000000003",
+              "schemaVersion": 1,
+              "type": "math_inline",
+              "metadata": {},
+              "extensions": {},
+              "renderArtifacts": [],
+              "sourceType": "latex",
+              "source": "x",
+              "provenance": {
+                "createdBy": "00000000-0000-4000-8000-000000000009"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "link https://example.com",
+    "valid": true,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [
+                {
+                  "type": "link",
+                  "href": "https://example.com"
+                }
+              ],
+              "metadata": {},
+              "extensions": {}
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "link ./draft",
+    "valid": true,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [
+                {
+                  "type": "link",
+                  "href": "./draft"
+                }
+              ],
+              "metadata": {},
+              "extensions": {}
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "link javascript:alert(1)",
+    "valid": false,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [
+                {
+                  "type": "link",
+                  "href": "javascript:alert(1)"
+                }
+              ],
+              "metadata": {},
+              "extensions": {}
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "link //example.com",
+    "valid": false,
+    "document": {
+      "schemaId": "https://komyaku.example/schemas/document/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "type": "document",
+      "attrs": {
+        "language": "ja",
+        "direction": "auto",
+        "writingMode": "horizontal-tb"
+      },
+      "metadata": {},
+      "extensions": {},
+      "content": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "schemaVersion": 1,
+          "type": "paragraph",
+          "metadata": {},
+          "extensions": {},
+          "renderArtifacts": [],
+          "attrs": {
+            "lang": null,
+            "dir": "auto"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "日本語 English 简体中文 😀",
+              "marks": [
+                {
+                  "type": "link",
+                  "href": "//example.com"
+                }
+              ],
+              "metadata": {},
+              "extensions": {}
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

@@ -89,6 +89,19 @@ export class ManuscriptViewport {
     block.querySelectorAll('.paragraph-range-highlight,.empty-column-caret').forEach(el=>el.remove());
     entry.html=block.innerHTML;block.replaceChildren();this.placeholder(block,entry);
   }
+  replacementParts(input,text) {
+    if(input.closest('.dialogue-sheet'))return [{input,block:input.closest('.manuscript-block'),start:0,text}];
+    return this.paragraphBlocks(input).map(block=>{
+      const start=Number(block.dataset.start),length=Number(block.dataset.length);
+      return {block,input:block.querySelector('textarea'),start,text:text.slice(start,start+length)};
+    });
+  }
+  updateFragment(block,part) {
+    block.dataset.start=String(part.start);block.dataset.length=String(part.text.length);
+    const entry=this.entries.get(block);if(!entry)return;
+    entry.html=null;entry.values=[part.text.replace(/\r\n?/g,'\n')];
+    if(!block.firstElementChild){entry.extent=this.estimate(block,entry.values);this.placeholder(block,entry);}
+  }
   paragraphInputs(input) {
     if(input.closest('.dialogue-sheet'))return [input];
     const peers=this.paragraphBlocks(input);for(const block of peers)this.mount(block);

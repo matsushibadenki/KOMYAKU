@@ -53,3 +53,25 @@
 [Done] 2026-10-06: Text and image-caption validation now accepts bold/italic/underline/strike/code/link marks with strict fields and the shared 20-mark limit. Duplicate mark keys fail; link identity includes href. Link href/title bounds, relative URL forms and http/https/mailto schemes are checked using Tauri’s existing URL parser. Tests cover allowed links, javascript/data/file and protocol-relative rejection, duplicate marks and unknown fields. Rust suite: 48 passed, one performance fixture ignored. Earlier statements that all marked text is unsupported are superseded.
 
 [Done] 2026-10-06: Native normalized subset now accepts Mermaid/SVG diagrams and LaTeX inline math inside supported prose/captions. Strict fields and global math IDs are checked through one shared inline validator. Source remains opaque data, including SVG strings; this validation does not render, sanitize or execute them. Tests reject unsupported Source types and duplicate caption math IDs. Rust suite: 49 passed, one performance fixture ignored. Artifacts/provenance and non-PNG image support remain unfinished; production IPC is still unregistered.
+
+## Rendering artifact closure — 2026-10-07
+
+[Done] 2026-10-07: Native normalized Document nodes accept render artifacts with strict fields, UUID/media/role bounds, optional renderer/version and lowercase SHA-256 source hashes, capped at 20 per node. Workspace commits collect artifact Asset references alongside files/images, verify availability, media type and byte integrity in the same transaction, and roll back state/reference adoption on failure. Tests cover invalid artifact fields, missing/corrupt bytes, conflicting media declarations and receipt-stage rollback. Provenance, non-PNG images, full shared conformance and production IPC remain unfinished.
+
+[Next] Complete provenance and remaining Canonical schema coverage, then shared cross-runtime conformance fixtures before registering production migrations and IPC. This stage does not implement generated rendering or immutable Version/Archive artifact retention. Earlier notes that render artifacts are rejected are superseded.
+
+[Done] Validation: freshly rebuilt Rust library suite, 50 passed / 1 ignored; Bun workspace suite, 460 passed / 25 skipped / 0 failed. The final Rust run includes the conflicting-media and file-reference regression cases.
+
+## Provenance and shared conformance — 2026-10-07
+
+[Done] 2026-10-07: Support normalized Node provenance in Rust (optional createdAt/createdBy/sourceNodeId/sourceVersionId with strict fields). Offset datetime validation mirrors the installed shared Zod contract, including Gregorian leap dates, optional seconds, fractions and bounded timezone offsets. A single 42-case JSON corpus is consumed by JavaScript and Rust tests for provenance, artifacts, supported Source/container/inline nodes and safe links. The corpus exposed empty Document content being accepted only in Rust; native replacement now rejects it without state or receipt mutation. Exact replacement/replay retains provenance.
+
+[Next] Expand conformance to resource-boundary and identity cases and resolve the remaining deliberate differences: PNG-only native image validation, lowercase UUIDs, and stricter whole-JSON depth/string budgets. External-input normalization, production migrations/IPC and composite Version/Archive integration remain unfinished. This corpus demonstrates agreement only for its covered normalized inputs; it is not complete schema equivalence. Earlier statements that provenance is rejected are superseded.
+
+[Done] Validation: final Rust library suite 51 passed / 1 ignored; Bun workspace suite 504 passed / 25 skipped / 0 failed. Both runtimes pass all 42 shared corpus cases. Native command verification includes provenance preservation and rejected empty replacement with unchanged revision and no receipt.
+
+## Validated adoption and concurrent writers — 2026-10-07
+
+[Done] 2026-10-07: Enforce native normalized Document validation in both composite initialization and the final Graph-edit candidate, replacing unchecked Canonical ID collection with the validator’s ID set. Initialization no longer relies on a caller claiming the Document is trusted. Tests reject empty/unsupported/duplicate-ID/unsafe-link Documents without creating state, receipts or Asset references; Graph edits cannot readopt a corrupt stored Document. A file-backed two-connection concurrent command test proves only one writer adopts a shared expected revision, the loser receives a stale-revision error, and successful retry returns the original Snapshot without duplicate adoption. Rust suite: 54 passed / 1 ignored.
+
+[Next] Resolve remaining shared/native schema differences and external normalization before runtime registration. This validation is still the explicitly supported normalized subset. The low-level commit primitive remains internal storage machinery and may be used only after validation; no production migration, IPC or Version/Archive integration is added. Earlier requirements for trusted initialization are superseded by native validation at commit_workspace.

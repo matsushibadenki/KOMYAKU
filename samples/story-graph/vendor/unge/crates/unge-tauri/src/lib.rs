@@ -13,6 +13,7 @@ struct ViewState {
     viewport: Viewport,
     selection: BTreeSet<Id>,
     interaction: Interaction,
+    selected_edge: Option<Id>,
 }
 struct State {
     labels: LabelCatalog,
@@ -178,6 +179,7 @@ impl Engine {
                 viewport,
                 selection: BTreeSet::new(),
                 interaction: Interaction::default(),
+                selected_edge: None,
             },
         );
         Ok(())
@@ -246,12 +248,13 @@ impl Engine {
             view_state.viewport = viewport;
         }
         let view_state = &state.views[view];
-        let scene = state.scene.scene_with_labels(
+        let scene = state.scene.scene_with_edge_selection(
             viewport,
             &view_state.selection,
             view_state.interaction.preview(),
             &state.labels,
             view_state.locale,
+            view_state.selected_edge,
         )?;
         drop(state);
         let mut renderers = self
@@ -400,6 +403,21 @@ impl Engine {
             interacting: v.interaction.is_active(),
             locale: v.locale,
         })
+    }
+    pub fn highlight_edge(&self, view: &str, id: Option<Id>) -> ApiResult<()> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|e| ApiError::new("state_unavailable", e))?;
+        if id.is_some_and(|id| !state.editor.document().graph().edges().contains_key(&id)) {
+            return Err(ApiError::new("missing_edge", "unknown edge"));
+        }
+        state
+            .views
+            .get_mut(view)
+            .ok_or_else(|| ApiError::new("unknown_view", view))?
+            .selected_edge = id;
+        Ok(())
     }
     pub fn inspect(&self, view: &str, id: Id) -> ApiResult<Node> {
         let state = self

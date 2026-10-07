@@ -77,14 +77,39 @@ pub struct Scene {
     pub visible_edges: usize,
     pub portraits: Vec<std::sync::Arc<crate::Portrait>>,
 }
+// Hallmark · modern-minimal · cool editorial graph workbench
+// Pre-emit critique: P4 H5 E4 S4 R5 V4. Native GPU palette; no document changes.
+const CANVAS: [f32; 4] = [0.945, 0.953, 0.961, 1.];
+const PAPER: [f32; 4] = [0.995, 0.997, 1., 1.];
+const INK: [f32; 4] = [0.10, 0.15, 0.22, 1.];
+const MUTED: [f32; 4] = [0.26, 0.32, 0.40, 1.];
+const RULE: [f32; 4] = [0.80, 0.84, 0.89, 1.];
+const SCENE_SURFACE: [f32; 4] = [0.88, 0.93, 0.99, 1.];
+fn card_color(accent: [f32; 4]) -> [f32; 4] {
+    [
+        0.72 + accent[0] * 0.28,
+        0.72 + accent[1] * 0.28,
+        0.72 + accent[2] * 0.28,
+        1.,
+    ]
+}
+fn character_accent(id: Id) -> [f32; 4] {
+    // Mix all UUID bits: IDs sharing a sequential suffix still have distinct colors.
+    let mut hash = 0xcbf29ce484222325_u64;
+    for byte in id.as_u128().to_be_bytes() {
+        hash = (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3);
+    }
+    relation_color(["trust", "friend", "love", "rival", "family"][(hash % 5) as usize])
+}
+
 /// Relationship colors are shared by badges, connectors and the character accent palette.
 fn relation_color(kind: &str) -> [f32; 4] {
     match kind {
-        "family" => [0.80, 0.31, 0.23, 1.],
-        "friend" => [0.20, 0.51, 0.78, 1.],
-        "rival" => [0.73, 0.51, 0.13, 1.],
-        "love" => [0.76, 0.34, 0.53, 1.],
-        _ => [0.20, 0.57, 0.48, 1.],
+        "family" => [0.78, 0.25, 0.29, 1.],
+        "friend" => [0.20, 0.43, 0.77, 1.],
+        "rival" => [0.63, 0.40, 0.10, 1.],
+        "love" => [0.68, 0.29, 0.57, 1.],
+        _ => [0.12, 0.49, 0.43, 1.],
     }
 }
 fn relation_name(kind: &str, locale: Locale) -> &str {
@@ -106,14 +131,6 @@ fn relation_name(kind: &str, locale: Locale) -> &str {
         _ => "Trust",
     }
 }
-fn tint(color: [f32; 4]) -> [f32; 4] {
-    [
-        0.94 + color[0] * 0.06,
-        0.94 + color[1] * 0.06,
-        0.94 + color[2] * 0.06,
-        1.,
-    ]
-}
 fn curve(a: [f32; 2], b: [f32; 2]) -> [[f32; 2]; 4] {
     let dx = ((b[0] - a[0]).abs() * 0.5).max(50.0);
     [a, [a[0] + dx, a[1]], [b[0] - dx, b[1]], b]
@@ -134,18 +151,59 @@ fn curve_bounds(points: [[f32; 2]; 4]) -> Rect {
         height: max_y - min_y,
     }
 }
-fn push_curve(scene: &mut Scene, points: [[f32; 2]; 4], zoom: f32, color: Option<[f32; 4]>) {
-    let segments = if zoom < PORT_LOD_ZOOM { 8 } else { 24 };
-    let mut previous = points[0];
+const ARROW_LENGTH: f32 = 18.;
+const ARROW_WIDTH: f32 = 18.;
+const PORT_CLEARANCE: f32 = 7.;
+fn curve_point(points: [[f32; 2]; 4], t: f32) -> [f32; 2] {
+    let u = 1. - t;
+    [0, 1].map(|axis| {
+        u * u * u * points[0][axis]
+            + 3. * u * u * t * points[1][axis]
+            + 3. * u * t * t * points[2][axis]
+            + t * t * t * points[3][axis]
+    })
+}
+fn endpoint_parameter(points: [[f32; 2]; 4], reverse: bool, distance: f32) -> f32 {
+    let endpoint = if reverse { points[0] } else { points[3] };
+    let mut low = 0.;
+    let mut high = 0.5;
+    for _ in 0..16 {
+        let mid = (low + high) * 0.5;
+        let point = curve_point(points, if reverse { mid } else { 1. - mid });
+        if (point[0] - endpoint[0]).hypot(point[1] - endpoint[1]) < distance {
+            low = mid;
+        } else {
+            high = mid;
+        }
+    }
+    if reverse { high } else { 1. - high }
+}
+fn push_curve(
+    scene: &mut Scene,
+    points: [[f32; 2]; 4],
+    zoom: f32,
+    color: Option<[f32; 4]>,
+    arrows: [bool; 2],
+) {
+    // Stop the shaft at the broad base: it must never blunt the arrow tip.
+    let start = if arrows[0] {
+        endpoint_parameter(points, true, PORT_CLEARANCE + ARROW_LENGTH)
+    } else {
+        0.
+    };
+    let end = if arrows[1] {
+        endpoint_parameter(points, false, PORT_CLEARANCE + ARROW_LENGTH)
+    } else {
+        1.
+    };
+    let segments = if zoom < PORT_LOD_ZOOM {
+        8
+    } else {
+        (24. * zoom.sqrt()).clamp(24., 96.) as usize
+    };
+    let mut previous = curve_point(points, start);
     for i in 1..=segments {
-        let t = i as f32 / segments as f32;
-        let u = 1.0 - t;
-        let next = [0, 1].map(|axis| {
-            u * u * u * points[0][axis]
-                + 3.0 * u * u * t * points[1][axis]
-                + 3.0 * u * t * t * points[2][axis]
-                + t * t * t * points[3][axis]
-        });
+        let next = curve_point(points, start + (end - start) * i as f32 / segments as f32);
         let mut quad = Quad::line(previous, next);
         if let Some(color) = color {
             quad.color = color;
@@ -157,26 +215,24 @@ fn push_curve(scene: &mut Scene, points: [[f32; 2]; 4], zoom: f32, color: Option
 fn push_arrow(
     scene: &mut Scene,
     points: [[f32; 2]; 4],
-    zoom: f32,
+    _zoom: f32,
     color: Option<[f32; 4]>,
     reverse: bool,
 ) {
-    // Anchor the tip at the cable endpoint, just outside the connection circle.
-    let (tip, control) = if reverse {
-        (points[0], points[1])
-    } else {
-        (points[3], points[2])
-    };
-    let tangent = [tip[0] - control[0], tip[1] - control[1]];
+    // Follow the actual curve near the socket, including short, steep connections.
+    let tip = curve_point(points, endpoint_parameter(points, reverse, PORT_CLEARANCE));
+    let base = curve_point(
+        points,
+        endpoint_parameter(points, reverse, PORT_CLEARANCE + ARROW_LENGTH),
+    );
+    let tangent = [tip[0] - base[0], tip[1] - base[1]];
     let length = tangent[0].hypot(tangent[1]);
     if length < 0.001 {
         return;
     }
-    let scale = zoom.clamp(0.6, 1.5);
-    let inset = 7. / scale + 6. / zoom;
-    let center = [0, 1].map(|axis| tip[axis] - tangent[axis] / length * inset);
+    let center = [0, 1].map(|axis| (tip[axis] + base[axis]) * 0.5);
     scene.quads.push(Quad {
-        rect: [center[0], center[1], 14. / scale, 12. / scale],
+        rect: [center[0], center[1], length, ARROW_WIDTH],
         color: color.unwrap_or([0.32, 0.65, 0.74, 1.]),
         params: [tangent[1].atan2(tangent[0]), 0., -1., 0.],
     });
@@ -223,11 +279,10 @@ impl SceneIndex {
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("trust"),
                             )
+                        } else if node.type_id == "story.character" {
+                            character_accent(node.id)
                         } else {
-                            relation_color(
-                                ["trust", "friend", "love", "rival", "family"]
-                                    [(node.id.as_u128() % 5) as usize],
-                            )
+                            relation_color("friend")
                         },
                         portrait: if node.type_id == "story.character" {
                             node.properties
@@ -280,7 +335,8 @@ impl SceneIndex {
                     points,
                     from: (edge.from.node, i),
                     to: (edge.to.node, j),
-                    color: (to.type_id == "story.relationship").then_some(to.accent),
+                    color: (to.type_id == "story.relationship" || to.type_id == "story.scene")
+                        .then_some(to.accent),
                     arrow_start: to.type_id == "story.relationship"
                         && (to.mutual || edge.to.port == "to"),
                     arrow_end: to.type_id != "story.relationship"
@@ -333,6 +389,17 @@ impl SceneIndex {
         catalog: &LabelCatalog,
         locale: Locale,
     ) -> unge_core::Result<Scene> {
+        self.scene_with_edge_selection(viewport, selection, preview, catalog, locale, None)
+    }
+    pub fn scene_with_edge_selection(
+        &self,
+        viewport: Viewport,
+        selection: &BTreeSet<Id>,
+        preview: &Preview,
+        catalog: &LabelCatalog,
+        locale: Locale,
+        selected_edge: Option<Id>,
+    ) -> unge_core::Result<Scene> {
         viewport.validate()?;
         if preview.placement.len() > MAX_SELECTION
             || preview
@@ -356,7 +423,7 @@ impl SceneIndex {
         let mut grid = Quad::rectangle(
             area,
             if self.story {
-                [0.965, 0.956, 0.937, 1.]
+                CANVAS
             } else {
                 [0.04, 0.052, 0.075, 1.0]
             },
@@ -403,7 +470,27 @@ impl SceneIndex {
             if !curve_bounds(points).intersects(area) {
                 continue;
             }
-            push_curve(&mut scene, points, viewport.zoom, edge.color);
+            if selected_edge == Some(id) {
+                let start = scene.quads.len();
+                push_curve(
+                    &mut scene,
+                    points,
+                    viewport.zoom,
+                    Some([0.15, 0.42, 0.90, 0.24]),
+                    [edge.arrow_start, edge.arrow_end],
+                );
+                for quad in &mut scene.quads[start..] {
+                    quad.rect[3] = 10.;
+                    quad.params[1] = 5.;
+                }
+            }
+            push_curve(
+                &mut scene,
+                points,
+                viewport.zoom,
+                edge.color,
+                [edge.arrow_start, edge.arrow_end],
+            );
             if edge.arrow_start {
                 push_arrow(&mut scene, points, viewport.zoom, edge.color, true);
             }
@@ -546,6 +633,7 @@ impl SceneIndex {
                 } else {
                     [0.9, 0.5, 0.25, 1.0]
                 }),
+                [false, false],
             );
         }
         if let Some(rect) = preview.marquee {
@@ -589,62 +677,63 @@ impl SceneIndex {
         let character = node.type_id == "story.character";
         let relation = node.type_id == "story.relationship";
         let accent = node.accent;
-        // Soft offset shadow, clean white paper and a restrained colored accent.
-        scene.quads.push(Quad::rectangle(
-            Rect {
-                x: rect.x + 2.,
-                y: rect.y + 4.,
-                ..rect
-            },
-            [0.27, 0.24, 0.19, 0.09],
-            10.,
-        ));
+        // Shadows and selection live outside the unchanged interaction bounds.
+        for (spread, offset, alpha) in [(4., 4., 0.025), (2., 2., 0.04)] {
+            scene.quads.push(Quad::rectangle(
+                Rect {
+                    x: rect.x - spread,
+                    y: rect.y - spread + offset,
+                    width: rect.width + spread * 2.,
+                    height: rect.height + spread * 2.,
+                },
+                [INK[0], INK[1], INK[2], alpha],
+                12. + spread,
+            ));
+        }
+        if selected {
+            scene.quads.push(Quad::rectangle(
+                Rect {
+                    x: rect.x - 4.,
+                    y: rect.y - 4.,
+                    width: rect.width + 8.,
+                    height: rect.height + 8.,
+                },
+                [accent[0], accent[1], accent[2], 0.24],
+                16.,
+            ));
+        }
         scene.quads.push(Quad::rectangle(
             rect,
-            if selected {
-                accent
-            } else {
-                [0.81, 0.82, 0.79, 1.]
-            },
-            10.,
+            if selected { accent } else { RULE },
+            12.,
         ));
         scene.quads.push(Quad::rectangle(
             Rect {
-                x: rect.x + 2.,
-                y: rect.y + 2.,
-                width: rect.width - 4.,
-                height: rect.height - 4.,
+                x: rect.x + 1.5,
+                y: rect.y + 1.5,
+                width: rect.width - 3.,
+                height: rect.height - 3.,
             },
-            if relation {
-                tint(accent)
+            if character || relation {
+                card_color(accent)
             } else {
-                [1., 1., 0.995, 1.]
+                SCENE_SURFACE
             },
-            8.,
+            10.5,
         ));
-        scene.quads.push(Quad::rectangle(
-            Rect {
-                x: rect.x + 10.,
-                y: rect.y + 10.,
-                width: rect.width - 20.,
-                height: 3.,
-            },
-            accent,
-            1.5,
-        ));
-        let mut text_x = rect.x + 14.;
+        let mut text_x = rect.x + 16.;
         if character {
-            let side = (rect.height - 34.)
+            let side = (rect.height - 32.)
                 .min(72.)
                 .min((rect.width - 44.) * 0.45)
                 .max(20.);
             let photo_rect = Rect {
                 x: rect.x + 14.,
-                y: rect.y + 22.,
+                y: rect.y + (rect.height - side) * 0.5,
                 width: side,
                 height: side,
             };
-            let mut photo = Quad::rectangle(photo_rect, tint(accent), 6.);
+            let mut photo = Quad::rectangle(photo_rect, accent, 9.);
             if let Some(portrait) = &node.portrait
                 && scene.portraits.len() < crate::PORTRAIT_SLOTS
             {
@@ -652,7 +741,7 @@ impl SceneIndex {
                 photo.params[3] = scene.portraits.len() as f32;
             }
             scene.quads.push(photo);
-            if photo.params[3] == 0. && zoom >= 0.6 {
+            if photo.params[3] == 0. && zoom >= 0.4 {
                 scene.labels.push(TextLabel {
                     text: node
                         .title
@@ -662,23 +751,45 @@ impl SceneIndex {
                         .take(1)
                         .collect(),
                     rect: Rect {
-                        x: photo_rect.x + side * 0.3,
-                        y: photo_rect.y + side * 0.25,
-                        width: side * 0.6,
-                        height: side * 0.65,
+                        x: photo_rect.x + side * 0.28,
+                        y: photo_rect.y + side * 0.20,
+                        width: side * 0.65,
+                        height: side * 0.7,
                     },
-                    font_size: side * 0.4,
+                    font_size: side * 0.44,
                     right_aligned: false,
-                    color: accent,
+                    color: PAPER,
                     after_quad: scene.quads.len(),
                 });
             }
             text_x = photo_rect.x + side + 12.;
+        } else {
+            // A compact category marker replaces the old full-width accent stripe.
+            scene.quads.push(Quad::rectangle(
+                Rect {
+                    x: rect.x + 16.,
+                    y: rect.y + 19.,
+                    width: 6.,
+                    height: 6.,
+                },
+                accent,
+                3.,
+            ));
         }
         if zoom >= PORT_LOD_ZOOM {
             for (count, output) in [(node.inputs, false), (node.outputs, true)] {
                 for i in 0..count {
                     let p = port_anchor(rect, i, count, output);
+                    scene.quads.push(Quad::rectangle(
+                        Rect {
+                            x: p[0] - 6.,
+                            y: p[1] - 6.,
+                            width: 12.,
+                            height: 12.,
+                        },
+                        PAPER,
+                        6.,
+                    ));
                     scene.quads.push(Quad::rectangle(
                         Rect {
                             x: p[0] - 4.,
@@ -692,7 +803,7 @@ impl SceneIndex {
                 }
             }
         }
-        if zoom < 0.6 {
+        if zoom < 0.4 {
             return;
         }
         let title = label_text(
@@ -708,13 +819,18 @@ impl SceneIndex {
             text: title,
             rect: Rect {
                 x: text_x,
-                y: rect.y + 25.,
+                y: rect.y
+                    + if character {
+                        (rect.height * 0.25).min(27.)
+                    } else {
+                        (rect.height - 28.).min(42.)
+                    },
                 width: (rect.x + rect.width - text_x - 14.).max(1.),
-                height: 23.,
+                height: 24.,
             },
-            font_size: if character { 16. } else { 14. },
+            font_size: if character { 18. } else { 16. },
             right_aligned: false,
-            color: [0.06, 0.09, 0.11, 1.],
+            color: INK,
             after_quad,
         });
         let subtitle = if character {
@@ -732,17 +848,25 @@ impl SceneIndex {
             scene.labels.push(TextLabel {
                 text: subtitle,
                 rect: Rect {
-                    x: text_x,
-                    y: rect.y + 56.,
-                    width: (rect.x + rect.width - text_x - 14.).max(1.),
-                    height: (rect.height - 66.).clamp(1., 34.),
+                    x: if character { text_x } else { rect.x + 30. },
+                    y: rect.y
+                        + if character {
+                            (rect.height - 20.).min(58.)
+                        } else {
+                            14.
+                        },
+                    width: (rect.x + rect.width
+                        - if character { text_x } else { rect.x + 30. }
+                        - 14.)
+                        .max(1.),
+                    height: (rect.height - 16.).clamp(1., 20.),
                 },
                 font_size: 12.,
                 right_aligned: false,
                 color: if relation {
-                    [accent[0] * 0.72, accent[1] * 0.72, accent[2] * 0.72, 1.]
+                    [accent[0] * 0.55, accent[1] * 0.55, accent[2] * 0.55, 1.]
                 } else {
-                    [0.25, 0.30, 0.32, 1.]
+                    MUTED
                 },
                 after_quad,
             });

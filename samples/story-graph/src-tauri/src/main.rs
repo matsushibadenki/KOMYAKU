@@ -3,6 +3,7 @@ mod autosave;
 mod chatgpt;
 mod domain;
 mod export;
+mod graph_tools;
 mod history;
 mod history_diff;
 mod history_structure;
@@ -1142,6 +1143,7 @@ fn canvas(window: tauri::WebviewWindow) -> std::result::Result<(), String> {
             .show()
             .and_then(|_| canvas.set_focus())
             .map_err(|_| "panel_failed")?;
+        let _ = window.app_handle().emit("graph://changed", ());
     }
     Ok(())
 }
@@ -1342,6 +1344,8 @@ fn main() {
                 .unwrap()
         })
         .invoke_handler(tauri::generate_handler![
+            graph_tools::graph_state,
+            graph_tools::graph_action,
             workspace,
             new_workspace,
             saved_workspaces,
@@ -1461,6 +1465,17 @@ fn main() {
                     size.height as f64 / canvas.scale_factor()?,
                 ),
             )?;
+            canvas
+                .add_child(
+                    tauri::webview::WebviewBuilder::new(
+                        "graph-inspector",
+                        tauri::WebviewUrl::App("graph-inspector.html".into()),
+                    ),
+                    tauri::LogicalPosition::new(800., 0.),
+                    tauri::LogicalSize::new(300., 800.),
+                )?
+                .hide()?;
+            app.manage(graph_tools::Tools::default());
             let mut renderer = pollster::block_on(SurfaceRenderer::new(
                 Arc::new(canvas.clone()),
                 [size.width, size.height],
@@ -1607,6 +1622,7 @@ fn main() {
                         size.height as f64 / scale,
                     ));
                 }
+                graph_tools::layout(window.app_handle());
                 redraw(window.app_handle());
             }
             if window.label() == "canvas"

@@ -111,12 +111,6 @@ fn relationship_arrows_follow_semantic_direction_and_mutual_setting() {
             .filter(|quad| quad.params[2] < -0.5)
             .collect();
         assert_eq!(arrows.len(), if mutual { 4 } else { 2 });
-        assert!(
-            arrows.iter().all(
-                |quad| (quad.rect[0] - 253.).abs() < 0.01 || (quad.rect[0] - 337.).abs() < 0.01
-            ),
-            "arrows remain at connection endpoints, outside the port circles"
-        );
         assert_eq!(
             arrows
                 .iter()
@@ -132,6 +126,42 @@ fn relationship_arrows_follow_semantic_direction_and_mutual_setting() {
             if mutual { 2 } else { 1 }
         );
         assert!(scene.quads.iter().any(|quad| quad.rect[3] == 4.));
+        for zoom in [0.6, 1.5, 3.] {
+            let zoomed = SceneIndex::new(editor.document())
+                .scene(
+                    Viewport {
+                        zoom,
+                        size: [2400., 1200.],
+                        ..view
+                    },
+                    &BTreeSet::new(),
+                )
+                .unwrap();
+            for arrow in zoomed.quads.iter().filter(|quad| quad.params[2] < -0.5) {
+                assert!(arrow.rect[2] >= 17.9, "arrow length scales with the shaft");
+                assert_eq!(
+                    arrow.rect[3], 18.,
+                    "arrow base stays distinct from the 4px shaft"
+                );
+                let tip = [
+                    arrow.rect[0] + arrow.params[0].cos() * arrow.rect[2] / 2.,
+                    arrow.rect[1] + arrow.params[0].sin() * arrow.rect[2] / 2.,
+                ];
+                let clearance = [
+                    [240., 75.],
+                    [240., 255.],
+                    [350., 80. + 110. / 3.],
+                    [350., 80. + 220. / 3.],
+                ]
+                .into_iter()
+                .map(|port| (tip[0] - port[0]).hypot(tip[1] - port[1]))
+                .fold(f32::INFINITY, f32::min);
+                assert!(
+                    (clearance - 7.).abs() < 0.1,
+                    "arrow tip follows the curve outside the socket at zoom {zoom}"
+                );
+            }
+        }
     }
 }
 #[test]
@@ -213,15 +243,16 @@ fn story_portraits_roles_and_relationship_colors_survive_selection_and_zoom() {
     assert!(scene.labels.iter().any(|label| label.text == "駅員"));
     assert!(scene.labels.iter().any(|label| label.text == "Family"));
     let colors: Vec<_> = scene
-        .quads
+        .labels
         .iter()
-        .filter(|quad| quad.rect[3] == 3.)
-        .map(|quad| quad.color)
+        .filter(|label| label.text == "Family" || label.text == "Friends")
+        .map(|label| label.color)
         .collect();
-    assert_ne!(colors[1], colors[2]);
+    assert_eq!(colors.len(), 2);
+    assert_ne!(colors[0], colors[1]);
     assert!(
         index
-            .scene(Viewport { zoom: 0.5, ..view }, &BTreeSet::new())
+            .scene(Viewport { zoom: 0.25, ..view }, &BTreeSet::new())
             .unwrap()
             .labels
             .is_empty()
@@ -765,7 +796,7 @@ fn labels_localize_without_changing_ports_follow_previews_and_obey_lod() {
     }
     assert!(
         index
-            .scene(Viewport { zoom: 0.5, ..view }, &BTreeSet::new())
+            .scene(Viewport { zoom: 0.25, ..view }, &BTreeSet::new())
             .unwrap()
             .labels
             .is_empty()

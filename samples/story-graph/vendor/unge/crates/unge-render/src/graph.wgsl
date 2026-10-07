@@ -34,6 +34,11 @@ struct Output {
     if in.params.z > 0.5 {
         let spacing = select(24.,120.,camera.origin_zoom.z < 0.3);
         let cell = abs(fract(in.world/spacing-0.5)-0.5)*spacing;
+        if in.color.r > 0.5 {
+            // Quiet dot lattice: keep the paper continuous behind relationship cables.
+            let dot = 1.-smoothstep(0.65/camera.origin_zoom.z,1.25/camera.origin_zoom.z,length(cell));
+            return vec4(target_color(in.color.rgb-vec3(dot*0.12)),1.);
+        }
         let line = 1.-smoothstep(0.,1.2/camera.origin_zoom.z,min(cell.x,cell.y));
         let shade = select(0.025,-0.035,in.color.r > 0.5);
         return vec4(target_color(in.color.rgb+vec3(line*shade)),1.);
