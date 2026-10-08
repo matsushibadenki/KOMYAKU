@@ -2,12 +2,12 @@ import {messages} from './locales.js';
 for(const [language,values] of Object.entries({ja:{zoomIn:'拡大',zoomOut:'縮小',fit:'全体表示',pan:'手のひら'},en:{zoomIn:'Zoom in',zoomOut:'Zoom out',fit:'Fit all',pan:'Pan'},'zh-CN':{zoomIn:'放大',zoomOut:'缩小',fit:'显示全部',pan:'平移'}}))Object.assign(messages[language],values);
 // The WebView sends bounds and gestures; Rust retains all pixels and scene data.
 export function installDockedGraph({invoke,native,revision,onError}){
- let last='',frame=0,queue=Promise.resolve(),gesture=null,move=null,moveFrame=0;
+ let last='',applied='',frame=0,queue=Promise.resolve(),gesture=null,move=null,moveFrame=0;
  const send=(command,args)=>{queue=queue.catch(()=>{}).then(()=>invoke(command,args)).catch(error=>{onError(String(error));});return queue;};
- const resize=()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{
+ const resize=()=>{if(frame)return;frame=requestAnimationFrame(()=>{frame=0;
   const root=document.querySelector('[data-docked-graph]');const blocked=document.querySelector('dialog[open],.app-menu[open],.outline-context-menu');
   const rect=root?.getBoundingClientRect();const bounds=rect&&!blocked&&rect.width>=1&&rect.height>=1?{x:Math.max(0,rect.x),y:Math.max(0,rect.y),width:rect.width,height:rect.height}:null;
-  const key=JSON.stringify(bounds);if(key===last)return;last=key;send('docked_graph_bounds',{bounds});
+  const key=JSON.stringify(bounds);if(key===last){if(bounds&&key===applied){root.dataset.ready='true';root.setAttribute('aria-busy','false');}return;}last=key;queue=queue.catch(()=>{}).then(()=>invoke('docked_graph_bounds',{bounds})).then(()=>{applied=key;if(bounds&&root?.isConnected){root.dataset.ready='true';root.setAttribute('aria-busy','false');}}).catch(error=>{if(last===key)last='';onError(String(error));});
  });};
  const pointer=event=>{const rect=document.querySelector('[data-docked-graph]')?.getBoundingClientRect();return rect?[event.clientX-rect.x,event.clientY-rect.y]:null;};
  const dispatch=(event,expectedRevision)=>send('docked_graph_pointer',{event,expectedRevision});

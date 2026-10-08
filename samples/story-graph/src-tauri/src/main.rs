@@ -19,12 +19,14 @@ mod input;
 mod journal;
 mod layout;
 mod library;
+mod manuscript_images;
 mod narrative;
 mod paths;
 mod performance_qa;
 mod persistence;
 mod portrait_tools;
 mod preferences;
+mod rich_document;
 mod scene_operations;
 mod search;
 mod shared_archive;
@@ -1732,6 +1734,7 @@ fn main() {
             docked_graph::docked_graph_bounds,
             docked_graph::docked_graph_pointer,
             docked_graph::docked_graph_scroll,
+            manuscript_images::import_manuscript_image,
             preferences::get_preferences,
             preferences::set_preferences,
             chatgpt::chatgpt_status,
@@ -2462,6 +2465,12 @@ mod persistence_tests {
             .as_array_mut()
             .unwrap()
             .pop();
+        // Rich tables now permit one cell; an empty row remains invalid.
+        assert!(domain::text(&document).is_ok());
+        document["content"][1]["content"][0]["content"]
+            .as_array_mut()
+            .unwrap()
+            .clear();
         assert!(domain::text(&document).is_err());
         std::fs::remove_file(&host.path).unwrap();
     }

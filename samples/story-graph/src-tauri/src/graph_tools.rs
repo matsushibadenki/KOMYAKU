@@ -130,7 +130,6 @@ pub fn click(app: &tauri::AppHandle, engine: &Engine, position: [f32; 2]) {
     let Ok(view) = engine.view_state("controls") else {
         return;
     };
-    let Ok(doc) = engine.snapshot() else { return };
     let point = [
         view.viewport.origin[0] + position[0] / view.viewport.zoom,
         view.viewport.origin[1] + position[1] / view.viewport.zoom,
@@ -141,10 +140,33 @@ pub fn click(app: &tauri::AppHandle, engine: &Engine, position: [f32; 2]) {
     let Ok(mut state) = tools.state.lock() else {
         return;
     };
+    let Ok((hit, edge, previous)) = engine.read_document(|doc, _| {
+        let hit = node_hit(doc, point);
+        let hit = if state.connect {
+            hit.filter(|id| doc.graph().nodes()[id].type_id == domain::CHARACTER)
+        } else {
+            hit
+        };
+        let edge = if hit.is_none() {
+            edge_hit(doc, point, view.viewport.zoom)
+        } else {
+            None
+        };
+        let previous = if state.connect {
+            doc.graph()
+                .nodes()
+                .keys()
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>()
+        } else {
+            Default::default()
+        };
+        (hit, edge, previous)
+    }) else {
+        return;
+    };
     if state.connect {
-        if let Some(id) =
-            node_hit(&doc, point).filter(|id| doc.graph().nodes()[id].type_id == domain::CHARACTER)
-        {
+        if let Some(id) = hit {
             if let Some(from) = state.from.take() {
                 if from != id {
                     drop(state);
@@ -172,15 +194,16 @@ pub fn click(app: &tauri::AppHandle, engine: &Engine, position: [f32; 2]) {
                             },
                         ) {
                             let _ = app.emit("unge://interaction-error", error);
-                        } else if let Ok(updated) = engine.snapshot() {
-                            if let Some(id) = updated
-                                .graph()
-                                .nodes()
-                                .keys()
-                                .find(|id| !doc.graph().nodes().contains_key(id))
-                            {
+                        } else {
+                            if let Ok(Some(id)) = engine.read_document(|doc, _| {
+                                doc.graph()
+                                    .nodes()
+                                    .keys()
+                                    .find(|id| !previous.contains(id))
+                                    .copied()
+                            }) {
                                 let _ = engine
-                                    .dispatch("controls", Request::Select { ids: [*id].into() });
+                                    .dispatch("controls", Request::Select { ids: [id].into() });
                             }
                             if let Ok(mut state) = tools.state.lock() {
                                 state.connect = false;
@@ -208,11 +231,7 @@ pub fn click(app: &tauri::AppHandle, engine: &Engine, position: [f32; 2]) {
         return;
     }
     state.form = None;
-    state.edge = if node_hit(&doc, point).is_none() {
-        edge_hit(&doc, point, view.viewport.zoom)
-    } else {
-        None
-    };
+    state.edge = edge;
     let _ = engine.highlight_edge("controls", state.edge);
     let open = state.edge.is_some() || !view.selection.is_empty();
     drop(state);
@@ -384,18 +403,24 @@ pub async fn graph_action(
                     factor as f32,
                 );
             } else {
-                let doc = host.engine.snapshot().map_err(|e| e.code)?;
-                let state = tools.state.lock().map_err(|_| "state_unavailable")?;
-                let rects = if kind == "focus" {
-                    let rects = focus_rects(&doc, &view.selection, state.edge);
-                    if rects.is_empty() {
-                        return Err("missing_selection".into());
-                    }
-                    rects
-                } else {
-                    doc.placement().values().copied().collect()
+                let (edge, open) = {
+                    let state = tools.state.lock().map_err(|_| "state_unavailable")?;
+                    (state.edge, state.open)
                 };
-                frame_rects(&mut viewport, &rects, state.open);
+                let rects = host
+                    .engine
+                    .read_document(|doc, _| {
+                        if kind == "focus" {
+                            focus_rects(doc, &view.selection, edge)
+                        } else {
+                            doc.placement().values().copied().collect()
+                        }
+                    })
+                    .map_err(|e| e.code)?;
+                if kind == "focus" && rects.is_empty() {
+                    return Err("missing_selection".into());
+                }
+                frame_rects(&mut viewport, &rects, open);
                 if super::docked_graph::visible() {
                     // Embedded Surface bounds already exclude the rail and form.
                     frame_embedded(&mut viewport, &rects);
@@ -550,13 +575,14 @@ pub async fn graph_action(
             let previous = if creating {
                 Some(
                     host.engine
-                        .snapshot()
-                        .map_err(|e| e.code)?
-                        .graph()
-                        .nodes()
-                        .keys()
-                        .copied()
-                        .collect::<std::collections::BTreeSet<_>>(),
+                        .read_document(|doc, _| {
+                            doc.graph()
+                                .nodes()
+                                .keys()
+                                .copied()
+                                .collect::<std::collections::BTreeSet<_>>()
+                        })
+                        .map_err(|e| e.code)?,
                 )
             } else {
                 None
@@ -568,10 +594,18 @@ pub async fn graph_action(
             .await
             .map_err(|_| "state_unavailable")??;
             if let Some(previous) = previous {
-                let doc = engine.snapshot().map_err(|e| e.code)?;
-                if let Some(id) = doc.graph().nodes().keys().find(|id| !previous.contains(id)) {
+                let id = engine
+                    .read_document(|doc, _| {
+                        doc.graph()
+                            .nodes()
+                            .keys()
+                            .find(|id| !previous.contains(id))
+                            .copied()
+                    })
+                    .map_err(|e| e.code)?;
+                if let Some(id) = id {
                     engine
-                        .dispatch("controls", Request::Select { ids: [*id].into() })
+                        .dispatch("controls", Request::Select { ids: [id].into() })
                         .map_err(|e| e.code)?;
                 }
             }

@@ -499,3 +499,17 @@ body[data-panel-window=history] main>.writing {display:flex!important;height:100
 .docked-graph-inspector .check input {width:auto;}
 .docked-graph-inspector .status {font-size:12px;overflow-wrap:anywhere;}
 @media (max-width:700px) {.docked-graph-inspector {width:220px;padding:10px;}}
+
+.manuscript textarea,.reading,.paragraph-range-highlight {line-break:var(--body-line-break,strict);}
+
+[data-docked-graph]:not([data-ready=true]) {display:grid;place-items:center;}
+[data-docked-graph]:not([data-ready=true])::after {content:attr(data-loading-label);color:var(--muted);font-size:13px;}
+
+.rich-toolbar {display:flex;flex-wrap:wrap;gap:4px;margin-bottom:16px;}
+.rich-editor .ProseMirror {font-family:var(--body-font);font-size:var(--body-size);line-height:var(--body-leading);white-space:pre-wrap;overflow-wrap:break-word;line-break:var(--body-line-break,strict);outline:none;min-height:200px;}
+.rich-editor p {margin:0 0 .6em;}.rich-editor h2 {font:inherit;font-size:1.4em;font-weight:600;}
+.rich-editor blockquote {margin:0 1em;border-left:2px solid var(--line);padding-left:1em;}
+.rich-editor img {max-width:100%;max-height:60vh;object-fit:contain;}.rich-editor figure {margin:1em 0;}
+.rich-editor table {border-collapse:collapse;width:100%;}.rich-editor td {padding:0 .5em;vertical-align:top;}
+.vertical-writing .rich-editor .ProseMirror {writing-mode:vertical-rl;text-orientation:mixed;height:60vh;min-height:0;width:max-content;}
+[data-rich-scene] {min-width:0;overflow:auto;}.vertical-writing [data-rich-scene] {overflow-y:hidden;overflow-x:auto;flex:1;min-height:0;}

@@ -64,13 +64,8 @@ fn walk(hits: &mut Vec<Hit>, value: &Value, query: &str, scene: Id, title: &str)
     if hits.len() > MAX {
         return;
     }
-    if value["type"] == "paragraph" {
-        let text: String = value["content"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|v| v["text"].as_str())
-            .collect();
+    if value["type"] == "paragraph" || value["type"] == "heading" {
+        let text = super::rich_document::plain(value);
         add(
             hits,
             &text,

@@ -11,6 +11,8 @@ pub struct Preferences {
     pub writing_mode: String,
     #[serde(default)]
     pub actor_bold: bool,
+    #[serde(default = "default_line_break")]
+    pub line_break: String,
     pub body_size: f32,
     pub line_height: f32,
     pub title_size: f32,
@@ -25,6 +27,9 @@ pub struct Preferences {
 }
 fn default_writing_mode() -> String {
     "horizontal".into()
+}
+fn default_line_break() -> String {
+    "strict".into()
 }
 fn default_panel_open() -> bool {
     true
@@ -42,6 +47,7 @@ impl Default for Preferences {
             body_font: "serif".into(),
             writing_mode: default_writing_mode(),
             actor_bold: false,
+            line_break: default_line_break(),
             body_size: 18.,
             line_height: 2.1,
             title_size: 22.,
@@ -57,6 +63,7 @@ impl Preferences {
         if !["ja", "en", "zh-CN"].contains(&self.language.as_str())
             || !["horizontal", "vertical"].contains(&self.writing_mode.as_str())
             || !["serif", "sans", "mono"].contains(&self.body_font.as_str())
+            || !["strict", "normal", "loose"].contains(&self.line_break.as_str())
             || !self.body_size.is_finite()
             || !(10. ..=40.).contains(&self.body_size)
             || !self.line_height.is_finite()
@@ -148,6 +155,7 @@ mod tests {
         let value: Preferences = serde_json::from_str(legacy).unwrap();
         assert_eq!(value.writing_mode, "horizontal");
         assert!(!value.actor_bold);
+        assert_eq!(value.line_break, "strict");
         assert_eq!(value.block_size, 30.);
         assert_eq!(value.sequence_size, 25.);
         assert_eq!(value.title_size, 18.);
@@ -173,6 +181,7 @@ mod tests {
             body_font: "mono".into(),
             writing_mode: "vertical".into(),
             actor_bold: true,
+            line_break: "normal".into(),
             body_size: 24.,
             line_height: 1.5,
             title_size: 32.,
@@ -184,6 +193,9 @@ mod tests {
         store.save(valid.clone()).unwrap();
         let mut invalid = valid.clone();
         invalid.writing_mode = "invalid".into();
+        assert!(store.save(invalid.clone()).is_err());
+        invalid = valid.clone();
+        invalid.line_break = "anywhere".into();
         assert!(store.save(invalid.clone()).is_err());
         invalid = valid.clone();
         invalid.body_size = f32::NAN;

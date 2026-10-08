@@ -14,11 +14,11 @@ export function createParagraphLayouts({blocked,current,apply}){
   const style=getComputedStyle(input),vertical=style.writingMode.startsWith('vertical');
   const span=vertical?input.clientHeight:input.clientWidth;
   if(span<32)return;
-  const key=[vertical,span,...['fontFamily','fontSize','fontWeight','lineHeight','letterSpacing','wordBreak','overflowWrap','padding','boxSizing','tabSize','textOrientation'].map(k=>style[k])].join('|');
+  const key=[vertical,span,...['fontFamily','fontSize','fontWeight','lineHeight','letterSpacing','wordBreak','lineBreak','overflowWrap','padding','boxSizing','tabSize','textOrientation'].map(k=>style[k])].join('|');
   if(cache.get(node)?.key===key||jobs.get(node)?.key===key)return;
   jobs.get(node)?.abort.abort();const job={key,abort:new AbortController()};jobs.set(node,job);
   const probe=document.createElement('div');
-  for(const name of ['fontFamily','fontSize','fontWeight','fontStyle','lineHeight','letterSpacing','wordBreak','overflowWrap','padding','boxSizing','tabSize','textOrientation','textAlign'])probe.style[name]=style[name];
+  for(const name of ['fontFamily','fontSize','fontWeight','fontStyle','lineHeight','letterSpacing','wordBreak','lineBreak','overflowWrap','padding','boxSizing','tabSize','textOrientation','textAlign'])probe.style[name]=style[name];
   Object.assign(probe.style,{position:'fixed',left:'0',top:'0',visibility:'hidden',pointerEvents:'none',whiteSpace:'pre-wrap',writingMode:style.writingMode,width:vertical?'max-content':`${span}px`,height:vertical?`${span}px`:'auto',margin:'0',border:'0'});
   document.body.append(probe);
   (async()=>{try{

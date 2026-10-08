@@ -30,3 +30,15 @@ Object.assign(messages["ja"],{"authHint": "標準ブラウザーで認証しま�
 Object.assign(messages["en"],{"authHint": "Sign in using your default browser. Credentials are stored privately on this device.", "authConnected": "Connected", "authDisconnected": "Disconnected", "authPlanEnabled": "ChatGPT plan access granted", "authIdentityOnly": "No plan access granted", "authSignOut": "Sign out", "authReconnect": "Reconnect", "authPending": "Complete sign-in in your browser.", "authNativeOnly": "Sign-in is available in the desktop app.", "authWritingLater": "Writing assistance will be added next. Manuscript text is not sent yet.", "auth_failed": "Could not verify sign-in. Please retry.", "auth_denied": "Authorization was denied.", "auth_cancelled": "Sign-in cancelled.", "auth_timeout": "Sign-in timed out. Please retry.", "auth_browser_failed": "Could not open your browser.", "auth_busy": "Authentication is in progress.", "auth_revoke_failed": "Could not confirm revocation. Credentials are retained; check your connection and retry."});
 
 Object.assign(messages["zh-CN"],{"authHint": "使用默认浏览器登录。凭据会安全保存在此设备上。", "authConnected": "已连接", "authDisconnected": "未连接", "authPlanEnabled": "已授权使用 ChatGPT 套餐", "authIdentityOnly": "未授权使用套餐", "authSignOut": "退出登录", "authReconnect": "重新连接", "authPending": "请在浏览器中完成登录。", "authNativeOnly": "登录功能仅在桌面应用中可用。", "authWritingLater": "写作辅助将在下一阶段添加。目前不会发送正文。", "auth_failed": "无法验证登录，请重试。", "auth_denied": "授权被拒绝。", "auth_cancelled": "已取消登录。", "auth_timeout": "登录超时，请重试。", "auth_browser_failed": "无法打开浏览器。", "auth_busy": "正在进行身份验证。", "auth_revoke_failed": "无法确认撤销授权。凭据已保留，请检查网络后重试。"});
+
+Object.assign(messages.ja,{lineBreak:'禁則処理',lineBreak_strict:'厳密',lineBreak_normal:'標準',lineBreak_loose:'緩やか'});
+Object.assign(messages.en,{lineBreak:'Line breaking',lineBreak_strict:'Strict',lineBreak_normal:'Normal',lineBreak_loose:'Loose'});
+Object.assign(messages['zh-CN'],{lineBreak:'避头尾规则',lineBreak_strict:'严格',lineBreak_normal:'标准',lineBreak_loose:'宽松'});
+
+Object.assign(messages.ja,{graphPreparing:'グラフを準備しています…'});
+Object.assign(messages.en,{graphPreparing:'Preparing graph…'});
+Object.assign(messages['zh-CN'],{graphPreparing:'正在准备图表…'});
+
+Object.assign(messages.ja,{formatting:'書式',bold:'太字',italic:'斜体',underline:'下線',strike:'打ち消し',paragraph:'段落',heading:'見出し',quote:'引用',bulletList:'箇条書き',image:'画像'});
+Object.assign(messages.en,{formatting:'Formatting',bold:'Bold',italic:'Italic',underline:'Underline',strike:'Strikethrough',paragraph:'Paragraph',heading:'Heading',quote:'Quote',bulletList:'Bullet list',image:'Image'});
+Object.assign(messages['zh-CN'],{formatting:'格式',bold:'粗体',italic:'斜体',underline:'下划线',strike:'删除线',paragraph:'段落',heading:'标题',quote:'引用',bulletList:'项目列表',image:'图片'});

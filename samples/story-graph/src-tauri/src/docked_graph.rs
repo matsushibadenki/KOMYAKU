@@ -331,9 +331,6 @@ pub async fn docked_graph_pointer(
             event,
             unge_interaction::PointerEvent::Up { .. } | unge_interaction::PointerEvent::Cancel
         );
-        if cfg!(debug_assertions) && std::env::var_os("STORY_GRAPH_PERFORMANCE_QA").is_some() {
-            eprintln!("QA_GRAPH event={event:?}");
-        }
         let summary = host
             .engine
             .dispatch(

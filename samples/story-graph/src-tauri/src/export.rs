@@ -79,35 +79,54 @@ fn children<'a>(document: &'a Document, parent: Option<Id>, kind: &str) -> Vec<&
     nodes
 }
 fn inline(node: &serde_json::Value) -> String {
-    node["content"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|v| v["text"].as_str())
-        .collect()
-}
-#[derive(Default, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Scope {
-    pub node: Option<Id>,
-    pub path: Option<String>,
+    super::rich_document::plain(node)
 }
 fn append_scene(parts: &mut Vec<Part>, document: &Document, scene: &Node) -> Result<(), String> {
     parts.push(Part::Heading(4, title(scene)));
     let canonical = super::central_document::canonical(document, scene)?;
-    domain::text(canonical)?;
-    for node in canonical["content"].as_array().ok_or("invalid_document")? {
-        if node["type"] == "paragraph" {
-            parts.push(Part::Paragraph(inline(node)));
-        } else {
-            let cells = &node["content"][0]["content"];
-            parts.push(Part::Dialogue(
-                inline(&cells[0]["content"][0]),
-                inline(&cells[1]["content"][0]),
-            ));
+    domain::validate_text(canonical)?;
+    fn append(parts: &mut Vec<Part>, node: &serde_json::Value) {
+        match node["type"].as_str() {
+            Some("paragraph" | "code_block" | "image") => parts.push(Part::Paragraph(inline(node))),
+            Some("heading") => parts.push(Part::Heading(5, inline(node))),
+            Some("table")
+                if node["content"].as_array().is_some_and(|rows| {
+                    rows.len() == 1
+                        && rows[0]["content"].as_array().is_some_and(|cells| {
+                            cells.len() == 2
+                                && cells.iter().all(|cell| {
+                                    cell["content"].as_array().is_some_and(|v| {
+                                        v.len() == 1 && v[0]["type"] == "paragraph"
+                                    })
+                                })
+                        })
+                }) =>
+            {
+                let cells = &node["content"][0]["content"];
+                parts.push(Part::Dialogue(
+                    inline(&cells[0]["content"][0]),
+                    inline(&cells[1]["content"][0]),
+                ));
+            }
+            _ => {
+                if let Some(children) = node["content"].as_array() {
+                    for child in children {
+                        append(parts, child);
+                    }
+                }
+            }
         }
     }
+    for node in canonical["content"].as_array().ok_or("invalid_document")? {
+        append(parts, node);
+    }
     Ok(())
+}
+#[derive(Clone, Debug, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Scope {
+    pub node: Option<Id>,
+    pub path: Option<String>,
 }
 fn manuscript_scoped(document: &Document, scope: &Scope) -> Result<Vec<Part>, String> {
     let selected = scope

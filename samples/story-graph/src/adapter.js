@@ -1,15 +1,8 @@
+import {richText} from './rich-content.js';
 import { parseCanonicalDocument } from '../../../packages/document-schema/src/index.js';
 export function canonicalText(input) {
   const document = parseCanonicalDocument(input);
-  const paragraph=node=>node.content.map(inline=>{
-    if(inline.type!=='text'||inline.marks.length)throw new Error('unsupported_document');
-    return inline.text;
-  }).join('');
-  return document.content.map(node=>{
-    if(node.type==='paragraph')return paragraph(node);
-    if(node.type==='table'&&node.content.length===1&&node.content[0].content.length===2)return node.content[0].content.map(cell=>cell.content.map(paragraph).join('\n')).join('\t');
-    throw new Error('unsupported_document');
-  }).join('\n');
+  return document.content.map(richText).join('\n');
 }
 export function routeNodes(nodes, path) {
   return nodes.filter(n => n.type === 'story.scene' && (n.routes ? Object.hasOwn(n.routes,path) : [path, 'both'].includes(n.path))).sort((a,b)=>(a.routes?.[path]??a.order)-(b.routes?.[path]??b.order));
