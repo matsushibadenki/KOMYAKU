@@ -55,11 +55,78 @@ fn limits(workspace: &Value) -> std::result::Result<(), String> {
     }
     Ok(())
 }
+fn native_skeleton(document: &Document) -> std::result::Result<Value, String> {
+    #[derive(Serialize)]
+    struct NativeNode<'a> {
+        id: Id,
+        type_id: &'a str,
+        inputs: &'a [Port],
+        outputs: &'a [Port],
+        properties: BTreeMap<&'a String, &'a Value>,
+    }
+    #[derive(Serialize)]
+    struct NativeGraph<'a> {
+        id: Id,
+        name: &'a str,
+        nodes: BTreeMap<Id, NativeNode<'a>>,
+        edges: &'a BTreeMap<Id, Edge>,
+        groups: &'a BTreeMap<Id, Group>,
+    }
+    #[derive(Serialize)]
+    struct NativeDocument<'a> {
+        #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+        extensions: &'a BTreeMap<String, Value>,
+        title: &'a str,
+        schema_version: u32,
+        engine_version: &'a str,
+        plugin_versions: &'a BTreeMap<String, String>,
+        graph: NativeGraph<'a>,
+        placement: &'a BTreeMap<Id, Rect>,
+    }
+    let graph = document.graph();
+    serde_json::to_value(NativeDocument {
+        extensions: &document.extensions,
+        title: &document.title,
+        schema_version: document.schema_version,
+        engine_version: &document.engine_version,
+        plugin_versions: &document.plugin_versions,
+        placement: document.placement(),
+        graph: NativeGraph {
+            id: graph.id,
+            name: &graph.name,
+            edges: graph.edges(),
+            groups: graph.groups(),
+            nodes: graph
+                .nodes()
+                .iter()
+                .map(|(id, node)| {
+                    (
+                        *id,
+                        NativeNode {
+                            id: *id,
+                            type_id: &node.type_id,
+                            inputs: &node.inputs,
+                            outputs: &node.outputs,
+                            properties: node
+                                .properties
+                                .iter()
+                                .filter(|(key, _)| {
+                                    node.type_id != domain::SCENE || key.as_str() != "canonical"
+                                })
+                                .collect(),
+                        },
+                    )
+                })
+                .collect(),
+        },
+    })
+    .map_err(|_| "shared_workspace_invalid".into())
+}
 pub fn project(document: &Document) -> std::result::Result<Value, String> {
     domain::Validator(domain::registry())
         .validate(document)
         .map_err(|_| "shared_workspace_invalid")?;
-    let mut skeleton = serde_json::to_value(document).map_err(|_| "shared_workspace_invalid")?;
+    let skeleton = native_skeleton(document)?;
     let mut ordered: Vec<_> = document
         .graph()
         .nodes()
@@ -102,17 +169,17 @@ pub fn project(document: &Document) -> std::result::Result<Value, String> {
         if node.type_id == domain::SCENE {
             let canonical = &node.properties["canonical"];
             let root = canonical["id"].as_str().ok_or("shared_workspace_invalid")?;
-            let mut header = canonical.clone();
-            header
-                .as_object_mut()
-                .ok_or("shared_workspace_invalid")?
-                .remove("content");
+            let header = serde_json::to_value(
+                canonical
+                    .as_object()
+                    .ok_or("shared_workspace_invalid")?
+                    .iter()
+                    .filter(|(key, _)| key.as_str() != "content")
+                    .collect::<BTreeMap<_, _>>(),
+            )
+            .map_err(|_| "shared_workspace_invalid")?;
             content.push(json!({"id":root,"type":"blockquote","schemaVersion":1,"metadata":{},"extensions":{HEADER:header},"renderArtifacts":[],"content":canonical["content"]}));
             refs.insert(node.id, root.to_owned());
-            skeleton["graph"]["nodes"][node.id.to_string()]["properties"]
-                .as_object_mut()
-                .ok_or("shared_workspace_invalid")?
-                .remove("canonical");
         } else {
             content.push(heading(
                 node,

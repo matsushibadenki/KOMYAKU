@@ -288,3 +288,9 @@ Accepted edits return saved:false when disk persistence fails. The UI retains th
 Author-declared entities, initial state, conditions, effects and assertions reside in the narrative extension. Each named path evaluates independently, with conditions before scene effects. Missing and explicit JSON null remain distinct. Impact reports follow route, foreshadow and declared state dependencies. Typed value controls are a UI projection of the same bounded JSON contract.
 
 Shared Archive v1 exports one Canonical document and the native graph through the workspace extension in a stored ZIP. Import validates ZIP structure, CRC, manifest and exact workspace reprojection before publishing a separate work. This bridge does not yet replace native composite persistence or history with shared Archive v2.
+
+## Checkpoint v3 and presentation docking
+
+`workspace_storage::write` writes a shared composite Workspace checkpoint, storing Canonical manuscript once and native graph references in the adapter. `SavedWorkspace` accepts either legacy document v1/v2 or composite workspace v3, never both. The native Engine reconstructs its scene projections on load; central-reference editing API migration remains separate work. Shared bridge limits fall back to the bounded legacy format without discarding content. Journal hashes cover the exact serialized checkpoint, and history/merge/Archive readers accept v3.
+
+Layout retains four unique dock slots for navigator/inspector. Rust swaps occupied slots atomically and persists presentation state without changing manuscript revision. WebView projects grid areas, hides closed tracks and supplies drag targets plus keyboard-accessible cycle controls. Native graph still owns its separate wgpu surface; same-window GPU composition remains unfinished.

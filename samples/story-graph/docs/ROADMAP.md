@@ -65,7 +65,8 @@
 - [Done] 保存済み作品を一覧から開く→編集・保存→終了→一覧から再オープンし、本文が保持されることをnative QAで確認。
 - [Done] 保存失敗時の入力保持・閉じる保護・復旧後の再保存をnativeで確認。メモリ受理と保存成功を分離し、再保存による編集の重複適用を防止。
 - [Next] IME入力中の保存／閉じる、分離パネルの競合、DPI変更のnative QAを完了。
-- [Next] Sceneが持つ暫定Canonical Document propertyを共有Canonical Story Workspace v1の正本・参照契約へ移行し、本体の対応API基準Versionを確定。
+- [Done] 保存正本を共有Canonical Story Workspace v1へ移行するcheckpoint v3と、ローカルschemaパッケージ0.1.0／schemaVersion 1の基準を明記。
+- [Next] メモリ内Scene propertyと編集APIを中央Document参照へ移行。
 
 ## S1 — 文章構築と人物相関
 
@@ -123,7 +124,8 @@
 - [Done] 共有Canonical Story Workspace v1の参照付き書き出し／アプリ変換情報付きWorkspaceの取込み。本文は単一Documentに保持し、SceneはdocumentRefsで参照。共有スキーマの照合、損失が生じる情報の拒否、元ファイル保持、ネイティブ別作品起動を確認。
 - [Done] 共有Canonical Archive v1の書き出し／取込み。単一Documentの拡張にGraph参照を保持し、ZIP整合性・参照・損失なし復元を検証。Rust出力を本体Archive verifierと共有Workspace schemaで照合。
 - [Done] 共有履歴Archive v2の書き出し／取込み。現在原稿、Branch、2親Merge、元の不変版IDを保持。独立した共有Archive検証器との照合、改ざん拒否、別作品への4版復元をnativeで確認。アプリ変換拡張を持つArchiveに対応。
-- [Next] composite Workspace正本へのnative永続化移行。現在の履歴付きアプリ形式は維持。
+- [Done] Native checkpoint v3に共有Workspace正本を保存。本文は一つのCanonical Document、Graphは参照。旧v1/v2・ジャーナル・履歴・マージ・Archiveを保持し、橋渡し上限を超える原稿は既存形式で保存。Rust全体の互換テストを通過。
+- [Next] Rust Engineのシーン投影から中央Document参照を使う編集APIへの移行。
 - [Done] 名前付きBranchと2親Merge。RustのDAG永続化・3-way比較・作者の競合選択・別作品としての統合・Archive保持。実macOSで過去の版から分岐→タイトル編集→本編との競合確認→採用側の選択→統合作品の起動と5版／2親の保存を検証。本文配列はまとまり単位で選択し、変更の細かい自動統合は行わない。
 - [Done] ファイル→「バックアップから復元…」。現在の作品のバックアップ日時・シーン数・項目数を確認し、作品名を指定して別作品へ復元。元の作品／バックアップは変更せず、破損・未対応形式は拒否。Rust workerで作成・検証・復元し、復元した作品を保存済み一覧へ登録。
 - [Done] ファイル→「snapshotを取り込む…」。外部JSON snapshotをRustで検証し、ID・本文・人物・画像・接続・配置を保持した別作品へ取り込み。元ファイルは変更せず、破損／未対応形式／上限超過を拒否。隠しディレクトリに保存後、完成した作品だけを作品一覧へ公開。完全履歴Archiveとは別のsnapshot取り込み。
