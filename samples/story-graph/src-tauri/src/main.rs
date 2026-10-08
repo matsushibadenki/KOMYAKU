@@ -2,9 +2,11 @@ mod ai;
 mod archive;
 mod autosave;
 mod character_groups;
+mod central_document;
 mod chatgpt;
 mod domain;
 mod export;
+mod floating_panels;
 mod graph_export;
 mod graph_tools;
 mod history;
@@ -18,6 +20,7 @@ mod layout;
 mod library;
 mod narrative;
 mod paths;
+mod performance_qa;
 mod persistence;
 mod portrait_tools;
 mod preferences;
@@ -187,7 +190,7 @@ fn redraw(app: &tauri::AppHandle) {
     }
 }
 fn allowed(window: &tauri::WebviewWindow) -> std::result::Result<(), String> {
-    if ["controls", "editor"].contains(&window.label()) {
+    if ["controls", "editor", "navigator", "inspector", "history"].contains(&window.label()) {
         Ok(())
     } else {
         Err("unknown_view".into())
@@ -254,7 +257,14 @@ fn selected(
     id: Id,
 ) -> std::result::Result<Node, String> {
     allowed(&window)?;
-    host.engine.inspect(window.label(), id).map_err(|e| e.code)
+    host.engine.read_document(|document, _| {
+        let mut node = document.graph().nodes().get(&id).ok_or("missing_node")?.clone();
+        if node.type_id == domain::SCENE {
+            let body = central_document::canonical(document, &node)?.clone();
+            node.properties.insert("canonical".into(), body);
+        }
+        Ok(node)
+    }).map_err(|e| e.code)?
 }
 #[tauri::command]
 fn choose(
@@ -541,7 +551,7 @@ fn paragraph_command(
     if node.type_id != domain::SCENE {
         return Err("invalid_document".into());
     }
-    let canonical = &node.properties["canonical"];
+    let canonical = central_document::canonical(document, node)?;
     let mut pointers = std::collections::BTreeMap::new();
     for (i, block) in canonical["content"]
         .as_array()
@@ -899,7 +909,7 @@ fn build_command_from_document(
         } => {
             let node = document.graph().nodes().get(&id).ok_or("missing_node")?;
             if node.type_id != domain::SCENE
-                || canonical["id"] != node.properties["canonical"]["id"]
+                || canonical["id"] != central_document::canonical(document, node)?["id"]
             {
                 return Err("invalid_document".into());
             }
@@ -918,7 +928,7 @@ fn build_command_from_document(
             if node.type_id != domain::SCENE {
                 return Err("invalid_document".into());
             }
-            let doc = &node.properties["canonical"];
+            let doc = central_document::canonical(document, node)?;
             domain::text(doc)?;
             if doc["content"]
                 .as_array()
@@ -1039,7 +1049,7 @@ fn build_command_from_document(
     };
     Ok(Request::Apply {
         expected_revision: revision,
-        command,
+        command: central_document::command(document, command)?,
     })
 }
 #[tauri::command]
@@ -1124,12 +1134,8 @@ fn edit_blocking(
             *id,
             host.engine
                 .read_document(|document, _| {
-                    let canonical = &document
-                        .graph()
-                        .nodes()
-                        .get(id)
-                        .ok_or("missing_node")?
-                        .properties["canonical"];
+                    let node = document.graph().nodes().get(id).ok_or("missing_node")?;
+                    let canonical = central_document::canonical(document, node)?;
                     changes
                                     .iter()
                                     .map(|change| {
@@ -1154,6 +1160,22 @@ fn edit_blocking(
         .dispatch(window.label(), request)
         .map_err(|e| e.code)?;
     let mut result = projection(&host.engine)?;
+    if let Some((scene, before)) = &paragraph_edit {
+        let paragraphs = host
+            .engine
+            .read_document(|document, _| {
+                let canonical = central_document::canonical(document, document.graph().nodes().get(scene)?).ok()?;
+                before
+                    .keys()
+                    .map(|id| find_paragraph(canonical, *id).cloned())
+                    .collect::<Option<Vec<_>>>()
+            })
+            .map_err(|e| e.code)?;
+        if let Some(paragraphs) = paragraphs {
+            result["paragraphDelta"] =
+                json!({"scene":scene,"beforeRevision":expected_revision,"paragraphs":paragraphs});
+        }
+    }
     let saved = host
         .engine
         .read_document(|snapshot, actual_revision| {
@@ -1162,7 +1184,7 @@ fn edit_blocking(
                 let Some(node) = snapshot.graph().nodes().get(&id) else {
                     return Vec::new();
                 };
-                let after = &node.properties["canonical"];
+                let Ok(after) = central_document::canonical(snapshot, node) else { return Vec::new(); };
                 before
                     .into_iter()
                     .filter_map(|(id, paragraph)| {
@@ -1266,7 +1288,7 @@ fn reading_projection(
         .iter()
         .find(|p| p.key() == key)
         .ok_or("invalid_path")?;
-    let scenes=path.scenes.iter().map(|id|{let node=doc.graph().nodes().get(id).ok_or("missing_node")?;Ok(json!({"id":id,"title":node.properties["title"],"canonical":node.properties["canonical"]}))}).collect::<std::result::Result<Vec<Value>,String>>()?;
+    let scenes=path.scenes.iter().map(|id|{let node=doc.graph().nodes().get(id).ok_or("missing_node")?;Ok(json!({"id":id,"title":node.properties["title"],"canonical":central_document::canonical(doc, node)?}))}).collect::<std::result::Result<Vec<Value>,String>>()?;
     Ok(json!({"revision":revision,"scenes":scenes}))
 }
 #[tauri::command]
@@ -1339,7 +1361,13 @@ fn panel(
     floating: bool,
 ) -> std::result::Result<(), String> {
     allowed(&window)?;
-    let app = window.app_handle();
+    set_editor_panel(window.app_handle(), host.inner(), floating)
+}
+fn set_editor_panel(
+    app: &tauri::AppHandle,
+    host: &Host,
+    floating: bool,
+) -> std::result::Result<(), String> {
     if floating {
         if let Some(editor) = app.get_webview_window("editor") {
             editor.set_focus().map_err(|_| "panel_failed")?;
@@ -1374,6 +1402,7 @@ fn panel(
         editor.close().map_err(|_| "panel_failed")?;
         return Ok(());
     }
+    app.state::<layout::Store>().float("editor", floating)?;
     app.emit("story://panel", floating)
         .map_err(|_| "event_error")?;
     Ok(())
@@ -1629,6 +1658,10 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             shared_workspace::export_shared_workspace,
             shared_archive::export_shared_archive,
+            floating_panels::floating_panels,
+            floating_panels::float_side_panel,
+            performance_qa::performance_qa_enabled,
+            performance_qa::performance_qa_sample,
             layout::get_layout,
             layout::resize_panel,
             layout::dock_panel,
@@ -1720,6 +1753,7 @@ fn main() {
             };
             let document =
                 domain::migrate_hierarchy(document, &registry).map_err(std::io::Error::other)?;
+            let document = central_document::normalize(document).map_err(std::io::Error::other)?;
             let editor = Editor::new(document, 256)?
                 .with_validator(Arc::new(domain::Validator(registry.clone())))?;
             save(&path, editor.document()).map_err(std::io::Error::other)?;
@@ -1925,12 +1959,15 @@ fn main() {
             if window.label() == "controls"
                 && let tauri::WindowEvent::CloseRequested { api, .. } = event
                 && let Some(worker) = window.app_handle().try_state::<autosave::Worker>()
-                && worker.flush().is_err()
             {
-                api.prevent_close();
-                let _ = window
-                    .app_handle()
-                    .emit("story://save-error", "save_failed");
+                if worker.flush().is_err() {
+                    api.prevent_close();
+                    let _ = window
+                        .app_handle()
+                        .emit("story://save-error", "save_failed");
+                } else {
+                    window.state::<layout::Store>().begin_shutdown();
+                }
             }
             if window.label() == "canvas"
                 && matches!(
@@ -1959,8 +1996,19 @@ fn main() {
                 api.prevent_close();
                 let _ = window.hide();
             }
+            if ["navigator", "inspector", "history"].contains(&window.label())
+                && matches!(event, tauri::WindowEvent::Destroyed)
+            {
+                let _ = window.state::<Engine>().remove_view(window.label());
+                window.state::<layout::Store>().closed_panel(window.label());
+                // The destroyed callback may hold Tauri's window registry lock.
+                // Query surviving windows only after returning to the event loop.
+                let app = window.app_handle().clone();
+                tauri::async_runtime::spawn_blocking(move || floating_panels::publish(&app));
+            }
             if window.label() == "editor" && matches!(event, tauri::WindowEvent::Destroyed) {
                 let _ = window.state::<Engine>().remove_view("editor");
+                window.state::<layout::Store>().closed_panel("editor");
                 let _ = window.app_handle().emit("story://panel", false);
             }
             if window.label() == "controls" && matches!(event, tauri::WindowEvent::Destroyed) {
@@ -1970,6 +2018,23 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("Story Graph startup failed; saved workspace was not overwritten")
         .run(|app, event| match event {
+            tauri::RunEvent::Ready => {
+                if let (Some(store), Some(host)) =
+                    (app.try_state::<layout::Store>(), app.try_state::<Host>())
+                    && let Ok(value) = store.value()
+                {
+                    for panel in value.floating_panels {
+                        let result = if panel == "editor" {
+                            set_editor_panel(app, host.inner(), true)
+                        } else {
+                            floating_panels::set(app, host.inner(), &panel, true)
+                        };
+                        if result.is_err() {
+                            let _ = app.emit("story://save-error", "panel_failed");
+                        }
+                    }
+                }
+            }
             tauri::RunEvent::ExitRequested { api, .. } => {
                 if let Some(store) = app.try_state::<layout::Store>() {
                     for window in app.windows().values() {
@@ -1982,6 +2047,8 @@ fn main() {
                 {
                     api.prevent_exit();
                     let _ = app.emit("story://save-error", "save_failed");
+                } else if let Some(store) = app.try_state::<layout::Store>() {
+                    store.begin_shutdown();
                 }
             }
             tauri::RunEvent::Exit => {

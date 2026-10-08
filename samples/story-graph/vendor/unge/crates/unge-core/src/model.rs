@@ -320,6 +320,26 @@ impl Default for Document {
     }
 }
 impl Document {
+    /// Move a node payload to a central extension store before constructing an
+    /// Editor. Runtime edits must use Commands so rollback and Undo are retained.
+    pub fn move_property_to_extension(
+        &mut self, id: Id, property: &str, extension: &str, key: &str,
+        reference: serde_json::Value,
+    ) -> Result<()> {
+        let node = self.graph.nodes.get_mut(&id).ok_or_else(|| Error::Missing(id.to_string()))?;
+        if !node.properties.contains_key(property) {
+            return Err(Error::Invalid("missing_property".into()));
+        }
+        let store = self.extensions.entry(extension.into())
+            .or_insert_with(|| serde_json::json!({})).as_object_mut()
+            .ok_or_else(|| Error::Invalid("invalid_document_store".into()))?;
+        if store.contains_key(key) { return Err(Error::Duplicate(key.into())); }
+        // All fallible checks precede ownership transfer. The manuscript is moved,
+        // rather than cloned or serialized into a second temporary document.
+        let payload = node.properties.insert(property.into(), reference).expect("checked property");
+        store.insert(key.into(), payload);
+        Ok(())
+    }
     pub fn graph(&self) -> &Graph {
         &self.graph
     }

@@ -54,3 +54,52 @@ test('extent scan preserves CRLF, lone CR, astral characters and empty trailing 
  for(const text of ['', '\r\n', 'a\rb\n', '😀😀😀\r\nx', 'a\r\r\nb'])for(const capacity of [1,2,100]){const lines=text.split(/\r\n?|\n/).reduce((sum,line)=>sum+Math.max(1,Math.ceil([...line].length/capacity)),0);expect(lineMetrics(text,capacity).lines).toBe(lines);}
  expect(lineMetrics('😀'.repeat(500000),100).lines).toBe(5000);
 });
+test('unmount retains edited values and width without serializing manuscript HTML',async()=>{
+ const {ManuscriptViewport}=await import('../src/manuscript-viewport.js');
+ const input={value:'更新\n😀',dataset:{start:'8',length:'6'}};
+ let mounted=true,htmlReads=0;
+ const sheet={dataset:{width:'93'}};
+ const block={dataset:{paragraph:'p',start:'0',length:'4'},style:{},classList:{add(){},remove(){}},get firstElementChild(){return mounted?{}:null;},get innerHTML(){htmlReads++;throw Error('must not serialize');},set innerHTML(value){mounted=true;input.value='stale';},querySelector:s=>s==='textarea'?input:s==='.dialogue-sheet'?sheet:null,querySelectorAll:s=>s==='textarea'?[input]:[],replaceChildren(){mounted=false;}};
+ const entry={visible:false,extent:40};
+ const viewport=Object.create(ManuscriptViewport.prototype);Object.assign(viewport,{entries:new Map([[block,entry]]),pinned:()=>false,source:()=>'<textarea>stale</textarea>',vertical:false});
+ viewport.unmount(block);expect(htmlReads).toBe(0);expect(entry.values).toEqual(['更新\n😀']);expect(block.firstElementChild).toBeNull();
+ viewport.mount(block);expect(input.value).toBe('更新\n😀');expect(input.dataset.start).toBe('8');expect(input.dataset.length).toBe('6');expect(sheet.dataset.width).toBe('93');
+});
+
+test('offscreen batches reduce attached placeholders and retain paragraph lookup and pinned edits',async()=>{
+ const {ManuscriptViewport}=await import('../src/manuscript-viewport.js');
+ const previousDocument=globalThis.document,previousObserver=globalThis.IntersectionObserver;
+ const observers=[];
+ class Node {
+  constructor(fragment=false){this.fragment=fragment;this.children=[];this.dataset={};this.style={};this.classes=new Set();this.classList={add:c=>this.classes.add(c),remove:c=>this.classes.delete(c),toggle:(c,on)=>on?this.classes.add(c):this.classes.delete(c)};}
+  get parentElement(){return this.parent?.fragment?null:this.parent??null;}
+  get firstChild(){return this.children[0]??null;}
+  get firstElementChild(){return this.firstChild;}
+  append(node){if(node.fragment){for(const child of [...node.children])this.append(child);return;}node.remove();this.children.push(node);node.parent=this;}
+  remove(){if(this.parent){this.parent.children.splice(this.parent.children.indexOf(this),1);this.parent=null;}}
+  before(node){const parent=this.parent,index=parent.children.indexOf(this);node.remove();parent.children.splice(index,0,node);node.parent=parent;}
+  closest(){return this.parent?.closest()??null;}
+  replaceChildren(){for(const child of [...this.children])child.remove();}
+  querySelector(){return this.input??null;}
+  querySelectorAll(){return this.input?[this.input]:[];}
+  set innerHTML(value){this.append(new Node());this.input={value,dataset:{block:this.dataset.paragraph},closest:()=>scope};}
+ }
+ const scope=new Node(),parent=new Node();scope.closest=()=>scope;scope.append(parent);
+ const blocks=Array.from({length:96},(_,index)=>{const block=new Node();block.dataset={paragraph:'p',manuscriptBlock:`scene:p-${index}`,start:String(index*4),length:'4'};parent.append(block);return block;});
+ globalThis.document={createElement:()=>new Node(),createDocumentFragment:()=>new Node(true)};
+ globalThis.IntersectionObserver=class{constructor(callback){this.callback=callback;this.observed=new Set();observers.push(this);}observe(node){this.observed.add(node);}unobserve(node){this.observed.delete(node);}disconnect(){this.observed.clear();}};
+ let pinned=null;
+ try {
+  const viewport=new ManuscriptViewport({root:parent,blocks,vertical:false,estimate:()=>20,source:()=> '雨😀',measure:()=>{},pinned:block=>block===pinned});
+  expect(parent.children.length).toBe(3);expect(parent.children.every(group=>group.children.length===0)).toBe(true);
+  expect(viewport.container(blocks[80])).toBe(parent);expect(viewport.findBlock('scene:p-80')).toBe(blocks[80]);expect(viewport.findParagraphFragment('p',320,'scene')).toBe(blocks[80]);expect(viewport.findParagraphFragment('p',320,'other')).toBeNull();
+  viewport.mount(blocks[80]);expect(parent.children[2].children.length).toBe(32);expect(blocks[80].input.value).toBe('雨😀');
+  expect(viewport.paragraphBlocks(blocks[80].input).length).toBe(96);
+  pinned=blocks[80];const group=viewport.blockGroups.get(pinned);viewport.collapseGroup(group);expect(group.collapsed).toBe(false);
+  pinned=null;viewport.collapseGroup(group);expect(group.collapsed).toBe(true);expect(group.node.style.height).toBe('640px');
+  viewport.mount(blocks[80]);expect(blocks[80].input.value).toBe('雨😀');
+  viewport.remove(blocks[0]);blocks[0].remove();expect(viewport.paragraphBlocks(blocks[80].input).length).toBe(95);
+  expect(viewport.groups.get(parent.children[0]).node.style.height).toBe('620px');
+  viewport.disconnect();expect(observers.every(observer=>observer.observed.size===0)).toBe(true);
+ }finally{globalThis.document=previousDocument;globalThis.IntersectionObserver=previousObserver;}
+});

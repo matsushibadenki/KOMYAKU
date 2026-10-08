@@ -659,3 +659,34 @@ The shared history fixture passed the independent Archive core verifier. Native 
 Reading resize now captures the visible chunk anchor and reflows without replacing the whole app UI. Unit tests cover both scroll axes and retained offsets. IME replacement preparation lazily creates changed fragment strings only; 1,000 fragments use two reads for the active fragment and none for unchanged peers. Actual IME composition remains a native QA item.
 
 Checkpoint v3: all 137 native test cases (including ignored hardware/manual fixtures) and the workspace integration suites passed. The composite test checks one shared manuscript, reference-only native skeleton, exact reload, v1/v2 loading and rejection of simultaneous native/composite bodies. History, merge, Archive, journal recovery and persistence failure tests also pass through the common loader. Clippy all-targets passed. Native checkpoint restart and final dock QA await unlocking the test Mac; no real-account or real-manuscript data was used.
+
+### 2026-10-08 unlocked native follow-up
+
+[Done] Isolated Roadmap QA profile: navigator moves left → top → right → bottom. Native restart restores bottom placement and persisted inspector-left slot. Top/bottom layout exposes the tree independently of route controls; a discovered horizontal overflow of the three creation buttons was corrected to a vertical stack (final visual recheck remains).
+
+[Done] Native checkpoint version 3 plus paragraph journal: edit, save, quit and relaunch restores `checkpoint v3 QA` in the isolated sample manuscript. JavaScript build and all 38 tests / 735 assertions pass, including canonical copy across unmounted Reading paragraphs and CRLF preservation.
+
+[Done] Native File → shared history Archive → Save writes a v2 archive in `/private/tmp`; independent `archive-core` verification accepts its checksums and manifest (isolated profile had one current-draft version and one branch). All JavaScript tests now pass: 39 / 741 assertions. Complete Rust workspace tests pass; native application suite: 137 cases, 123 passed / 14 opt-in tests ignored. Renderer benchmark runs separately and records invalid timestamp samples explicitly.
+
+[Done] Native floating navigator: select a different scene, return, and main authoring shows that selected scene. Native floating relationship panel shows only its relationship list and returns to its previous dock. Native floating history: save `Floating history QA`, quit/relaunch, see the version, float again and return successfully. Fixed a native deadlock: querying Tauri's window registry in `Destroyed` could block; publication now runs on a blocking worker after the callback returns. Side windows have scoped local capabilities and registered Engine views; unknown labels are rejected.
+
+[Done] Native paragraph-delta follow-up: edit/save in the floating editor, return and observe `paragraph delta QA` in the main window. Top/bottom creation icons all remain visible in a vertical stack in the final native screenshot.
+
+[Done] Million-character unbroken paragraph, vertical Reading: a 2,000-page wheel movement reaches the final scene with a responsive native UI. Found and fixed resize-position loss: scroll captures the visible character's canonical UTF-16 offset using WebKit Range; resize uses that saved character instead of a chunk's first paragraph. Native zoom after reaching the end still shows the final scenes. Regression test covers CRLF and changed chunk boundaries. JavaScript suite: 42 passed / 755 assertions.
+
+[Pending] WebKit-inclusive RSS attribution: OS-reparented WebKit XPC helpers are not descendants in `ps`; `launchctl procinfo` refuses ownership inspection without root privileges. Measured app RSS alone was 188,592 KiB, explicitly excluding XPC helpers. Do not present that as total application memory.
+
+### 分離状態の起動復元とjournal範囲生成（2026-10-08）
+- 検証専用profileで構造パネルを分離→Cmd+Q→再起動し、`index.html?panel=navigator`の独立ウインドウと「パネルを戻す」を確認。復元したパネルの戻す操作で主画面へ復帰。Layout v1の既存ファイルは`floatingPanels`なしでも読める。
+- 通常のパネル閉じるは分離状態を解除する。アプリ終了時には分離状態を保持し、作品RevisionやUndo履歴は変更しない。本文・構造・相関・履歴に適用。本文パネルでも分離→終了→再起動→本文保持→戻すのネイティブ検証を実施。
+- 部分保存の差分範囲は実際に生成したbyte spliceに限定。Unicode、削除、同一内容で一般差分とdigest／再生結果が一致し、改ざんを拒否する。外部ファイル変更等のfallbackは維持する。
+- releaseの100万字・1,000段落・10保存：中央値 全文17.773ms／部分13.569ms／revision確認済み12.182ms。各保存の後に再読込一致を検証。ネイティブ入力から画面表示までの時間ではない。
+
+最新の確認：JS 43件・758 assertions、Rust 127件成功・14件opt-in ignored、Clippy（all-targets / warnings-as-errors）成功。
+
+### 執筆DOM集約と全文検索の文字位置（2026-10-08）
+- 64断片以上の本文は、画面外の断片32個を1つのサイズ保持要素へまとめる。正本は変更せず、個々の断片と段落IDはJavaScriptの投影インデックスに保持し、必要時だけ再接続する。
+- 100万文字の隔離作品で縦書きの途中を編集し、`batch QA`を1箇所保存。journalのSHAチェーンを検証し、再起動後の全文検索が1件、一致文字が本文で選択されることを確認。
+- 検索からの移動を、横書きと縦書きの実画面で確認。大きな入力欄全体を表示する処理では不十分だったため、実文字のRange矩形に基づくスクロールに修正した。
+- ローカルopt-in診断：縦書き起動時120フレーム p50=17ms / p95=18ms / max=28ms、接続本文DOM32 / 集約DOM4 / 入力欄1。横書きwheel後120フレーム p50=17ms / p95=18ms / max=25ms、本文DOM27 / 集約DOM4 / 入力欄2。50ms超はいずれも0。連続スクロール全区間のFPSや入力遅延保証ではない。
+- DOMを切り離した群で段落参照・検索・再接続・編集値保持・フォーカスによる保護・削除後の検索インデックス・observer解除をユニットテスト。JS 44件 / 774 assertions成功。

@@ -92,9 +92,9 @@ pub struct Scope {
     pub node: Option<Id>,
     pub path: Option<String>,
 }
-fn append_scene(parts: &mut Vec<Part>, scene: &Node) -> Result<(), String> {
+fn append_scene(parts: &mut Vec<Part>, document: &Document, scene: &Node) -> Result<(), String> {
     parts.push(Part::Heading(4, title(scene)));
-    let canonical = &scene.properties["canonical"];
+    let canonical = super::central_document::canonical(document, scene)?;
     domain::text(canonical)?;
     for node in canonical["content"].as_array().ok_or("invalid_document")? {
         if node["type"] == "paragraph" {
@@ -195,7 +195,7 @@ fn manuscript_scoped(document: &Document, scope: &Scope) -> Result<Vec<Part>, St
             if previous != (Some(block_id), Some(sequence_id)) {
                 parts.push(Part::Heading(3, title(sequence)));
             }
-            append_scene(&mut parts, scene)?;
+            append_scene(&mut parts, document, scene)?;
             previous = (Some(block_id), Some(sequence_id));
         }
         return Ok(parts);
@@ -218,7 +218,7 @@ fn manuscript_scoped(document: &Document, scope: &Scope) -> Result<Vec<Part>, St
                 .filter(|n| included.contains(&n.id))
             {
                 visited.insert(scene.id);
-                append_scene(&mut parts, scene)?;
+                append_scene(&mut parts, document, scene)?;
             }
         }
     }

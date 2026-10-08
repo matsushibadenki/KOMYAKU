@@ -435,3 +435,26 @@ main {position:relative;}
 .navigator[data-dock=top]>.node-list,.navigator[data-dock=bottom]>.node-list {grid-column:2;grid-row:1 / 3;min-height:0;overflow:auto;border-left:1px solid var(--line);}
 .navigator[data-dock=top]>.navbottom,.navigator[data-dock=bottom]>.navbottom {grid-column:3;grid-row:1 / 3;display:flex;flex-direction:column;justify-content:center;border-left:1px solid var(--line);border-top:0;padding:4px;}
 .navigator[data-dock=top]>.panel-dock-grip,.navigator[data-dock=bottom]>.panel-dock-grip {position:absolute;right:0;top:0;z-index:5;}
+
+.navigator[data-dock=top] .structure-actions,.navigator[data-dock=bottom] .structure-actions {flex-direction:column;}
+.navigator[data-dock=top] .structure-actions button,.navigator[data-dock=bottom] .structure-actions button {flex:none;width:100%;}
+
+.navigator[hidden],.relations[hidden] {display:none!important;}
+.panel-float-grip {position:absolute;right:24px;top:0;z-index:5;border:0;padding:2px 5px;background:transparent;color:var(--muted);}
+body[data-panel-window] .shell>.window-titlebar,body[data-panel-window] .shell>.menubar,body[data-panel-window] .icon-rail,body[data-panel-window] .writing {display:none!important;}
+body[data-panel-window] .shell {grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;}
+body[data-panel-window] main {grid-column:1!important;grid-row:1!important;display:block!important;margin:0;min-height:0;}
+body[data-panel-window=navigator] .relations,body[data-panel-window=inspector] .navigator {display:none!important;}
+body[data-panel-window] .navigator,body[data-panel-window] .relations {height:100%;width:100%;border:0;display:flex!important;flex-direction:column;overflow:auto;position:relative;padding-top:26px;}
+body[data-panel-window] .panel-divider,body[data-panel-window] .panel-dock-grip {display:none!important;}
+body[data-panel-window=navigator] main>.relations,body[data-panel-window=inspector] main>.navigator {display:none!important;}
+body[data-panel-window=history] main>.navigator,body[data-panel-window=history] main>.relations {display:none!important;}
+body[data-panel-window=history] main>.writing {display:flex!important;height:100%;min-height:0;}
+.history-float-button {align-self:flex-end;margin:6px 12px;flex:none;}
+
+.manuscript-batch {display:flex;flex-direction:column;flex:0 0 auto;min-width:0;gap:0;}
+.manuscript-batch-placeholder {overflow:hidden;}
+.vertical-writing .manuscript-batch {height:100%;width:max-content;flex-direction:row-reverse;}
+.scene-writing .manuscript-pages>.manuscript-batch:last-child:not(.manuscript-batch-placeholder) {flex:1 0 auto;}
+.scene-writing .manuscript-batch:last-child>.manuscript-block:last-child:not(.virtual-placeholder) {flex:1 0 auto;display:flex;flex-direction:column;}
+.scene-writing .manuscript-batch:last-child>.manuscript-block:last-child>.manuscript-text {flex:1 0 auto;}

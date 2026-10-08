@@ -4,7 +4,10 @@
   "windows": [
     "controls",
     "editor",
-    "canvas"
+    "canvas",
+    "navigator",
+    "inspector",
+    "history"
   ],
   "permissions": [
     "core:default",
@@ -17,6 +20,9 @@
     "controls",
     "editor",
     "graph-rail",
-    "graph-inspector"
+    "graph-inspector",
+    "navigator",
+    "inspector",
+    "history"
   ]
 }

@@ -334,7 +334,7 @@ pub async fn version_detail(
         let mut changes = vec![];
         for (id,node) in current.graph().nodes() {
             let old = doc.graph().nodes().get(id);
-            if old != Some(node) {
+            if old.is_none_or(|old| !central_document::equal_node(&doc,old,current,node)) {
                 changes.push(json!({"id":id,"title":node.properties.get("title"),"kind":if old.is_some(){"changed"}else{"added"},"textAvailable":node.type_id==domain::SCENE,"structureAvailable":node.type_id==domain::SCENE,"location":location_change(&doc,current,*id)}));
             }
         }
@@ -342,7 +342,7 @@ pub async fn version_detail(
             if !current.graph().nodes().contains_key(id) { changes.push(json!({"id":id,"title":node.properties.get("title"),"kind":"deleted","textAvailable":node.type_id==domain::SCENE,"structureAvailable":node.type_id==domain::SCENE})); }
         }
         let structure_changed = doc.graph().edges()!=current.graph().edges()
-            || doc.graph().groups()!=current.graph().groups() || doc.placement()!=current.placement() || doc.extensions!=current.extensions;
+            || doc.graph().groups()!=current.graph().groups() || doc.placement()!=current.placement() || doc.extensions.iter().filter(|(k,_)| k.as_str()!=central_document::STORE).ne(current.extensions.iter().filter(|(k,_)| k.as_str()!=central_document::STORE));
         Ok(json!({"changes":changes,"titleChanged":doc.title!=current.title,"structureChanged":structure_changed,"graphDiff":super::history_graph::compare(&doc,current)?,"revision":revision}))
         };
         if let Some(id) = compare_id { compare(&snapshot(&root(&host), &id)?, 0) }
@@ -430,9 +430,7 @@ pub async fn version_structure_diff(
                         return Err("version_invalid".into());
                     }
                     Ok(Some(
-                        node.properties
-                            .get("canonical")
-                            .ok_or("version_invalid")?
+                        super::central_document::canonical(doc, node)?
                             .clone(),
                     ))
                 }
@@ -455,7 +453,7 @@ fn scene_text(document: &Document, id: Id) -> std::result::Result<String, String
     if node.type_id != domain::SCENE {
         return Err("version_invalid".into());
     }
-    domain::text(node.properties.get("canonical").ok_or("invalid_document")?)
+    domain::text(super::central_document::canonical(document, node)?)
 }
 #[tauri::command]
 pub async fn version_text_diff(

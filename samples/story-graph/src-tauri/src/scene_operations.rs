@@ -99,7 +99,7 @@ pub fn split(
         return Err("invalid_properties".into());
     }
     let source = scene(document, id)?;
-    let mut left = source.properties["canonical"].clone();
+    let mut left = super::central_document::canonical(document, source)?.clone();
     domain::text(&left)?;
     let mut blocks = left["content"]
         .as_array()
@@ -182,7 +182,7 @@ pub fn split(
         blocks.split_off(block)
     };
     left["content"] = json!(blocks);
-    let mut right = source.properties["canonical"].clone();
+    let mut right = super::central_document::canonical(document, source)?.clone();
     right["id"] = json!(Id::new_v4());
     right["content"] = json!(right_blocks);
     domain::text(&left)?;
@@ -261,13 +261,13 @@ pub fn merge(document: &Document, first: Id, second: Id) -> Result<Command, Stri
             _ => return Err("incompatible_paths".into()),
         }
     }
-    let mut canonical = a.properties["canonical"].clone();
+    let mut canonical = super::central_document::canonical(document, a)?.clone();
     let mut content = canonical["content"]
         .as_array()
         .ok_or("invalid_document")?
         .clone();
     content.extend(
-        b.properties["canonical"]["content"]
+        super::central_document::canonical(document, b)?["content"]
             .as_array()
             .ok_or("invalid_document")?
             .iter()

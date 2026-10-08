@@ -1,3 +1,5 @@
+import {installPerformanceQA} from './performance-qa.js';
+import { applyRemoteParagraphs } from './remote-paragraphs.js';
 import {installPanelLayout,applyLayout,renderPanelHandles} from './panel-layout.js';
 import {openNarrative} from './narrative.js';
 import './style.css';
@@ -31,11 +33,13 @@ let diskDirty=false;
 const invoke = async(command,args={}) => {const result=await window.__TAURI__.core.invoke(command,args);if(command==='edit'||command==='save_now'){diskDirty=result.saved===false;if(diskDirty)error='save_failed';}return result;};
 const openAssistant=installAssistant({invoke,native,t:key=>t(key),escape:value=>escape(value),getLanguage:()=>language,getScene:()=>detail?.type_id==='story.scene'?{id:detail.id,revision:model.revision,selection:bodyCaret?.scene===detail.id&&bodyCaret.end>bodyCaret.start?{paragraph:bodyCaret.id,start:bodyCaret.start,end:bodyCaret.end}:null}:null,refresh,commit:commitDraft,settings:()=>{preferencesTab='ai';showPreferences();}});
 const loadPanelLayout=installPanelLayout({invoke,native,t:key=>t(key)});
-const floatingWindow = new URLSearchParams(location.search).get('panel') === 'editor';
+const panelWindow = new URLSearchParams(location.search).get('panel');
+const floatingWindow = panelWindow === 'editor';
+if(['navigator','inspector','history'].includes(panelWindow))document.body.dataset.panelWindow=panelWindow;
 let language = localStorage.getItem('story-language') || 'ja';
 if (!messages[language]) language = 'ja';
 let readingViewport=null;
-let model = null, detail = null, tab = 'scenes', path = 'main', reading = false, floating = false;
+let model = null, detail = null, tab = panelWindow==='history'?'history':'scenes', path = 'main', reading = false, floating = false;
 let busy = false, draft = null, status = native ? 'saved' : '', error = '', backupPath = '';
 let latestDetail=null, composing=false, compositionTarget=null, bodyCaret=null, widthDrag=null;
 let pendingRemote = null, autosaveTimer, draftVersion=0, commitInFlight=null;
@@ -58,7 +62,7 @@ const groupEdits=new Map();
 const titleEdits=new Map();
 const isContainer=()=>['story.block','story.sequence'].includes(detail?.type_id);
 const writingScene=()=>detail?.type_id==='story.scene'?detail:groupDetails.find(scene=>scene.id===groupFocus);
-const inputScene=input=>input?.closest('[data-scene]')?.dataset.scene;
+const inputScene=input=>input?.closest?.('[data-scene]')?.dataset.scene;
 const t = key => messages[language][key] || messages[language].error;
 const pathLabel = route => route.legacy&&route.name===route.legacy?t(route.name):route.name;
 const escape = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -104,7 +108,7 @@ function render() {
   const cursor=active?.dataset?.block ? {scene:inputScene(active),block:active.dataset.block,fragment:active.dataset.fragment,start:active.selectionStart,end:active.selectionEnd} : active?.dataset?.outlineTitle ? {title:active.dataset.outlineTitle,start:active.selectionStart,end:active.selectionEnd,direction:active.selectionDirection} : active?.dataset?.field ? {key:active.dataset.field,start:active.selectionStart,end:active.selectionEnd} : null;
   document.documentElement.lang = language;
   const projectTitle=model?.projectTitle?.trim()||t(model?.untitled?'untitledProject':'project');
-  const windowTitle = `${projectTitle} · KOMYAKU Story Graph${floatingWindow ? ` · ${t('editor')}` : ''}`;
+  const windowTitle = `${projectTitle} · KOMYAKU Story Graph${floatingWindow ? ` · ${t('editor')}` : panelWindow==='navigator'?` · ${t('scenes')}`:panelWindow==='inspector'?` · ${t('relationships')}`:panelWindow==='history'?` · ${t('history')}`:''}`;
   document.title = windowTitle;
   if (native && displayedWindowTitle !== windowTitle) {
     displayedWindowTitle = windowTitle;
@@ -120,7 +124,7 @@ function render() {
   const documents=isContainer()?groupDetails.map(scene=>groupEdits.get(scene.id)?.canonical??scene.properties.canonical):detail?.type_id==='story.scene'?[values.canonical]:[];
   lazyManuscript=documents.reduce((count,doc)=>count+doc.content.reduce((sum,node)=>sum+(node.type==='paragraph'?Math.max(1,Math.ceil(paragraphText(node).length/4096)):1),0),0)>80;
   const shell = document.getElementById('app');
-  const leftOpen=preferences.leftPanelOpen, rightOpen=preferences.rightPanelOpen;
+  const leftOpen=panelWindow==='navigator'||preferences.leftPanelOpen, rightOpen=panelWindow==='inspector'||preferences.rightPanelOpen;
   shell.innerHTML = `<div class="shell ${floatingWindow?'detached':''} ${!leftOpen?'left-panel-closed':''} ${!rightOpen?'right-panel-closed':''} ${!leftOpen&&!rightOpen?'focus-writing':''} ${native&&navigator.platform.includes('Mac')?'mac-native':''}">
     ${!floatingWindow?`<header class="window-titlebar" data-tauri-drag-region><span class="window-title" data-tauri-drag-region>${escape(projectTitle)}</span><div class="panel-toggles"><button data-action="toggleLeftPanel" title="${escape(t(leftOpen?'hideLeftPanel':'showLeftPanel'))}" aria-label="${escape(t(leftOpen?'hideLeftPanel':'showLeftPanel'))}" aria-pressed="${leftOpen}" aria-controls="left-icon-menu story-navigator">${icon('leftPanel')}</button><button data-action="toggleRightPanel" title="${escape(t(rightOpen?'hideRightPanel':'showRightPanel'))}" aria-label="${escape(t(rightOpen?'hideRightPanel':'showRightPanel'))}" aria-pressed="${rightOpen}" aria-controls="story-relations">${icon('rightPanel')}</button></div></header>`:''}
     <nav class="menubar" aria-label="${escape(t('appMenu'))}">
@@ -170,7 +174,7 @@ ${escape(latestDetail.properties.notes||'')}</pre><div>${button('applyDraft','ap
   const groupViewport=shell.querySelector('.group-manuscript');if(groupViewport){groupViewport.scrollLeft=preferences.writingMode==='vertical'?groupScroll.left:0;groupViewport.scrollTop=preferences.writingMode==='horizontal'?groupScroll.top:0;}
   if(reading) renderReading();
   renderPanelHandles(t,native);
-  if(tab==='history'&&!floatingWindow){const panel=shell.querySelector('.writing');panel.classList.add('history-panel');disposeHistory=mountHistory(panel,{native,invoke,t,escape,language,commit:commitDraft,revision:()=>model.revision,title:projectTitle});}
+  if(tab==='history'&&!floatingWindow){const panel=shell.querySelector('.writing');panel.classList.add('history-panel');disposeHistory=mountHistory(panel,{native,invoke,t,escape,language,commit:commitDraft,revision:()=>model.revision,title:projectTitle});if(native)panel.insertAdjacentHTML('afterbegin',`<button class="history-float-button" data-float-panel="history">${escape(t(panelWindow==='history'?'returnSidePanel':'floatSidePanel'))}</button>`);}
   if(reopenPreferences) showPreferences();
 }
 async function renderReading(anchor=null) {
@@ -186,11 +190,11 @@ async function renderReading(anchor=null) {
     const entries=[];
     blocks.forEach(([id,title],index)=>{
       const scene=model.nodes.find(node=>node.id===id),sequence=model.nodes.find(node=>node.id===scene?.parent),block=model.nodes.find(node=>node.id===sequence?.parent);
-      if(block&&block.id!==previousBlock)entries.push({kind:'heading',level:2,style:'reading-block-title',size:preferences.blockSize,text:block.title});
-      if(sequence&&sequence.id!==previousSequence)entries.push({kind:'heading',level:2,style:'reading-sequence-title',size:preferences.sequenceSize,text:sequence.title});
+      if(block&&block.id!==previousBlock)entries.push({kind:'heading',id:`block:${block.id}:${id}`,level:2,style:'reading-block-title',size:preferences.blockSize,text:block.title});
+      if(sequence&&sequence.id!==previousSequence)entries.push({kind:'heading',id:`sequence:${sequence.id}:${id}`,level:2,style:'reading-sequence-title',size:preferences.sequenceSize,text:sequence.title});
       previousBlock=block?.id;previousSequence=sequence?.id;
-      entries.push({kind:'heading',level:3,style:'reading-scene-title',size:preferences.titleSize,text:title});
-      for(const node of documents[index].content){if(node.type==='paragraph')entries.push({kind:'paragraph',id:node.id,text:paragraphText(node)});else entries.push({kind:'dialogue',texts:node.content[0].content.map(cell=>paragraphText(cell.content[0])),actorWidth:node.extensions?.['komyaku.dialogue']?.actorWidth});}
+      entries.push({kind:'heading',id:`scene:${id}`,level:3,style:'reading-scene-title',size:preferences.titleSize,text:title});
+      for(const node of documents[index].content){if(node.type==='paragraph')entries.push({kind:'paragraph',id:`${id}:${node.id}`,text:paragraphText(node)});else entries.push({kind:'dialogue',id:`dialogue:${id}:${node.id}`,texts:node.content[0].content.map(cell=>paragraphText(cell.content[0])),actorWidth:node.extensions?.['komyaku.dialogue']?.actorWidth});}
     });
     if(!entries.length){target.insertAdjacentHTML('beforeend',`<p>${escape(t('emptyReading'))}</p>`);return;}
     const root=target.closest('.reading-viewport'),vertical=preferences.writingMode==='vertical';
@@ -199,7 +203,7 @@ async function renderReading(anchor=null) {
     if(!target.isConnected||layoutAbort.signal.aborted||path!==requestPath)return;
     readingViewport?.disconnect();readingViewport=new ReadingViewport({root:vertical?root:document.querySelector('.editor-content'),article:target,blocks:bounded,vertical,
       options:()=>({vertical,span:vertical?root.clientHeight:target.clientWidth,fontSize:preferences.bodySize,lineHeight:preferences.lineHeight}),
-      markup:block=>block.kind==='heading'?`<h${block.level} class="${block.style}">${escape(block.text)}</h${block.level}>`:block.kind==='paragraph'?`<p data-reading-paragraph="${escape(block.id??'')}" data-reading-start="${block.sourceStart??0}">${escape(block.text)}</p>`:`<table class="dialogue-sheet reading-dialogue" data-width="${block.actorWidth??''}"><tbody><tr>${block.texts.map(text=>`<td>${escape(text)}</td>`).join('')}</tr></tbody></table>`,
+      markup:block=>block.kind==='heading'?`<h${block.level} class="${block.style}" data-reading-block="${escape(block.id)}" data-reading-start="0">${escape(block.text)}</h${block.level}>`:block.kind==='paragraph'?`<p data-reading-block="${escape(block.id??'')}" data-reading-start="${block.sourceStart??0}">${escape(block.text)}</p>`:`<table class="dialogue-sheet reading-dialogue" data-width="${block.actorWidth??''}"><tbody><tr>${block.texts.map((text,index)=>`<td data-reading-block="${escape(block.id)}" data-reading-start="${index?block.texts[0].length+1:0}" data-reading-cell="${index}">${escape(text)}</td>`).join('')}</tr></tbody></table>`,
       measure:()=>resizeDialogueColumns(),reflow:anchor=>renderReading(anchor)
     });
     readingViewport.restore(anchor);
@@ -328,7 +332,7 @@ function groupBody() {
     const sequence=model.nodes.find(node=>node.id===scene.properties.parent);
     const heading=sequence&&sequence.id!==previous&&detail.type_id==='story.block'?outlineTitle(sequence.id,sequence.title,'group-sequence-heading'):'';
     previous=sequence?.id;
-    return `${heading}<section class="group-scene" data-scene="${scene.id}">${outlineTitle(scene.id,scene.properties.title,'group-scene-title')}${sceneBody(groupEdits.get(scene.id)?.canonical??scene.properties.canonical)}</section>`;
+    return `${heading}<section class="group-scene" data-scene="${scene.id}">${outlineTitle(scene.id,scene.properties.title,'group-scene-title')}${sceneBody(groupEdits.get(scene.id)?.canonical??scene.properties.canonical,scene.id)}</section>`;
   }).join('')||`<p class="empty">${escape(t('noScenes'))}</p>`}</div>`;
 }
 async function mutate(action) {
@@ -363,28 +367,29 @@ async function choose(id) {
   if(native) model=await invoke('choose',{id});else model={...model,selected:id};
   await loadDetail(id);render();
 }
-function paragraphMarkup(node,lazy=false) {
+const fragmentKey=(scene,id,index)=>`${scene}:${id}-${index}`;
+function paragraphMarkup(node,lazy=false,scene=detail?.id) {
   return fragments(paragraphText(node)).map((part,index)=>{
-    const key=`${node.id}-${index}`,source={text:part.text,start:part.start};
+    const key=fragmentKey(scene,node.id,index),source={text:part.text,start:part.start};
     const markup=()=>`<textarea class="manuscript-text" data-block="${node.id}" data-start="${source.start}" data-length="${source.text.length}" data-fragment="${index}" aria-label="${escape(t('body'))}" rows="1" ${native?'':'readonly'}>${escape(source.text)}</textarea>`;
     source.markup=markup;virtualSources.set(key,source);
     return `<div class="manuscript-block" data-manuscript-block="${key}" data-paragraph="${node.id}" data-start="${part.start}" data-length="${part.text.length}">${lazy?'':markup()}</div>`;
   }).join('');
 }
-function sceneBody(doc) {
+function sceneBody(doc,scene=detail?.id) {
   const editable=native?'':'readonly';
   const input=(node,label,actor=false,part={start:0,text:paragraphText(node)},index=0)=>`<textarea class="${actor?'dialogue-actor':'manuscript-text'}" data-block="${node.id}" data-start="${part.start}" data-length="${part.text.length}" data-fragment="${index}" aria-label="${escape(t(label))}" placeholder="${label==='body'?'':escape(t(label))}" rows="1" ${editable}>${escape(part.text)}</textarea>`;
   const blocks=doc.content.flatMap(node=>{
-    if(node.type==='paragraph')return [paragraphMarkup(node,lazyManuscript)];
+    if(node.type==='paragraph')return [paragraphMarkup(node,lazyManuscript,scene)];
     const cells=node.content[0].content.map(cell=>cell.content[0]);
     const markup=()=>`<table class="dialogue-sheet" data-sheet="${node.id}" data-width="${node.extensions?.['komyaku.dialogue']?.actorWidth??''}" aria-label="${escape(t('dialogue'))}"><tbody><tr><td>${input(cells[0],'actorName',true)}${native?`<span class="dialogue-divider" data-divider="${node.id}" role="separator" aria-orientation="vertical" aria-label="${escape(t('resizeActor'))}" tabindex="0"></span>`:''}</td><td>${input(cells[1],'dialogueText')}</td></tr></tbody></table>`;
-    virtualSources.set(node.id,{markup,texts:cells.map(paragraphText),paragraphs:cells.map(cell=>cell.id),actorWidth:node.extensions?.['komyaku.dialogue']?.actorWidth});
-    return [`<div class="manuscript-block" data-manuscript-block="${node.id}" data-sheet-block="${node.id}">${lazyManuscript?'':markup()}</div>`];
+    virtualSources.set(`${scene}:${node.id}`,{markup,texts:cells.map(paragraphText),paragraphs:cells.map(cell=>cell.id),actorWidth:node.extensions?.['komyaku.dialogue']?.actorWidth});
+    return [`<div class="manuscript-block" data-manuscript-block="${scene}:${node.id}" data-sheet-block="${node.id}">${lazyManuscript?'':markup()}</div>`];
   });
   return `<div class="manuscript"><div class="manuscript-pages">${blocks.join('')}</div></div>`;
 }
 function mountManuscriptInput(scope,id,fragment=0) {
-  const block=scope?.querySelector(`[data-manuscript-block="${id}-${fragment}"]`)??[...scope?.querySelectorAll('[data-sheet-block]')??[]].find(block=>virtualSources.get(block.dataset.manuscriptBlock)?.paragraphs.includes(id));
+  const block=manuscriptViewport?.findBlock(fragmentKey(inputScene(scope)??detail?.id,id,fragment))??scope?.querySelector(`[data-manuscript-block="${fragmentKey(inputScene(scope)??detail?.id,id,fragment)}"]`)??[...scope?.querySelectorAll('[data-sheet-block]')??[]].find(block=>virtualSources.get(block.dataset.manuscriptBlock)?.paragraphs.includes(id));
   if(block){manuscriptViewport?.mount(block);manuscriptViewport?.measureBlock(block);}
 }
 function resizeDialogueColumns(scope=document) {
@@ -459,7 +464,7 @@ function observeManuscript() {
   manuscriptViewport=new ManuscriptViewport({root,blocks:virtualBlocks,vertical,
     source:block=>virtualSources.get(block.dataset.manuscriptBlock).markup(),
     estimate:(block,values,actorWidth)=>{
-      const source=virtualSources.get(block.dataset.manuscriptBlock),options={vertical,span:vertical?block.parentElement.clientHeight:block.parentElement.clientWidth,fontSize:preferences.bodySize,lineHeight:preferences.lineHeight,actorWidth:actorWidth??source?.actorWidth};
+      const source=virtualSources.get(block.dataset.manuscriptBlock),options={vertical,span:vertical?(manuscriptViewport?.container(block)??block.parentElement).clientHeight:(manuscriptViewport?.container(block)??block.parentElement).clientWidth,fontSize:preferences.bodySize,lineHeight:preferences.lineHeight,actorWidth:actorWidth??source?.actorWidth};
       return block.dataset.sheetBlock?estimatedDialogueExtent(values??source.texts,options):estimatedExtent(values?.[0]??source?.text??'',options);
     },
     measure:block=>{resizeManuscript(block);if(paragraphSelection&&selectedParagraph(document.activeElement))paintParagraphSelection(document.activeElement);},
@@ -520,18 +525,19 @@ async function finishWidthDrag(event) {
   const drag=widthDrag;widthDrag=null;manuscriptViewport?.pruneSoon();
   if(event.type==='pointercancel'){resizeManuscript();render();return;}
   storeSheetWidth(drag.id,Number(drag.table.dataset.width)||drag.table.rows[0].cells[0].getBoundingClientRect().width,inputScene(drag.handle));
-  await commitDraft();focusDialogueDivider(drag.id);
+  await commitDraft();focusDialogueDivider(drag.id,inputScene(drag.handle));
 }
-function focusDialogueDivider(id) {
-  const block=document.querySelector(`[data-sheet-block="${id}"]`);if(block){manuscriptViewport?.mount(block);manuscriptViewport?.measureBlock(block);}
-  document.querySelector(`[data-divider="${id}"]`)?.focus({preventScroll:true});
+function focusDialogueDivider(id,scene) {
+  const scope=scene?document.querySelector(`[data-scene="${scene}"]`):document;
+  const block=scope?.querySelector(`[data-sheet-block="${id}"]`);if(block){manuscriptViewport?.mount(block);manuscriptViewport?.measureBlock(block);}
+  scope?.querySelector(`[data-divider="${id}"]`)?.focus({preventScroll:true});
 }
 document.addEventListener('pointerup',finishWidthDrag);document.addEventListener('pointercancel',finishWidthDrag);
 document.addEventListener('keydown',async event=>{
   const handle=event.target.closest('[data-divider]');if(!handle||!(preferences.writingMode==='vertical'?['ArrowUp','ArrowDown']:['ArrowLeft','ArrowRight']).includes(event.key))return;
   event.preventDefault();const table=handle.closest('.dialogue-sheet');
   const width=Math.max(16,Math.min((preferences.writingMode==='vertical'?table.rows[0].cells[0].getBoundingClientRect().height:table.rows[0].cells[0].getBoundingClientRect().width)+(['ArrowRight','ArrowDown'].includes(event.key)?1:-1)*(event.shiftKey?10:2),(preferences.writingMode==='vertical'?table.clientHeight:table.clientWidth)-32,4096));
-  const id=handle.dataset.divider;storeSheetWidth(id,width,inputScene(handle));await commitDraft();focusDialogueDivider(id);
+  const id=handle.dataset.divider,scene=inputScene(handle);storeSheetWidth(id,width,scene);await commitDraft();focusDialogueDivider(id,scene);
 });
 document.addEventListener('dblclick',async event=>{
   const handle=event.target.closest('[data-divider]');if(!handle)return;
@@ -553,10 +559,20 @@ function paragraphOverlay(input) {
   overlay.style.width=`${input.offsetWidth}px`;overlay.style.height=`${input.offsetHeight}px`;return overlay;
 }
 function revealParagraphCaret(input,local) {
-  // A textarea can be taller than the viewport; reveal the caret, not its top.
-  const mirror=paragraphOverlay(input),caret=document.createElement('span');caret.textContent='\u200b';
-  mirror.append(document.createTextNode(input.value.slice(0,local)),caret,document.createTextNode(input.value.slice(local)));input.after(mirror);
-  caret.scrollIntoView({block:'nearest',inline:'nearest'});mirror.remove();
+  // Use a real glyph rect: WebKit can place a zero-width span at the wrong
+  // vertical column when the paragraph extends far beyond the viewport.
+  const mirror=paragraphOverlay(input),text=document.createTextNode(input.value||' ');
+  mirror.append(text);input.after(mirror);
+  const range=document.createRange();let index=Math.max(0,Math.min(local,text.length-1));
+  if(index>0&&/[\uDC00-\uDFFF]/.test(text.data[index]))index--;
+  range.setStart(text,index);range.setEnd(text,Math.min(text.length,index+1));
+  const rect=range.getBoundingClientRect(),vertical=preferences.writingMode==='vertical';
+  const root=input.closest('.group-manuscript')??input.closest(vertical?'.manuscript-pages':'.editor-content');
+  if(root){const bounds=root.getBoundingClientRect(),margin=12;
+    if(vertical){const delta=rect.left<bounds.left+margin?rect.left-bounds.left-margin:rect.right>bounds.right-margin?rect.right-bounds.right+margin:0;root.scrollLeft+=delta;}
+    else {const delta=rect.top<bounds.top+margin?rect.top-bounds.top-margin:rect.bottom>bounds.bottom-margin?rect.bottom-bounds.bottom+margin:0;root.scrollTop+=delta;}
+  }
+  range.detach();mirror.remove();
 }
 function paintParagraphSelection(input) {
   paintingSelection=true;
@@ -600,8 +616,8 @@ function focusLogicalParagraph(input,position) {
 function reflowParagraph(input,position) {
   if(input.closest('.dialogue-sheet'))return;
   const oldBlocks=manuscriptViewport?[...manuscriptViewport.paragraphBlocks(input)]:paragraphInputs(input).map(peer=>peer.closest('.manuscript-block')),node=paragraphById(paragraphDocument(input),input.dataset.block),template=document.createElement('template');
-  for(const block of oldBlocks)virtualSources.delete(block.dataset.manuscriptBlock);
-  template.innerHTML=paragraphMarkup(node,Boolean(manuscriptViewport));
+  for(const block of oldBlocks){manuscriptViewport?.attach(block);virtualSources.delete(block.dataset.manuscriptBlock);}
+  template.innerHTML=paragraphMarkup(node,Boolean(manuscriptViewport),inputScene(input)??detail?.id);
   const wrappers=[...template.content.children],first=oldBlocks[0];
   reflowing=true;clearParagraphSelection();first.before(template.content);
   for(const block of oldBlocks){manuscriptViewport?.remove(block);block.remove();}
@@ -840,7 +856,7 @@ document.addEventListener('click',async event=>{
   try {
     if(element.dataset.collapse){if(!await commitDraft())return;const id=element.dataset.collapse;collapsedOutline.has(id)?collapsedOutline.delete(id):collapsedOutline.add(id);render();return;}
     if(element.dataset.select){await choose(element.dataset.select);return;}
-    if(element.dataset.tab){if(!await commitDraft())return;tab=element.dataset.tab;reading=false;render();return;}
+    if(element.dataset.tab){if(!await commitDraft())return;if(native&&panelWindow==='navigator'&&element.dataset.tab==='history'){await invoke('float_side_panel',{panel:'history',floating:true});return;}tab=element.dataset.tab;reading=false;render();return;}
     const action=element.dataset.action;closeMenus();
     if(action==='exportGraph'){if(!native||busy||!await commitDraft())return;closeMenus();busy=true;error='';render();try{const destination=await invoke('export_graph',{format:element.dataset.format,language});if(destination)status='exportReady';}catch(e){error=String(e);}finally{busy=false;render();}return;}
     if(action==='export'){
@@ -959,6 +975,8 @@ async function start() {
   preferences.rightPanelOpen=false;
   language=preferences.language;
   await loadPanelLayout();
+  if(native)floating=(await invoke('floating_panels')).includes('editor');
+  await installPerformanceQA({native,invoke});
   await refresh();
   if(native){
     await invoke('locale',{language});
@@ -974,8 +992,15 @@ async function start() {
       if(busy)return;
       if(localDirty()){if(event.payload.revision<=model?.revision)return;pendingRemote=event.payload;error='revision_conflict';render();return;}
       if(event.payload.revision<model?.revision)return;
+      const delta=event.payload.paragraphDelta;
+      let reused=false;
+      if(delta&&delta.beforeRevision===model?.revision&&event.payload.revision===model.revision+1&&event.payload.selected===model.selected){
+        const target=detail?.id===delta.scene?detail:groupDetails.find(scene=>scene.id===delta.scene);
+        if(!target)reused=true;
+        else {const canonical=applyRemoteParagraphs(target.properties.canonical,delta.paragraphs);if(canonical){target.properties={...target.properties,canonical};reused=true;}}
+      }
       diskDirty=event.payload.saved===false;
-      model=event.payload;await loadDetail(model.selected);status=model.saved===false?'unsaved':'saved';error=model.saved===false?'save_failed':'';render();
+      model=event.payload;if(!reused)await loadDetail(model.selected);status=model.saved===false?'unsaved':'saved';error=model.saved===false?'save_failed':'';render();
     });
     await listen('story://layout',event=>applyLayout(event.payload));
     await listen('story://panel',event=>{floating=event.payload;render();});
@@ -991,11 +1016,11 @@ function showSearch() {
       if(model.revision!==revision)return;
       if(hit.paragraph){
         const peers=[...document.querySelectorAll('[data-paragraph]')].filter(block=>block.dataset.paragraph===hit.paragraph);
-        const block=peers.find(block=>hit.start>=Number(block.dataset.start)&&hit.start<Number(block.dataset.start)+Number(block.dataset.length))??peers.at(-1);
+        const block=manuscriptViewport?.findParagraphFragment(hit.paragraph,hit.start,hit.scene)??peers.find(block=>hit.start>=Number(block.dataset.start)&&hit.start<Number(block.dataset.start)+Number(block.dataset.length))??peers.at(-1);
         if(block)mountManuscriptInput(document,hit.paragraph,Number(block.dataset.manuscriptBlock.split('-').at(-1)));
         else mountManuscriptInput(document,hit.paragraph);
         const input=[...document.querySelectorAll('textarea[data-block]')].find(input=>input.dataset.block===hit.paragraph&&hit.start>=Number(input.dataset.start)&&hit.start<=Number(input.dataset.start)+Number(input.dataset.length));
-        if(input){const source=paragraphValue(input);const start=Number(input.dataset.start);input.focus();input.setSelectionRange(source.slice(start,hit.start).replace(/\r\n/g,'\n').length,source.slice(start,hit.end).replace(/\r\n/g,'\n').length);input.scrollIntoView({block:'center',inline:'center'});}
+        if(input){const source=paragraphValue(input);const start=Number(input.dataset.start);input.focus();input.setSelectionRange(source.slice(start,hit.start).replace(/\r\n/g,'\n').length,source.slice(start,hit.end).replace(/\r\n/g,'\n').length);input.scrollIntoView({block:'nearest',inline:'nearest'});revealParagraphCaret(input,input.selectionStart);}
       }else{if(hit.field==='notes'){expandedNotes.add(hit.scene);render();}const input=hit.field==='title'?document.querySelector(`[data-outline-title="${hit.scene}"]`):document.querySelector(`[data-field="${hit.field}"]`);input?.focus();input?.setSelectionRange(hit.start,hit.end);}
     }catch(e){error=String(e);render();}
   }});

@@ -456,10 +456,12 @@ pub struct Validator(pub Arc<Registry>);
 impl DocumentValidator for Validator {
     fn validate(&self, document: &Document) -> unge_core::Result<()> {
         self.0.validate_edit(document.graph())?;
+        super::central_document::validate(document).map_err(Error::Invalid)?;
         if document.extensions.keys().any(|key| {
             key != super::paths::EXTENSION
                 && key != super::scene_operations::EXTENSION
                 && key != super::narrative::EXTENSION
+                && key != super::central_document::STORE
         }) {
             return Err(Error::Invalid("unsupported_extension".into()));
         }
@@ -518,7 +520,7 @@ impl DocumentValidator for Validator {
                 return Err(Error::Invalid("invalid_parent".into()));
             }
             if node.type_id == SCENE {
-                text(&node.properties["canonical"]).map_err(Error::Invalid)?;
+                text(super::central_document::canonical(document, node).map_err(Error::Invalid)?).map_err(Error::Invalid)?;
             }
         }
         Ok(())
@@ -764,7 +766,7 @@ pub fn legacy_compile(
             Ok((
                 n.id,
                 n.properties["title"].as_str().unwrap().into(),
-                text(&n.properties["canonical"])?,
+                text(super::central_document::canonical(document, n)?)?,
             ))
         })
         .collect()

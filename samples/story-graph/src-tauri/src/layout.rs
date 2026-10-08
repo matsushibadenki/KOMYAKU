@@ -18,6 +18,8 @@ pub struct Layout {
     pub windows: BTreeMap<String, Geometry>,
     #[serde(default = "default_docks")]
     pub docks: BTreeMap<String, String>,
+    #[serde(default)]
+    pub floating_panels: std::collections::BTreeSet<String>,
 }
 fn default_docks() -> BTreeMap<String, String> {
     BTreeMap::from([
@@ -33,6 +35,7 @@ impl Default for Layout {
             inspector_width: 235.,
             windows: BTreeMap::new(),
             docks: default_docks(),
+            floating_panels: Default::default(),
         }
     }
 }
@@ -55,7 +58,10 @@ impl Layout {
                 .collect::<std::collections::BTreeSet<_>>()
                 .len()
                 != 2
-            || self.windows.len() > 3
+            || self.floating_panels.iter().any(|label| {
+                !["navigator", "inspector", "history", "editor"].contains(&label.as_str())
+            })
+            || self.windows.len() > 6
             || self.windows.iter().any(|(key, g)| {
                 !known(key)
                     || !g.width.is_finite()
@@ -70,11 +76,20 @@ impl Layout {
     }
 }
 fn known(label: &str) -> bool {
-    ["controls", "editor", "canvas"].contains(&label)
+    [
+        "controls",
+        "editor",
+        "canvas",
+        "navigator",
+        "inspector",
+        "history",
+    ]
+    .contains(&label)
 }
 pub struct Store {
     value: Arc<Mutex<Layout>>,
     worker: autosave::Worker,
+    closing: std::sync::atomic::AtomicBool,
 }
 fn write(path: &std::path::Path, value: &Layout) -> std::result::Result<(), String> {
     use std::io::Write;
@@ -103,13 +118,42 @@ impl Store {
             write(&path, &value)
         })
         .map_err(|_| "layout_failed")?;
-        Ok(Self { value, worker })
+        Ok(Self {
+            value,
+            worker,
+            closing: std::sync::atomic::AtomicBool::new(false),
+        })
     }
     pub fn value(&self) -> std::result::Result<Layout, String> {
         self.value
             .lock()
             .map(|v| v.clone())
             .map_err(|_| "layout_failed".into())
+    }
+    pub fn begin_shutdown(&self) {
+        self.closing
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+    pub fn closed_panel(&self, panel: &str) {
+        if !self.closing.load(std::sync::atomic::Ordering::Relaxed) {
+            let _ = self.float(panel, false);
+        }
+    }
+    pub fn float(&self, panel: &str, floating: bool) -> std::result::Result<(), String> {
+        if !["navigator", "inspector", "history", "editor"].contains(&panel) {
+            return Err("layout_invalid".into());
+        }
+        let mut value = self.value.lock().map_err(|_| "layout_failed")?;
+        let changed = if floating {
+            value.floating_panels.insert(panel.into())
+        } else {
+            value.floating_panels.remove(panel)
+        };
+        drop(value);
+        if changed {
+            self.worker.request();
+        }
+        Ok(())
     }
     pub fn flush(&self) -> std::result::Result<(), String> {
         self.worker.flush()
@@ -263,12 +307,57 @@ pub fn dock_panel(
 mod tests {
     use super::*;
     #[test]
+    fn floating_restore_survives_shutdown_and_normal_close_redocks() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("layout.json");
+        let store = Store::load(path.clone()).unwrap();
+        store.float("navigator", true).unwrap();
+        store.float("editor", true).unwrap();
+        store.float("history", true).unwrap();
+        store.closed_panel("history");
+        store.begin_shutdown();
+        store.closed_panel("navigator");
+        store.closed_panel("editor");
+        store.flush().unwrap();
+        let restored = Store::load(path).unwrap();
+        assert!(
+            restored
+                .value()
+                .unwrap()
+                .floating_panels
+                .contains("navigator")
+        );
+        assert!(
+            !restored
+                .value()
+                .unwrap()
+                .floating_panels
+                .contains("history")
+        );
+        assert!(restored.value().unwrap().floating_panels.contains("editor"));
+        // Existing v1 layouts omit this field and retain their original docks.
+        let mut legacy = serde_json::to_value(Layout::default()).unwrap();
+        legacy.as_object_mut().unwrap().remove("floatingPanels");
+        assert_eq!(
+            serde_json::from_value::<Layout>(legacy).unwrap(),
+            Layout::default()
+        );
+    }
+    #[test]
     fn layout_roundtrip_invalid_input_and_background_save() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("layout.json");
         let store = Store::load(path.clone()).unwrap();
         store.pane("navigator", 300.).unwrap();
+        store.float("navigator", true).unwrap();
+        store.float("history", true).unwrap();
+        store.float("history", false).unwrap();
+        assert!(store.float("unknown", true).is_err());
         let state = store.dock("navigator", "right").unwrap();
+        assert_eq!(
+            state.floating_panels.iter().collect::<Vec<_>>(),
+            vec!["navigator"]
+        );
         assert_eq!(state.docks["inspector"], "left");
         assert!(store.dock("navigator", "center").is_err());
         assert!(store.dock("unknown", "top").is_err());

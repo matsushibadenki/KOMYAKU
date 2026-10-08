@@ -114,6 +114,31 @@ impl Journal {
             .zip(next[offset..next.len() - suffix].iter().rev())
             .take_while(|(a, b)| a == b)
             .count();
+        self.prepare_range(
+            next,
+            offset,
+            self.current.len() - suffix,
+            next.len() - suffix,
+        )
+    }
+    // Bounds originate only from the byte splice below; no external caller can
+    // certify them. Keep whole-document hashes and operation checksums intact.
+    fn prepare_range(
+        &self,
+        next: &[u8],
+        offset: usize,
+        old_end: usize,
+        new_end: usize,
+    ) -> Result<(Vec<u8>, String), String> {
+        if next.len() > LIMIT
+            || self.needs_checkpoint()
+            || offset > old_end
+            || old_end > self.current.len()
+            || offset > new_end
+            || new_end > next.len()
+        {
+            return Err("limit_exceeded".into());
+        }
         let after = hash(next);
         let mut record = Delta {
             version: 2,
@@ -121,8 +146,8 @@ impl Journal {
             before: self.current_hash.clone(),
             after: after.clone(),
             offset,
-            removed: self.current.len() - offset - suffix,
-            inserted: next[offset..next.len() - suffix].to_vec(),
+            removed: old_end - offset,
+            inserted: next[offset..new_end].to_vec(),
             checksum: None,
         };
         record.checksum = Some(record.operation_checksum());
@@ -339,6 +364,7 @@ impl NodeShape {
 struct Structure {
     envelope: String,
     nodes: std::collections::BTreeMap<unge_core::Id, NodeShape>,
+    documents: Option<Shape>,
 }
 fn envelope(doc: &unge_core::Document) -> String {
     serde_json::to_string(&(
@@ -351,7 +377,7 @@ fn envelope(doc: &unge_core::Document) -> String {
         doc.graph().edges(),
         doc.graph().groups(),
         doc.placement(),
-        &doc.extensions,
+        doc.extensions.iter().filter(|(key, _)| key.as_str() != super::central_document::STORE).collect::<std::collections::BTreeMap<_, _>>(),
     ))
     .expect("validated document metadata")
 }
@@ -359,6 +385,7 @@ impl Structure {
     fn new(doc: &unge_core::Document) -> Self {
         Self {
             envelope: envelope(doc),
+            documents: doc.extensions.get(super::central_document::STORE).map(Shape::new),
             nodes: doc
                 .graph()
                 .nodes()
@@ -434,7 +461,11 @@ impl Structure {
                             .is_some_and(|w| equal(v, w, &lookup, &mut seen))
                     })
             })
-        }) && seen.iter().all(|count| *count == 1)
+        }) && match (&self.documents, doc.extensions.get(super::central_document::STORE)) {
+            (None, None) => true,
+            (Some(a), Some(b)) => equal(a, b, &lookup, &mut seen),
+            _ => false,
+        } && seen.iter().all(|count| *count == 1)
     }
     fn advance(&mut self, patches: &[(serde_json::Value, serde_json::Value)]) {
         let lookup = patches
@@ -473,6 +504,7 @@ impl Structure {
                 replace(value, &lookup);
             }
         }
+        if let Some(documents) = &mut self.documents { replace(documents, &lookup); }
     }
 }
 struct Cache {
@@ -492,7 +524,13 @@ fn patched_bytes(
     patches: &[(serde_json::Value, serde_json::Value)],
     structure: Option<&Structure>,
 ) -> Option<Vec<u8>> {
-    patched_bytes_verified(current, document, patches, structure, false)
+    patched_bytes_verified(current, document, patches, structure, false).map(|patch| patch.bytes)
+}
+struct PatchedBytes {
+    bytes: Vec<u8>,
+    offset: usize,
+    old_end: usize,
+    new_end: usize,
 }
 fn patched_bytes_verified(
     current: &[u8],
@@ -500,7 +538,7 @@ fn patched_bytes_verified(
     patches: &[(serde_json::Value, serde_json::Value)],
     structure: Option<&Structure>,
     engine_verified: bool,
-) -> Option<Vec<u8>> {
+) -> Option<PatchedBytes> {
     if patches.is_empty() || patches.len() > 64 {
         return None;
     }
@@ -522,6 +560,8 @@ fn patched_bytes_verified(
         spans.push((offset, offset + old.len(), new));
     }
     spans.sort_by_key(|s| s.0);
+    let first = spans.first()?.0;
+    let last = spans.last()?.1;
     let mut next = Vec::with_capacity(current.len() + 1024);
     let mut cursor = 0;
     for (start, end, bytes) in spans {
@@ -552,7 +592,24 @@ fn patched_bytes_verified(
             return None;
         }
     }
-    Some(next)
+    let mut offset = first;
+    let mut old_end = last;
+    let mut new_end = next.len() - (current.len() - last);
+    // Trim within the changed envelope, rather than rescanning unchanged
+    // megabytes on both sides of a small paragraph edit.
+    while offset < old_end && offset < new_end && current[offset] == next[offset] {
+        offset += 1;
+    }
+    while old_end > offset && new_end > offset && current[old_end - 1] == next[new_end - 1] {
+        old_end -= 1;
+        new_end -= 1;
+    }
+    Some(PatchedBytes {
+        bytes: next,
+        offset,
+        old_end,
+        new_end,
+    })
 }
 #[derive(Default)]
 pub struct Store {
@@ -678,8 +735,11 @@ impl Store {
             self.engine_verified && reused,
         );
         let used_partial = partial.is_some();
-        let next = if let Some(bytes) = partial {
-            bytes
+        let change = partial
+            .as_ref()
+            .map(|patch| (patch.offset, patch.old_end, patch.new_end));
+        let next = if let Some(patch) = partial {
+            patch.bytes
         } else {
             let mut next = Vec::with_capacity(recovery.journal.bytes().len().saturating_add(1024));
             crate::workspace_storage::write(&mut next, document, cache.generation.clone())?;
@@ -688,14 +748,22 @@ impl Store {
         if next.len() > LIMIT {
             return Err("limit_exceeded".into());
         }
-        if next == recovery.journal.bytes() {
+        if change.map_or_else(
+            || next == recovery.journal.bytes(),
+            |(offset, old_end, new_end)| offset == old_end && offset == new_end,
+        ) {
             // An earlier fsync may have failed after publishing all bytes.
             // Equality alone does not establish durability.
             sync(path, &cache.journal_path)?;
             self.cache = Some(cache);
             return Ok(());
         }
-        let delta = recovery.journal.prepare_hashed(&next);
+        let delta = match change {
+            Some((offset, old_end, new_end)) => recovery
+                .journal
+                .prepare_range(&next, offset, old_end, new_end),
+            None => recovery.journal.prepare_hashed(&next),
+        };
         // Bound replay cost and disk growth. A new checkpoint chooses a new hash generation.
         let (delta, after_hash) = match delta {
             Ok((delta, after_hash))
@@ -1056,6 +1124,46 @@ mod tests {
         // Stale patch must save all other changes through the full serializer.
         store.save_patched(&path, &other, &patches).unwrap();
         assert_eq!(crate::load(&path).unwrap(), other);
+    }
+    #[test]
+    fn certified_splice_bounds_match_general_delta_and_recover_unicode() {
+        for prefix in [1024, 100_000] {
+            let old =
+                serde_json::json!({"type":"paragraph", "id":"test", "text":"雨の駅 👨‍👩‍👧‍👦\r\n初稿"});
+            for text in [
+                "雨の駅 👨‍👩‍👧‍👦\r\n改稿",
+                "",
+                "e\u{301} 新しい朝",
+                "雨の駅 👨‍👩‍👧‍👦\r\n初稿",
+            ] {
+                let new = serde_json::json!({"type":"paragraph", "id":"test", "text":text});
+                let mut bytes = vec![b' '; prefix];
+                bytes.extend(serde_json::to_vec(&old).unwrap());
+                bytes.extend(vec![b' '; prefix]);
+                let doc = crate::domain::initial_document(&crate::domain::registry());
+                // A trusted host command is simulated here; paragraph bytes are
+                // deliberately unique and the unchanged envelope is large.
+                let patch = patched_bytes_verified(&bytes, &doc, &[(old.clone(), new)], None, true)
+                    .unwrap();
+                let mut journal = Journal::new(bytes.clone()).unwrap();
+                let bounded = journal
+                    .prepare_range(&patch.bytes, patch.offset, patch.old_end, patch.new_end)
+                    .unwrap();
+                let general = journal.prepare_hashed(&patch.bytes).unwrap();
+                assert_eq!(bounded.1, general.1);
+                if old["text"].as_str() != Some(text) {
+                    assert_eq!(bounded.0, general.0);
+                }
+                journal.commit(&bounded.0).unwrap();
+                assert_eq!(journal.bytes(), patch.bytes);
+                let recovered = Journal::recover(bytes, &bounded.0).unwrap();
+                assert_eq!(recovered.journal.bytes(), patch.bytes);
+                let mut corrupt = bounded.0.clone();
+                let index = corrupt.iter().position(|b| *b == b'2').unwrap();
+                corrupt[index] = b'9';
+                assert!(Journal::recover(recovered.journal.current.clone(), &corrupt).is_err());
+            }
+        }
     }
     #[test]
     fn cached_digest_stays_consistent_through_success_failure_and_recovery() {

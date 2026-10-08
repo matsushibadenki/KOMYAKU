@@ -224,7 +224,7 @@ pub fn ai_prepare(
         .get(&scene_id)
         .filter(|n| n.type_id == super::domain::SCENE)
         .ok_or("missing_node")?;
-    let source = scene.properties["canonical"].clone();
+    let source = super::central_document::canonical(&document, scene)?.clone();
     let text = match &selection {
         Some(range) => selection_text(&source, range)?,
         None => super::domain::text(&source)?,
@@ -308,11 +308,11 @@ pub fn ai_generate(
     {
         let host = app.state::<super::Host>();
         let _gate = host.gate.lock().map_err(|_| "state_unavailable")?;
-        let node = host
-            .engine
-            .inspect(window.label(), job.scene)
-            .map_err(|e| e.code)?;
-        if node.properties["canonical"] != job.source {
+        let unchanged = host.engine.read_document(|document, _| {
+            let node = document.graph().nodes().get(&job.scene).ok_or("missing_node")?;
+            Ok::<_, String>(super::central_document::canonical(document, node)? == &job.source)
+        }).map_err(|e| e.code)??;
+        if !unchanged {
             return Err("ai_source_changed".into());
         }
         let mut state = job.state.lock().map_err(|_| "state_unavailable")?;
@@ -594,12 +594,12 @@ pub async fn ai_append(
                 if replace_selection.unwrap_or(false) {
                     replace_result(
                         &job.source,
-                        &scene.properties["canonical"],
+                        super::central_document::canonical(&snapshot, scene)?,
                         job.selection.as_ref(),
                         &text,
                     )?
                 } else {
-                    append_result(&job.source, &scene.properties["canonical"], &text)?
+                    append_result(&job.source, super::central_document::canonical(&snapshot, scene)?, &text)?
                 },
                 summary.revision,
             )

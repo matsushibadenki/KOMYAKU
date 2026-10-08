@@ -118,7 +118,7 @@ pub fn route(document: &Document, key: &str) -> Result<Vec<(Id, String, String)>
             Ok((
                 *id,
                 n.properties["title"].as_str().unwrap_or("").into(),
-                domain::text(&n.properties["canonical"])?,
+                domain::text(super::central_document::canonical(document, n)?)?,
             ))
         })
         .collect()

@@ -106,7 +106,8 @@ fn search(document: &Document, query: &str, offset: usize, revision: u64) -> Res
         if let Some(notes) = node.properties.get("notes").and_then(Value::as_str) {
             add(&mut hits, notes, query, node.id, None, "notes", title);
         }
-        if let Some(body) = node.properties.get("canonical") {
+        if node.type_id == domain::SCENE {
+            let body = super::central_document::canonical(document, node)?;
             walk(&mut hits, body, query, node.id, title);
         }
         if hits.len() > MAX {

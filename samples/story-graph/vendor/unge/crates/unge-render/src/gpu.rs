@@ -292,6 +292,34 @@ impl GpuRenderer {
         target: &wgpu::TextureView,
         clip: Option<[u32; 4]>,
     ) {
+        self.render_pass(encoder, target, clip, None);
+    }
+    /// Measure the existing draw pass without copying frames through the UI.
+    /// The caller must enable TIMESTAMP_QUERY and supply a two-slot query set.
+    pub fn render_timed(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        queries: &wgpu::QuerySet,
+    ) {
+        self.render_pass(
+            encoder,
+            target,
+            None,
+            Some(wgpu::RenderPassTimestampWrites {
+                query_set: queries,
+                beginning_of_pass_write_index: Some(0),
+                end_of_pass_write_index: Some(1),
+            }),
+        );
+    }
+    fn render_pass(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        clip: Option<[u32; 4]>,
+        timestamps: Option<wgpu::RenderPassTimestampWrites<'_>>,
+    ) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("UNGE graph pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -309,7 +337,7 @@ impl GpuRenderer {
                 },
             })],
             depth_stencil_attachment: None,
-            timestamp_writes: None,
+            timestamp_writes: timestamps,
             occlusion_query_set: None,
         });
         if let Some([x, y, width, height]) = clip {

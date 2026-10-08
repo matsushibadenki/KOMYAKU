@@ -69,6 +69,7 @@ pub struct SceneIndex {
     incident: BTreeMap<Id, BTreeSet<Id>>,
     story: bool,
     minimap_bounds: Option<Rect>,
+    minimap_overview: Option<Vec<(Rect, [f32; 4])>>,
     groups: Vec<(Id, String, BTreeSet<Id>)>,
 }
 #[derive(Debug, Default)]
@@ -376,6 +377,16 @@ impl SceneIndex {
                 .values()
                 .map(|g| (g.id, g.label.clone(), g.nodes.clone()))
                 .collect(),
+            minimap_overview: if nodes.len() > 1024 {
+                crate::minimap_bounds(nodes.values().map(|n| n.rect)).map(|bounds| {
+                    crate::minimap::dense_overview(
+                        bounds,
+                        nodes.values().map(|node| (node.rect, node.accent)),
+                    )
+                })
+            } else {
+                None
+            },
             minimap_bounds: crate::minimap_bounds(nodes.values().map(|n| n.rect)),
             story: nodes
                 .values()
@@ -774,30 +785,49 @@ impl SceneIndex {
                 PAPER,
                 4. / viewport.zoom,
             ));
-            for edge in self.edges.values() {
-                let project = |point: [f32; 2]| {
-                    viewport.to_world([
-                        map.origin[0] + (point[0] - map.bounds.x) * map.scale,
-                        map.origin[1] + (point[1] - map.bounds.y) * map.scale,
-                    ])
-                };
-                let mut line = Quad::line(project(edge.points[0]), project(edge.points[3]));
-                line.rect[2] = (line.rect[2] - 4.).max(0.001);
-                line.rect[3] = 0.8 / viewport.zoom;
-                line.params[1] = 0.;
-                line.color = edge.color.unwrap_or(RULE);
-                scene.quads.push(line);
-            }
-            for (id, node) in &self.nodes {
-                scene.quads.push(Quad::rectangle(
-                    to_world(map.project(node.rect)),
-                    if selection.contains(id) {
-                        INK
-                    } else {
-                        node.accent
-                    },
-                    1. / viewport.zoom,
-                ));
+            if let Some(overview) = &self.minimap_overview {
+                for (rect, color) in overview {
+                    scene.quads.push(Quad::rectangle(
+                        to_world(map.project(*rect)),
+                        *color,
+                        1. / viewport.zoom,
+                    ));
+                }
+                for id in selection {
+                    if let Some(node) = self.nodes.get(id) {
+                        scene.quads.push(Quad::rectangle(
+                            to_world(map.project(node.rect)),
+                            INK,
+                            1. / viewport.zoom,
+                        ));
+                    }
+                }
+            } else {
+                for edge in self.edges.values() {
+                    let project = |point: [f32; 2]| {
+                        viewport.to_world([
+                            map.origin[0] + (point[0] - map.bounds.x) * map.scale,
+                            map.origin[1] + (point[1] - map.bounds.y) * map.scale,
+                        ])
+                    };
+                    let mut line = Quad::line(project(edge.points[0]), project(edge.points[3]));
+                    line.rect[2] = (line.rect[2] - 4.).max(0.001);
+                    line.rect[3] = 0.8 / viewport.zoom;
+                    line.params[1] = 0.;
+                    line.color = edge.color.unwrap_or(RULE);
+                    scene.quads.push(line);
+                }
+                for (id, node) in &self.nodes {
+                    scene.quads.push(Quad::rectangle(
+                        to_world(map.project(node.rect)),
+                        if selection.contains(id) {
+                            INK
+                        } else {
+                            node.accent
+                        },
+                        1. / viewport.zoom,
+                    ));
+                }
             }
             let projected = map.project(viewport.world_rect());
             let f = map.frame;

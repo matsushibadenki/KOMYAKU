@@ -1073,52 +1073,7 @@ fn instance_titles_override_type_titles_and_are_bounded() {
 fn benchmark_large_story_graphs() {
     use std::time::Instant;
     for count in [1_000, 5_000, 10_000] {
-        let mut value = serde_json::to_value(Document::default()).unwrap();
-        let mut nodes = serde_json::Map::new();
-        let mut placement = serde_json::Map::new();
-        let mut edges = serde_json::Map::new();
-        let mut previous = None;
-        for i in 0..count {
-            let id = Id::new_v4();
-            let port = |name: &str| Port {
-                name: name.into(),
-                data_type: DataType::Float,
-                cardinality: Cardinality::Single,
-                required: false,
-            };
-            let node = Node {
-                id,
-                type_id: "story.scene".into(),
-                inputs: vec![port("previous")],
-                outputs: vec![port("next")],
-                properties: Properties::from([(
-                    "title".into(),
-                    serde_json::json!(format!("Scene {i} / 場面 / 场景")),
-                )]),
-            };
-            nodes.insert(id.to_string(), serde_json::to_value(node).unwrap());
-            placement.insert(id.to_string(),serde_json::json!({"x":(i%50) as f32*260.,"y":(i/50) as f32*160.,"width":220.,"height":110.}));
-            if let Some(from) = previous {
-                let edge = Edge {
-                    id: Id::new_v4(),
-                    from: Endpoint {
-                        node: from,
-                        port: "next".into(),
-                    },
-                    to: Endpoint {
-                        node: id,
-                        port: "previous".into(),
-                    },
-                };
-                edges.insert(edge.id.to_string(), serde_json::to_value(edge).unwrap());
-            }
-            previous = Some(id);
-        }
-        value["graph"]["nodes"] = serde_json::Value::Object(nodes);
-        value["graph"]["edges"] = serde_json::Value::Object(edges);
-        value["placement"] = serde_json::Value::Object(placement);
-        let bytes = serde_json::to_vec(&value).unwrap();
-        let document = Document::from_json(&bytes).unwrap();
+        let (document, snapshot_bytes) = large_graph_document(count);
         let start = Instant::now();
         let index = SceneIndex::new(&document);
         let indexing = start.elapsed();
@@ -1146,11 +1101,197 @@ fn benchmark_large_story_graphs() {
             println!(
                 "GRAPH_BENCH nodes={count} edges={} snapshot_bytes={} index_ms={:.3} zoom={zoom} scene_p50_ms={:.3} scene_p95_ms={:.3} max_quads={instances} max_visible={visible}",
                 count - 1,
-                bytes.len(),
+                snapshot_bytes,
                 indexing.as_secs_f64() * 1000.,
                 samples[50],
                 samples[95]
             );
         }
     }
+}
+
+fn large_graph_document(count: usize) -> (Document, usize) {
+    let mut value = serde_json::to_value(Document::default()).unwrap();
+    let mut nodes = serde_json::Map::new();
+    let mut placement = serde_json::Map::new();
+    let mut edges = serde_json::Map::new();
+    let mut previous = None;
+    for i in 0..count {
+        let id = Id::new_v4();
+        let port = |name: &str| Port {
+            name: name.into(),
+            data_type: DataType::Float,
+            cardinality: Cardinality::Single,
+            required: false,
+        };
+        let node = Node {
+            id,
+            type_id: "story.scene".into(),
+            inputs: vec![port("previous")],
+            outputs: vec![port("next")],
+            properties: Properties::from([(
+                "title".into(),
+                serde_json::json!(format!("Scene {i} / 場面 / 场景")),
+            )]),
+        };
+        nodes.insert(id.to_string(), serde_json::to_value(node).unwrap());
+        placement.insert(id.to_string(),serde_json::json!({"x":(i%50) as f32*260.,"y":(i/50) as f32*160.,"width":220.,"height":110.}));
+        if let Some(from) = previous {
+            let edge = Edge {
+                id: Id::new_v4(),
+                from: Endpoint {
+                    node: from,
+                    port: "next".into(),
+                },
+                to: Endpoint {
+                    node: id,
+                    port: "previous".into(),
+                },
+            };
+            edges.insert(edge.id.to_string(), serde_json::to_value(edge).unwrap());
+        }
+        previous = Some(id);
+    }
+    value["graph"]["nodes"] = serde_json::Value::Object(nodes);
+    value["graph"]["edges"] = serde_json::Value::Object(edges);
+    value["placement"] = serde_json::Value::Object(placement);
+    let bytes = serde_json::to_vec(&value).unwrap();
+    let document = Document::from_json(&bytes).unwrap();
+    (document, bytes.len())
+}
+
+#[test]
+#[ignore = "desktop GPU timestamp and DPI benchmark; no wall-clock assertion"]
+fn benchmark_native_gpu_graphs() {
+    use std::time::Instant;
+    pollster::block_on(async {
+        let adapter = wgpu::Instance::default()
+            .request_adapter(&Default::default())
+            .await
+            .expect("native GPU required");
+        assert!(
+            adapter.features().contains(wgpu::Features::TIMESTAMP_QUERY),
+            "GPU timestamps required"
+        );
+        println!("GPU_BENCH adapter={:?}", adapter.get_info());
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor {
+                required_features: wgpu::Features::TIMESTAMP_QUERY,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let queries = device.create_query_set(&wgpu::QuerySetDescriptor {
+            label: Some("graph frame timestamps"),
+            ty: wgpu::QueryType::Timestamp,
+            count: 2,
+        });
+        let resolve = device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size: 16,
+            usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        let readback = device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size: 16,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        for count in [1000, 5000, 10000] {
+            let (document, _) = large_graph_document(count);
+            let index = SceneIndex::new(&document);
+            for dpi in [1, 2] {
+                let size = [1100 * dpi, 800 * dpi];
+                let texture = device.create_texture(&wgpu::TextureDescriptor {
+                    label: None,
+                    size: wgpu::Extent3d {
+                        width: size[0],
+                        height: size[1],
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                    view_formats: &[],
+                });
+                let target = texture.create_view(&Default::default());
+                let mut renderer = GpuRenderer::new(&device, wgpu::TextureFormat::Rgba8Unorm);
+                for zoom in [1., 0.1] {
+                    let mut gpu = Vec::new();
+                    let mut invalid_timestamps = 0;
+                    let mut wall = Vec::new();
+                    let mut visible = 0;
+                    let mut quads = 0;
+                    for frame in 0..22 {
+                        let start = Instant::now();
+                        let viewport = Viewport {
+                            origin: [(frame % 10) as f32 * 100., (frame / 10) as f32 * 100.],
+                            zoom,
+                            size: [1100., 800.],
+                        };
+                        let scene = index.scene(viewport, &BTreeSet::new()).unwrap();
+                        visible = visible.max(scene.visible_nodes);
+                        quads = quads.max(scene.quads.len());
+                        renderer
+                            .prepare_sized(&device, &queue, &scene, viewport, size)
+                            .unwrap();
+                        let mut encoder = device.create_command_encoder(&Default::default());
+                        renderer.render_timed(&mut encoder, &target, &queries);
+                        encoder.resolve_query_set(&queries, 0..2, &resolve, 0);
+                        encoder.copy_buffer_to_buffer(&resolve, 0, &readback, 0, 16);
+                        queue.submit([encoder.finish()]);
+                        let (tx, rx) = std::sync::mpsc::channel();
+                        readback
+                            .slice(..)
+                            .map_async(wgpu::MapMode::Read, move |value| {
+                                tx.send(value).unwrap();
+                            });
+                        device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+                        rx.recv_timeout(std::time::Duration::from_secs(30))
+                            .unwrap()
+                            .unwrap();
+                        let mapped = readback.slice(..).get_mapped_range();
+                        let begin = u64::from_le_bytes(mapped[..8].try_into().unwrap());
+                        let end = u64::from_le_bytes(mapped[8..16].try_into().unwrap());
+                        let elapsed = (end > begin).then(|| {
+                            (end - begin) as f64 * queue.get_timestamp_period() as f64 / 1_000_000.
+                        });
+                        drop(mapped);
+                        readback.unmap();
+                        if frame >= 2 {
+                            if let Some(elapsed) = elapsed {
+                                gpu.push(elapsed);
+                            } else {
+                                invalid_timestamps += 1;
+                            }
+                            wall.push(start.elapsed().as_secs_f64() * 1000.);
+                        }
+                    }
+
+                    gpu.sort_by(f64::total_cmp);
+                    wall.sort_by(f64::total_cmp);
+                    println!(
+                        "GPU_BENCH nodes={count} dpi={dpi} zoom={zoom} gpu_p50_ms={:.3} gpu_p95_ms={:.3} frame_p50_ms={:.3} frame_p95_ms={:.3} max_visible={visible} max_quads={quads} invalid_timestamps={invalid_timestamps}",
+                        if invalid_timestamps == 0 {
+                            gpu[10]
+                        } else {
+                            f64::NAN
+                        },
+                        if invalid_timestamps == 0 {
+                            gpu[19]
+                        } else {
+                            f64::NAN
+                        },
+                        wall[10],
+                        wall[19]
+                    );
+                }
+            }
+        }
+        assert!(device.pop_error_scope().await.is_none());
+    });
 }

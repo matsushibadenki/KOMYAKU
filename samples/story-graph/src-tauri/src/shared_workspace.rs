@@ -75,7 +75,7 @@ fn native_skeleton(document: &Document) -> std::result::Result<Value, String> {
     #[derive(Serialize)]
     struct NativeDocument<'a> {
         #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-        extensions: &'a BTreeMap<String, Value>,
+        extensions: BTreeMap<&'a String, &'a Value>,
         title: &'a str,
         schema_version: u32,
         engine_version: &'a str,
@@ -85,7 +85,7 @@ fn native_skeleton(document: &Document) -> std::result::Result<Value, String> {
     }
     let graph = document.graph();
     serde_json::to_value(NativeDocument {
-        extensions: &document.extensions,
+        extensions: document.extensions.iter().filter(|(key, _)| key.as_str() != central_document::STORE).collect(),
         title: &document.title,
         schema_version: document.schema_version,
         engine_version: &document.engine_version,
@@ -167,7 +167,7 @@ pub fn project(document: &Document) -> std::result::Result<Value, String> {
     let mut refs = BTreeMap::new();
     for node in ordered {
         if node.type_id == domain::SCENE {
-            let canonical = &node.properties["canonical"];
+            let canonical = central_document::canonical(document, node)?;
             let root = canonical["id"].as_str().ok_or("shared_workspace_invalid")?;
             let header = serde_json::to_value(
                 canonical

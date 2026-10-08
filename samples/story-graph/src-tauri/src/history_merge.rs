@@ -106,9 +106,9 @@ fn merged_document(
     if choices.len() > 256 {
         return Err("limit_exceeded".into());
     }
-    let before = serde_json::to_value(before).map_err(|_| "merge_invalid")?;
-    let current = serde_json::to_value(current).map_err(|_| "merge_invalid")?;
-    let alternative = serde_json::to_value(alternative).map_err(|_| "merge_invalid")?;
+    let before = central_document::legacy_value(before)?;
+    let current = central_document::legacy_value(current)?;
+    let alternative = central_document::legacy_value(alternative)?;
     let mut conflicts = Vec::new();
     let merged = merge_value(
         Some(&before),
@@ -258,7 +258,7 @@ pub async fn preview_merge(
             let node = parts.get(3).and_then(|id| id.parse::<Id>().ok()).and_then(|id| current.graph().nodes().get(&id).or_else(|| merged.graph().nodes().get(&id)));
             json!({"path":path,"title":node.and_then(|n| n.properties.get("title")).and_then(Value::as_str).unwrap_or(&current.title).chars().take(200).collect::<String>(),"field":if path.ends_with("/title") { "title" }else if path.ends_with("/role") { "role" }else if path.ends_with("/notes") { "notes" }else if path.contains("/canonical/"){ "body" }else if path.starts_with("/placement/"){ "position" }else if path.contains("/edges/"){ "connection" }else { "information" }})
         }).collect();
-        Ok(json!({"head":head.id,"ancestor":ancestor,"conflicts":labels,"changedNodes":merged.graph().nodes().iter().filter(|(id,node)|current.graph().nodes().get(id)!=Some(node)).count(),"structureChanged":merged.graph().edges()!=current.graph().edges()||merged.placement()!=current.placement()}))
+        Ok(json!({"head":head.id,"ancestor":ancestor,"conflicts":labels,"changedNodes":merged.graph().nodes().iter().filter(|(id,node)|current.graph().nodes().get(id).is_none_or(|old| !central_document::equal_node(&current,old,&merged,node))).count(),"structureChanged":merged.graph().edges()!=current.graph().edges()||merged.placement()!=current.placement()}))
     }).await.map_err(|_| "history_failed".to_owned())?
 }
 
