@@ -1,4 +1,4 @@
-import {canonicalPosition} from './text-performance.js';
+import {canonicalPosition,graphemeCut,graphemeCuts} from './text-performance.js';
 import {estimatedExtent,estimatedDialogueExtent} from './manuscript-viewport.js';
 // Group whole canonical paragraphs: virtualization never invents paragraph breaks.
 export function readingChunks(blocks,limit=32768,maxBlocks=32) {
@@ -101,13 +101,15 @@ export async function boundedReadingBlocks(blocks,{article,vertical,span,signal}
  try {
   for(const block of blocks){
    if(block.kind!=='paragraph'||block.text.length<=16384){result.push(block);continue;}
+   const safeCut=graphemeCuts(block.text);
    for(let start=0;start<block.text.length;){
     if(signal.aborted||!article.isConnected)throw new DOMException('Aborted','AbortError');
     let end=Math.min(block.text.length,start+8192);
-    if(end<block.text.length&&/[\uDC00-\uDFFF]/.test(block.text[end]))end--;
+    if(end<block.text.length)end=safeCut(end,start);
     const sample=block.text.slice(start,end);probe.textContent=sample;
     let count=sample.length;
     if(end<block.text.length){const text=probe.firstChild,range=document.createRange();count=measuredReadingCut(sample.length,index=>{range.setStart(text,index);range.setEnd(text,index+1);const bounds=range.getBoundingClientRect();return vertical?bounds.left:bounds.top;},vertical);range.detach();}
+    count=graphemeCut(sample,count);
     result.push({...block,text:sample.slice(0,count),sourceText:block.text,sourceStart:start,continuation:start>0});start+=count;
     // Yield between bounded layouts, allowing typing, closing and mode changes.
     await new Promise(resolve=>requestAnimationFrame(resolve));

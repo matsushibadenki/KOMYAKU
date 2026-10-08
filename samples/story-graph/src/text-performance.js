@@ -42,3 +42,16 @@ export function inputPatch(raw,after,offset=0) {
   return {...change,start:offset+start,end:offset+end,removed:raw.slice(start,end)};
 }
 export const characters=text=>{let count=0;for(const _ of text)count++;return count;};
+
+// Choose a complete grapheme near a display boundary, always making progress.
+export function graphemeCuts(text) {
+ const parts=graphemes.segment(text);
+ return (position,minimum=0)=>{
+  if(!Number.isInteger(position)||position<0||!Number.isInteger(minimum)||minimum<0||minimum>position)throw new RangeError('grapheme cut');
+  if(position>=text.length)return text.length;
+  let part=parts.containing(position);
+  if(!part)for(const candidate of parts){if(candidate.index+candidate.segment.length>position){part=candidate;break;}}
+  return part.index>minimum?part.index:part.index+part.segment.length;
+ };
+}
+export const graphemeCut=(text,position)=>graphemeCuts(text)(position);

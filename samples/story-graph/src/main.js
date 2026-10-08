@@ -1,10 +1,13 @@
+import {installDockedGraph} from './docked-graph.js';
 import {installPerformanceQA} from './performance-qa.js';
 import { applyRemoteParagraphs } from './remote-paragraphs.js';
-import {installPanelLayout,applyLayout,renderPanelHandles} from './panel-layout.js';
+import {installPanelLayout,applyLayout,renderPanelHandles,historyDocked,toggleHistoryPanel} from './panel-layout.js';
 import {openNarrative} from './narrative.js';
 import './style.css';
 import {mountHistory} from './history.js';
 let disposeHistory;
+let embeddedGraph=false;
+let syncDockedGraph=()=>{};
 let caretQA=false;
 import { fragments, inputPatch, characters, graphemeStep, canonicalPosition } from './text-performance.js';
 import {selectionRange,extendSelection,fragmentSelection,replaceSelectionFragments,pointSelection} from './paragraph-selection.js';
@@ -34,7 +37,8 @@ const native = Boolean(window.__TAURI__);
 let diskDirty=false;
 const invoke = async(command,args={}) => {const result=await window.__TAURI__.core.invoke(command,args);if(command==='edit'||command==='save_now'){diskDirty=result.saved===false;if(diskDirty)error='save_failed';}return result;};
 const openAssistant=installAssistant({invoke,native,t:key=>t(key),escape:value=>escape(value),getLanguage:()=>language,getScene:()=>detail?.type_id==='story.scene'?{id:detail.id,revision:model.revision,selection:bodyCaret?.scene===detail.id&&bodyCaret.end>bodyCaret.start?{paragraph:bodyCaret.id,start:bodyCaret.start,end:bodyCaret.end}:null}:null,refresh,commit:commitDraft,settings:()=>{preferencesTab='ai';showPreferences();}});
-const loadPanelLayout=installPanelLayout({invoke,native,t:key=>t(key)});
+syncDockedGraph=installDockedGraph({invoke,native,revision:()=>model?.revision??0,onError:value=>{error=value;const notice=document.querySelector('.notice span');if(notice)notice.textContent=t(value);if(value==='gpu_unavailable'){embeddedGraph=false;render();invoke('canvas').catch(()=>{});}}});
+const loadPanelLayout=installPanelLayout({invoke,native,t:key=>t(key),commit:commitDraft,onChange:()=>{if(model&&!composing)render();}});
 const panelWindow = new URLSearchParams(location.search).get('panel');
 const floatingWindow = panelWindow === 'editor';
 if(['navigator','inspector','history'].includes(panelWindow))document.body.dataset.panelWindow=panelWindow;
@@ -149,20 +153,21 @@ ${escape(latestDetail.properties.notes||'')}</pre><div>${button('applyDraft','ap
       <nav class="icon-rail" id="left-icon-menu" aria-label="${escape(t('view'))}">
         <div class="icon-menu-items">${[['scenes','book'],['characters','person'],['relationships','graph']].map(([key,ico])=>`<button data-tab="${key}" title="${escape(t(key))}" aria-label="${escape(t(key))}" aria-pressed="${tab===key}">${icon(ico)}</button>`).join('')}</div>
         <div class="icon-menu-extension"></div><button class="rail-graph" data-action="graph" title="${escape(t('graph'))}" aria-label="${escape(t('graph'))}" ${!native?'disabled':''}>${icon('graph')}</button>
-        <button class="rail-history" data-tab="history" title="${escape(t('history'))}" aria-label="${escape(t('history'))}" aria-pressed="${tab==='history'}">${icon('history')}</button>
+        <button class="rail-history" data-tab="history" title="${escape(t('history'))}" aria-label="${escape(t('history'))}" aria-pressed="${native&&!panelWindow?historyDocked():tab==='history'}">${icon('history')}</button>
       </nav>
     <main>
-      <nav class="navigator" id="story-navigator" aria-label="${escape(t('view'))}"><div class="navtabs">${['scenes','characters','relationships','history'].map(key=>`<button data-tab="${key}" aria-pressed="${tab===key}">${escape(t(key))}</button>`).join('')}</div>
+      <nav class="navigator" id="story-navigator" aria-label="${escape(t('view'))}"><div class="navtabs">${['scenes','characters','relationships','history'].map(key=>`<button data-tab="${key}" aria-pressed="${key==='history'&&native&&!panelWindow?historyDocked():tab===key}">${escape(t(key))}</button>`).join('')}</div>
       ${tab==='scenes'?`<label class="route-label">${escape(t('route'))}<select id="path">${(model.paths??['main','alternative'].map(key=>({key,name:key,legacy:key}))).map(route=>`<option value="${escape(route.key)}" ${path===route.key?'selected':''}>${escape(pathLabel(route))}</option>`).join('')}</select>${button('paths','managePaths',null,!native||busy)}</label>`:`<h2>${escape(t(tab==='history'?'history':'people'))}</h2>`}
       <div class="node-list" ${tab==='scenes'?'role="tree"':''}>${tab==='scenes'?`<label class="project-title-field"><span>${escape(t('workTitle'))}</span><input data-field="projectTitle" aria-label="${escape(t('workTitle'))}" value="${escape(draft?.projectTitle??model.projectTitle??'')}" placeholder="${escape(projectTitle)}" maxlength="200" ${native?'':'readonly'}></label>`:''}${list.map((node,i)=>`<div class="outline-row" ${tab==='scenes'?`role="treeitem" aria-level="${(node.depth||0)+1}" ${node.container?`aria-expanded="${!collapsedOutline.has(node.id)}"`:''}`:''}>${node.container?`<button class="outline-toggle" data-collapse="${node.id}" aria-label="${escape(t(collapsedOutline.has(node.id)?'expand':'collapse'))}" aria-expanded="${!collapsedOutline.has(node.id)}">${collapsedOutline.has(node.id)?'▸':'▾'}</button>`:''}<button class="node-row ${tab==='characters'?'character-row ':''}${node.id===selected?'active':''}" data-select="${node.id}" ${tab==='scenes'&&native?'draggable="true"':''} ${busy?'disabled':''}><span class="ordinal">${tab==='scenes'?icon(node.type==='story.block'?'block':node.type==='story.sequence'?'sequence':'scene'):tab==='characters'?characterIcon(node):icon('person')}</span><span><strong>${escape(node.title)}</strong><small>${escape(tab==='scenes'?t(node.type==='story.block'?'block':node.type==='story.sequence'?'sequence':node.path==='both'?'scene':node.path):tab==='characters'?(node.role||t('role')):t(node.kind))}</small></span></button></div>`).join('')||(tab==='history'?`<p class="empty">${escape(t('versionHelp'))}</p>`:`<p class="empty">${escape(t(tab==='scenes'?'noScenes':'noRelations'))}</p>`)}</div>
       <div class="navbottom">${tab==='scenes'?`<div class="structure-actions">${[['newBlock','block'],['newSequence','sequence'],['newScene','scene']].map(([action,ico])=>`<button data-action="${action}" title="${escape(t(action))}" aria-label="${escape(t(action))}" ${!native||busy||(action==='newSequence'&&!model.nodes.some(n=>n.type==='story.block'))||(action==='newScene'&&!model.nodes.some(n=>n.type==='story.sequence'))?'disabled':''}>${icon(ico)}</button>`).join('')}</div>`:tab==='history'?'':button(tab==='characters'?'newCharacter':'newRelation',tab==='characters'?'newCharacter':'createRelation','add',!native||busy||(tab==='relationships'&&people.length<2),'primary')}</div></nav>
-      <section class="writing"><div class="editor-toolbar"><div class="viewtabs"><button data-action="write" aria-pressed="${!reading}">${escape(t('editor'))}</button><button data-action="read" aria-pressed="${reading}">${escape(t('reading'))}</button></div><div class="editor-actions"><select data-writing-mode aria-label="${escape(t('writingMode'))}">${['horizontal','vertical'].map(key=>`<option value="${key}" ${preferences.writingMode===key?'selected':''}>${escape(t(key))}</option>`).join('')}</select>${button('dialogue','dialogue',null,!native||busy||reading||!writingScene()||(floating&&!floatingWindow))}${button(floatingWindow?'dock':'float',floatingWindow?'dock':'float','float',!native||busy)}</div></div>
+      <section class="writing"><div class="editor-toolbar"><div class="viewtabs"><button data-action="write" aria-pressed="${!reading&&!embeddedGraph}">${escape(t('editor'))}</button><button data-action="read" aria-pressed="${reading&&!embeddedGraph}">${escape(t('reading'))}</button></div><div class="editor-actions"><select data-writing-mode aria-label="${escape(t('writingMode'))}">${['horizontal','vertical'].map(key=>`<option value="${key}" ${preferences.writingMode===key?'selected':''}>${escape(t(key))}</option>`).join('')}</select>${button('dialogue','dialogue',null,!native||busy||reading||!writingScene()||(floating&&!floatingWindow))}${button(floatingWindow?'dock':'float',floatingWindow?'dock':'float','float',!native||busy)}</div></div>
       <div class="editor-content ${reading?'reading-content ':''}${!reading&&isContainer()&&(!floating||floatingWindow)?'group-writing ':''}${!reading&&detail?.type_id==='story.scene'&&(!floating||floatingWindow)?'scene-writing':''}">${reading?`<div class="reading-viewport"><article class="reading" id="reading"><h2>${escape(model.paths?.find(p=>p.key===path)?pathLabel(model.paths.find(p=>p.key===path)):t(path))}</h2></article></div>`:floating&&!floatingWindow?`<div class="empty floating-message">${icon('float')}<p>${escape(t('floating'))}</p>${button('dock','dock',null,!native)}</div>`:detail?`
       ${isContainer()?'':detail.type_id==='story.scene'?sceneBreadcrumb(values):`<div class="selection-label">${escape(t(detail.type_id==='story.character'?'characters':'relationships'))}</div>${field('title',detail.type_id==='story.character'?'name':'title',values.title)}`}
       ${isContainer()?groupBody():detail.type_id==='story.scene'?sceneBody(values.canonical??props.canonical):detail.type_id==='story.character'?characterBody(values):`<div class="relation-inspector">${relatedPeople(model,detail).map(n=>`<span>${escape(n?.title||'—')}</span>`).join(`<span class="connection">${props.mutual?'↔':'→'}</span>`)}<label class="field">${escape(t('kind'))}<select data-field="kind" ${native?'':'disabled'}>${['family','friend','rival','trust','love'].map(k=>`<option value="${k}" ${values.kind===k?'selected':''}>${escape(t(k))}</option>`).join('')}</select></label><label class="check"><input data-field="mutual" type="checkbox" ${values.mutual?'checked':''} ${native?'':'disabled'}>${escape(t('mutual'))}</label></div>`}
       ${['story.block','story.sequence'].includes(detail.type_id)?'':detail.type_id==='story.scene'?`<details class="scene-notes" data-notes-id="${detail.id}" ${expandedNotes.has(detail.id)?'open':''}><summary>${escape(t('notes'))}</summary><textarea data-field="notes" aria-label="${escape(t('notes'))}" rows="4" ${native?'':'readonly'}>${escape(values.notes)}</textarea></details>`:field('notes','notes',values.notes,true)}${detail.type_id==='story.scene'||isContainer()?'':`<div class="editor-footer">${button('remove','remove','trash',!native||busy,'danger')}</div>`}`:`<p class="empty">${escape(t('select'))}</p>`}</div>
       <footer class="native-hint">${icon('graph')}<span>${escape(t('native'))}</span></footer></section>
       <aside class="relations" id="story-relations"><h2>${escape(t('relationships'))}</h2><p>${escape(t('relationDescription'))}</p>${relations.map(node=>{const [a,b]=relatedPeople(model,node);return `<button class="relation-row ${node.id===selected?'active':''}" data-select="${node.id}"><span class="relation-names">${escape(a?.title||'—')} <span>${node.mutual?'↔':'→'}</span> ${escape(b?.title||'—')}</span><strong>${escape(node.title)}</strong><small>${escape(t(node.kind))}</small></button>`;}).join('')}${button('newRelation','createRelation','add',!native||busy||people.length<2)}</aside>
+      <aside class="history-docked history-panel" hidden></aside>
     </main></div><footer class="notice" role="status">${error?`<span class="error">${escape(t(error))}</span>${button('refresh','refresh',null,busy)}`:`<span>${status?escape(t(status)):''}</span>`}${backupPath?`<span class="backup-path" title="${escape(backupPath)}">${escape(t('savedCopy'))}: ${escape(backupPath)}</span>`:''}<span class="status-selection">${escape(detail?.properties.title||'')}</span></footer><dialog id="create-dialog"></dialog>
   </div>`;
   shell.querySelector('.editor-content').scrollTop=preferences.writingMode==='vertical'&&(reading||detail?.type_id==='story.scene'||isContainer())?0:editorScroll;
@@ -178,9 +183,12 @@ ${escape(latestDetail.properties.notes||'')}</pre><div>${button('applyDraft','ap
   const sceneViewport=shell.querySelector('.scene-writing .manuscript-pages');if(sceneViewport&&preferences.writingMode==='vertical')sceneViewport.scrollLeft=sceneScroll;
   const groupViewport=shell.querySelector('.group-manuscript');if(groupViewport){groupViewport.scrollLeft=preferences.writingMode==='vertical'?groupScroll.left:0;groupViewport.scrollTop=preferences.writingMode==='horizontal'?groupScroll.top:0;}
   if(reading) renderReading();
-  renderPanelHandles(t,native);
   if(!reading&&tab==='scenes')observeManuscriptSize();
   if(tab==='history'&&!floatingWindow){const panel=shell.querySelector('.writing');panel.classList.add('history-panel');disposeHistory=mountHistory(panel,{native,invoke,t,escape,language,commit:commitDraft,revision:()=>model.revision,title:projectTitle});if(native)panel.insertAdjacentHTML('afterbegin',`<button class="history-float-button" data-float-panel="history">${escape(t(panelWindow==='history'?'returnSidePanel':'floatSidePanel'))}</button>`);}
+  if(native&&!panelWindow&&historyDocked()){const panel=shell.querySelector('.history-docked');disposeHistory=mountHistory(panel,{native,invoke,t,escape,language,commit:commitDraft,revision:()=>model.revision,title:projectTitle});}
+  if(embeddedGraph&&native&&!panelWindow){shell.querySelector('.writing').classList.add('graph-writing');const content=shell.querySelector('.editor-content');content.className='editor-content docked-graph-content';content.innerHTML=`<div class="docked-graph-actions"><button data-action="graph">${escape(t('editor'))}</button><button data-action="floatGraph">${escape(t('graph'))} ↗</button><button data-docked-action="zoom" data-factor="1.2" aria-label="${escape(t('zoomIn'))}">＋</button><button data-docked-action="zoom" data-factor="0.8333333333" aria-label="${escape(t('zoomOut'))}">−</button><button data-docked-action="fit">${escape(t('fit'))}</button><button data-docked-action="pan" aria-pressed="false">${escape(t('pan'))}</button></div><div data-docked-graph aria-label="${escape(t('relationships'))}" tabindex="0"></div>`;}
+  renderPanelHandles(t,native);
+  syncDockedGraph();
   if(reopenPreferences) showPreferences();
 }
 async function renderReading(anchor=null) {
@@ -1078,7 +1086,7 @@ document.addEventListener('click',async event=>{
   try {
     if(element.dataset.collapse){if(!await commitDraft())return;const id=element.dataset.collapse;collapsedOutline.has(id)?collapsedOutline.delete(id):collapsedOutline.add(id);render();return;}
     if(element.dataset.select){await choose(element.dataset.select);return;}
-    if(element.dataset.tab){if(!await commitDraft())return;if(native&&panelWindow==='navigator'&&element.dataset.tab==='history'){await invoke('float_side_panel',{panel:'history',floating:true});return;}tab=element.dataset.tab;reading=false;render();return;}
+    if(element.dataset.tab){if(!await commitDraft())return;if(element.dataset.tab!=='history')embeddedGraph=false;if(native&&!panelWindow&&element.dataset.tab==='history'){await toggleHistoryPanel(invoke);return;}if(native&&panelWindow==='navigator'&&element.dataset.tab==='history'){await invoke('float_side_panel',{panel:'history',floating:true});return;}tab=element.dataset.tab;reading=false;render();return;}
     const action=element.dataset.action;closeMenus();
     if(action==='exportGraph'){if(!native||busy||!await commitDraft())return;closeMenus();busy=true;error='';render();try{const destination=await invoke('export_graph',{format:element.dataset.format,language});if(destination)status='exportReady';}catch(e){error=String(e);}finally{busy=false;render();}return;}
     if(action==='export'){
@@ -1123,10 +1131,11 @@ document.addEventListener('click',async event=>{
     if(action==='applyDraft' && pendingRemote){model=pendingRemote;pendingRemote=null;latestDetail=null;error='';await commitDraft();return;}
     if(action==='discardDraft'){draft=null;latestDetail=null;error='';await refresh();return;}
     if(!await commitDraft())return;
-    if(action==='graph')await invoke('canvas');
+    if(action==='graph'){if(!await commitDraft())return;embeddedGraph=!embeddedGraph;render();return;}
+    if(action==='floatGraph'){embeddedGraph=false;render();await invoke('canvas');}
     if(action==='backup'){backupPath=await invoke('backup');status='backupReady';render();}
     if(action==='float'||action==='dock')await invoke('panel',{floating:action==='float'});
-    if(action==='read'||action==='write'){reading=action==='read';render();}
+    if(action==='read'||action==='write'){embeddedGraph=false;reading=action==='read';render();}
   }catch(e){error=String(e);render();}
 });
 document.addEventListener('click',event=>{if(!event.target.closest('.app-menu'))closeMenus();});

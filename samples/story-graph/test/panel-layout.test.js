@@ -8,3 +8,17 @@ test('dock projection allocates each visible panel once and removes hidden track
  const vertical=dockGrid({navigator:'top',inspector:'bottom'});expect(vertical.rows).toBe('minmax(120px,25%) minmax(0,1fr) minmax(120px,25%)');
  const hidden=dockGrid({navigator:'top',inspector:'right'},{navigator:false,inspector:false});expect(hidden.columns).toBe('0px minmax(0,1fr) 0px');expect(hidden.areas).not.toContain('navigator');
 });
+
+test('editor and history can occupy independent center and side tracks',async()=>{
+ const {dockGrid}=await import('../src/panel-layout.js');
+ const grid=dockGrid({navigator:'top',inspector:'bottom',editor:'left',history:'center'},{navigator:true,inspector:true,editor:true,history:true});
+ expect(grid.areas).toBe('"navigator navigator navigator" "writing history ." "inspector inspector inspector"');
+ expect(grid.columns).toBe('var(--editor-width) minmax(0,1fr) 0px');
+ expect(panelWidth('editor',2000)).toBe(1200);expect(panelWidth('history',100)).toBe(240);
+});
+
+test('hiding the center panel returns available space to the editor without changing saved docks',async()=>{
+ const {dockGrid}=await import('../src/panel-layout.js');const docks={navigator:'right',inspector:'top',editor:'bottom',history:'center'};
+ const grid=dockGrid(docks,{navigator:true,inspector:false,editor:true,history:false});
+ expect(grid.areas).toBe('". . ." ". writing navigator" ". . ."');expect(grid.rows).toBe('0px minmax(0,1fr) 0px');expect(docks.editor).toBe('bottom');
+});

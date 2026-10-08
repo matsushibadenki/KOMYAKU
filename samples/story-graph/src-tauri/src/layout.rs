@@ -15,24 +15,41 @@ pub struct Layout {
     pub version: u8,
     pub navigator_width: f64,
     pub inspector_width: f64,
+    #[serde(default = "editor_width")]
+    pub editor_width: f64,
+    #[serde(default = "history_width")]
+    pub history_width: f64,
+    #[serde(default)]
+    pub history_visible: bool,
     pub windows: BTreeMap<String, Geometry>,
     #[serde(default = "default_docks")]
     pub docks: BTreeMap<String, String>,
     #[serde(default)]
     pub floating_panels: std::collections::BTreeSet<String>,
 }
+fn editor_width() -> f64 {
+    480.
+}
+fn history_width() -> f64 {
+    320.
+}
 fn default_docks() -> BTreeMap<String, String> {
     BTreeMap::from([
         ("navigator".into(), "left".into()),
         ("inspector".into(), "right".into()),
+        ("editor".into(), "center".into()),
+        ("history".into(), "bottom".into()),
     ])
 }
 impl Default for Layout {
     fn default() -> Self {
         Self {
-            version: 1,
+            version: 2,
             navigator_width: 210.,
             inspector_width: 235.,
+            editor_width: editor_width(),
+            history_width: history_width(),
+            history_visible: false,
             windows: BTreeMap::new(),
             docks: default_docks(),
             floating_panels: Default::default(),
@@ -40,24 +57,52 @@ impl Default for Layout {
     }
 }
 impl Layout {
+    fn migrate(mut self) -> std::result::Result<Self, String> {
+        if self.version == 1 {
+            if ![2, 4].contains(&self.docks.len())
+                || !["navigator", "inspector"]
+                    .iter()
+                    .all(|key| self.docks.contains_key(*key))
+            {
+                return Err("layout_invalid".into());
+            }
+            if self.docks.len() == 2 {
+                self.docks.insert("editor".into(), "center".into());
+                let position = ["bottom", "top", "right", "left"]
+                    .into_iter()
+                    .find(|position| !self.docks.values().any(|value| value == position))
+                    .ok_or("layout_invalid")?;
+                self.docks.insert("history".into(), position.into());
+            }
+            self.version = 2;
+        }
+        self.validate()?;
+        Ok(self)
+    }
     fn validate(&self) -> std::result::Result<(), String> {
-        if self.version != 1
+        if self.version != 2
             || !self.navigator_width.is_finite()
             || !self.inspector_width.is_finite()
             || !(180. ..=480.).contains(&self.navigator_width)
             || !(200. ..=480.).contains(&self.inspector_width)
-            || self.docks.len() != 2
-            || ["navigator", "inspector"].iter().any(|key| {
-                self.docks.get(*key).is_none_or(|position| {
-                    !["left", "right", "top", "bottom"].contains(&position.as_str())
+            || !self.editor_width.is_finite()
+            || !(320. ..=1200.).contains(&self.editor_width)
+            || !self.history_width.is_finite()
+            || !(240. ..=800.).contains(&self.history_width)
+            || self.docks.len() != 4
+            || ["navigator", "inspector", "editor", "history"]
+                .iter()
+                .any(|key| {
+                    self.docks.get(*key).is_none_or(|position| {
+                        !["left", "right", "top", "bottom", "center"].contains(&position.as_str())
+                    })
                 })
-            })
             || self
                 .docks
                 .values()
                 .collect::<std::collections::BTreeSet<_>>()
                 .len()
-                != 2
+                != 4
             || self.floating_panels.iter().any(|label| {
                 !["navigator", "inspector", "history", "editor"].contains(&label.as_str())
             })
@@ -109,7 +154,7 @@ impl Store {
             .ok()
             .filter(|bytes| bytes.len() <= 8192)
             .and_then(|bytes| serde_json::from_slice::<Layout>(&bytes).ok())
-            .filter(|v| v.validate().is_ok())
+            .and_then(|value| value.migrate().ok())
             .unwrap_or_default();
         let value = Arc::new(Mutex::new(value));
         let captured = value.clone();
@@ -250,12 +295,22 @@ impl Store {
         self.worker.request();
         Ok(next)
     }
+    pub fn history_visibility(&self, visible: bool) -> std::result::Result<Layout, String> {
+        let mut value = self.value.lock().map_err(|_| "layout_failed")?;
+        value.history_visible = visible;
+        let result = value.clone();
+        drop(value);
+        self.worker.request();
+        Ok(result)
+    }
     pub fn pane(&self, panel: &str, width: f64) -> std::result::Result<Layout, String> {
         let mut value = self.value.lock().map_err(|_| "layout_failed")?;
         let mut next = value.clone();
         match panel {
             "navigator" => next.navigator_width = width,
             "inspector" => next.inspector_width = width,
+            "editor" => next.editor_width = width,
+            "history" => next.history_width = width,
             _ => return Err("layout_invalid".into()),
         }
         next.validate()?;
@@ -303,9 +358,64 @@ pub fn dock_panel(
         .map_err(|_| "event_error")?;
     Ok(value)
 }
+#[tauri::command]
+pub fn set_history_visibility(
+    window: tauri::WebviewWindow,
+    store: tauri::State<Store>,
+    visible: bool,
+) -> std::result::Result<Layout, String> {
+    allowed(&window)?;
+    let value = store.history_visibility(visible)?;
+    window
+        .app_handle()
+        .emit("story://layout", &value)
+        .map_err(|_| "event_error")?;
+    Ok(value)
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn all_panels_swap_slots_and_legacy_layout_preserves_existing_docks() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("layout.json");
+        let mut legacy = serde_json::to_value(Layout::default()).unwrap();
+        legacy["version"] = json!(1);
+        legacy["docks"] = json!({"navigator":"top","inspector":"bottom"});
+        for key in ["editorWidth", "historyWidth", "historyVisible"] {
+            legacy.as_object_mut().unwrap().remove(key);
+        }
+        std::fs::write(&path, serde_json::to_vec(&legacy).unwrap()).unwrap();
+        let store = Store::load(path.clone()).unwrap();
+        let value = store.value().unwrap();
+        assert_eq!(value.docks["navigator"], "top");
+        assert_eq!(value.docks["inspector"], "bottom");
+        assert_eq!(value.docks["history"], "right");
+        let value = store.dock("editor", "top").unwrap();
+        assert_eq!(value.docks["navigator"], "center");
+        let value = store.dock("history", "top").unwrap();
+        assert_eq!(value.docks["editor"], "right");
+        store.pane("editor", 720.).unwrap();
+        store.pane("history", 280.).unwrap();
+        store.history_visibility(true).unwrap();
+        store.flush().unwrap();
+        assert_eq!(
+            Store::load(path).unwrap().value().unwrap(),
+            store.value().unwrap()
+        );
+    }
+    #[test]
+    fn legacy_without_docks_preserves_window_geometry() {
+        let mut value = serde_json::to_value(Layout::default()).unwrap();
+        value["version"] = json!(1);
+        value.as_object_mut().unwrap().remove("docks");
+        let mut legacy: Layout = serde_json::from_value(value).unwrap();
+        legacy.navigator_width = 321.;
+        let migrated = legacy.migrate().unwrap();
+        assert_eq!(migrated.navigator_width, 321.);
+        assert_eq!(migrated.version, 2);
+        assert_eq!(migrated.docks, default_docks());
+    }
     #[test]
     fn floating_restore_survives_shutdown_and_normal_close_redocks() {
         let dir = tempfile::tempdir().unwrap();
@@ -359,7 +469,7 @@ mod tests {
             vec!["navigator"]
         );
         assert_eq!(state.docks["inspector"], "left");
-        assert!(store.dock("navigator", "center").is_err());
+        assert!(store.dock("navigator", "invalid").is_err());
         assert!(store.dock("unknown", "top").is_err());
         assert!(store.pane("navigator", f64::NAN).is_err());
         assert!(store.pane("document", 250.).is_err());

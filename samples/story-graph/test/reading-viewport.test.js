@@ -59,3 +59,17 @@ test('reading resize retains a visible canonical character across changed chunk 
   viewport.restore(anchor);expect(root.scrollLeft).toBe(-10);
  }finally{globalThis.document=previous;}
 });
+
+test('visual reading boundaries retain emoji joins, combining marks and canonical CRLF',async()=>{
+ const {graphemeCut}=await import('../src/text-performance.js');
+ for(const cluster of ['か\u3099','👩🏽‍💻','🇯🇵','\r\n']){
+  const text='前'+cluster+'後';for(let cut=2;cut<1+cluster.length;cut++)expect(graphemeCut(text,cut)).toBe(1);
+  expect(graphemeCut(cluster+'後',1)).toBe(cluster.length);
+ }
+ expect(graphemeCut('abc',3)).toBe(3);expect(()=>graphemeCut('abc',-1)).toThrow();
+});
+
+test('cached Unicode boundaries progress through long clusters without truncating context',async()=>{
+ const {graphemeCuts}=await import('../src/text-performance.js');const cluster='か'+'\u3099'.repeat(200);const text='前'+cluster+'後';const cut=graphemeCuts(text);
+ expect(cut(100)).toBe(1);expect(cut(100,1)).toBe(202);expect(cut(202,202)).toBe(text.length);
+});

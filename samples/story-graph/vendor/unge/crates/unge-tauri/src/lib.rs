@@ -234,6 +234,16 @@ impl Engine {
         physical_size: [u32; 2],
         scale_factor: f64,
     ) -> ApiResult<bool> {
+        self.draw_surface(view, view, physical_size, scale_factor)
+    }
+    /// Render a projection to another Rust-owned native surface without copying frames.
+    pub fn draw_surface(
+        &self,
+        view: &str,
+        surface: &str,
+        physical_size: [u32; 2],
+        scale_factor: f64,
+    ) -> ApiResult<bool> {
         if !scale_factor.is_finite() || scale_factor <= 0.0 {
             return Err(ApiError::new("invalid_pointer", "invalid scale factor"));
         }
@@ -272,8 +282,8 @@ impl Engine {
             .lock()
             .map_err(|e| ApiError::new("state_unavailable", e))?;
         let renderer = renderers
-            .get_mut(view)
-            .ok_or_else(|| ApiError::new("renderer_unavailable", view))?;
+            .get_mut(surface)
+            .ok_or_else(|| ApiError::new("renderer_unavailable", surface))?;
         renderer
             .resize(physical_size)
             .map_err(|e| ApiError::new("gpu_error", e))?;

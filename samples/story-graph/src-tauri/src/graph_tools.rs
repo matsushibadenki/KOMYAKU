@@ -15,7 +15,7 @@ pub struct ToolState {
     pub form: Option<String>,
 }
 fn authorize(webview: &tauri::Webview) -> std::result::Result<(), String> {
-    if ["graph-rail", "graph-inspector"].contains(&webview.label()) {
+    if ["graph-rail", "graph-inspector", "controls"].contains(&webview.label()) {
         Ok(())
     } else {
         Err("unknown_view".into())
@@ -559,10 +559,9 @@ pub fn minimap_click(app: &tauri::AppHandle, engine: &Engine, position: [f32; 2]
     let Ok(view) = engine.view_state("controls") else {
         return false;
     };
-    let Ok(doc) = engine.snapshot() else {
-        return false;
-    };
-    let Some(bounds) = unge_render::minimap_bounds(doc.placement().values().copied()) else {
+    let Ok(Some(bounds)) = engine
+        .read_document(|doc, _| unge_render::minimap_bounds(doc.placement().values().copied()))
+    else {
         return false;
     };
     let Some(point) =

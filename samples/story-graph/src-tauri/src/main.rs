@@ -4,6 +4,7 @@ mod autosave;
 mod central_document;
 mod character_groups;
 mod chatgpt;
+mod docked_graph;
 mod domain;
 mod export;
 mod floating_panels;
@@ -175,10 +176,17 @@ fn labels(registry: &unge_executor::Registry) -> LabelCatalog {
         .collect()
 }
 fn redraw(app: &tauri::AppHandle) {
+    #[cfg(target_os = "macos")]
+    if objc2_foundation::MainThreadMarker::new().is_none() {
+        let main = app.clone();
+        let _ = app.run_on_main_thread(move || redraw(&main));
+        return;
+    }
     let Some(engine) = app.try_state::<Engine>() else {
         return;
     };
-    if let Some(canvas) = app.get_window("canvas")
+    if !docked_graph::visible()
+        && let Some(canvas) = app.get_window("canvas")
         && let Ok(size) = canvas.inner_size()
         && let Err(error) = engine.draw_scaled(
             "controls",
@@ -188,6 +196,7 @@ fn redraw(app: &tauri::AppHandle) {
     {
         eprintln!("{}: {}", error.code, error.message);
     }
+    docked_graph::redraw(app);
 }
 fn allowed(window: &tauri::WebviewWindow) -> std::result::Result<(), String> {
     if ["controls", "editor", "navigator", "inspector", "history"].contains(&window.label()) {
@@ -1680,6 +1689,7 @@ fn main() {
             layout::get_layout,
             layout::resize_panel,
             layout::dock_panel,
+            layout::set_history_visibility,
             narrative::narrative_report,
             narrative::narrative_knowledge,
             state_rules::state_query,
@@ -1719,6 +1729,9 @@ fn main() {
             export_manuscript,
             panel,
             canvas,
+            docked_graph::docked_graph_bounds,
+            docked_graph::docked_graph_pointer,
+            docked_graph::docked_graph_scroll,
             preferences::get_preferences,
             preferences::set_preferences,
             chatgpt::chatgpt_status,

@@ -50,10 +50,47 @@ fn hash(bytes: &[u8]) -> String {
         .map(|b| format!("{b:02x}"))
         .collect()
 }
+// Save exact SHA-256 contexts at fixed byte boundaries. A certified splice can
+// reuse only the unchanged prefix; the changed bytes and all later bytes are hashed.
+const HASH_STRIDE: usize = 64 * 1024;
+fn prefix_hash(
+    bytes: &[u8],
+    prefix: &[ring::digest::Context],
+    offset: usize,
+) -> (String, Vec<ring::digest::Context>) {
+    let index = (offset / HASH_STRIDE).min(prefix.len().saturating_sub(1));
+    let mut context = prefix
+        .get(index)
+        .cloned()
+        .unwrap_or_else(|| ring::digest::Context::new(&SHA256));
+    let mut contexts = if prefix.is_empty() {
+        vec![context.clone()]
+    } else {
+        prefix[..=index].to_vec()
+    };
+    let mut position = index * HASH_STRIDE;
+    while position < bytes.len() {
+        let end = (position + HASH_STRIDE).min(bytes.len());
+        context.update(&bytes[position..end]);
+        position = end;
+        if position.is_multiple_of(HASH_STRIDE) {
+            contexts.push(context.clone());
+        }
+    }
+    let hash = context
+        .finish()
+        .as_ref()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    (hash, contexts)
+}
 /// The checkpoint bytes are the generation identity; replay never mutates them.
 pub struct Journal {
     current: Vec<u8>,
     current_hash: String,
+    hash_prefixes: Vec<ring::digest::Context>,
+    prepared_prefixes: std::sync::Mutex<Option<(String, Vec<ring::digest::Context>)>>,
     sequence: u64,
 }
 pub struct Recovery {
@@ -67,9 +104,11 @@ impl Journal {
         if checkpoint.len() > LIMIT {
             return Err("limit_exceeded".into());
         }
-        let current_hash = hash(&checkpoint);
+        let (current_hash, hash_prefixes) = prefix_hash(&checkpoint, &[], 0);
         Ok(Self {
             current_hash,
+            hash_prefixes,
+            prepared_prefixes: std::sync::Mutex::new(None),
             current: checkpoint,
             sequence: 0,
         })
@@ -139,7 +178,11 @@ impl Journal {
         {
             return Err("limit_exceeded".into());
         }
-        let after = hash(next);
+        let (after, prefixes) = prefix_hash(next, &self.hash_prefixes, offset);
+        *self
+            .prepared_prefixes
+            .lock()
+            .map_err(|_| "journal_invalid")? = Some((after.clone(), prefixes));
         let mut record = Delta {
             version: 2,
             sequence: self.sequence + 1,
@@ -157,6 +200,15 @@ impl Journal {
         }
         bytes.push(b'\n');
         Ok((bytes, after))
+    }
+    fn adopt(&mut self, next: Vec<u8>, after: String) {
+        let prepared = self.prepared_prefixes.get_mut().ok().and_then(Option::take);
+        self.hash_prefixes = match prepared {
+            Some((hash, prefixes)) if hash == after => prefixes,
+            _ => prefix_hash(&next, &[], 0).1,
+        };
+        self.current = next;
+        self.current_hash = after;
     }
     pub fn commit(&mut self, record: &[u8]) -> Result<(), String> {
         if record.len() > LIMIT + 1 || record.last() != Some(&b'\n') || self.needs_checkpoint() {
@@ -189,11 +241,15 @@ impl Journal {
         next.extend_from_slice(&self.current[..delta.offset]);
         next.extend_from_slice(&delta.inserted);
         next.extend_from_slice(&self.current[end..]);
-        if hash(&next) != delta.after {
+        let (after, prefixes) = prefix_hash(&next, &self.hash_prefixes, delta.offset);
+        if after != delta.after {
             return Err("journal_invalid".into());
         }
-        self.current = next;
-        self.current_hash = delta.after;
+        *self
+            .prepared_prefixes
+            .get_mut()
+            .map_err(|_| "journal_invalid")? = Some((after, prefixes));
+        self.adopt(next, delta.after);
         self.sequence = delta.sequence;
         Ok(())
     }
@@ -811,8 +867,7 @@ impl Store {
         // prepare already computed both digests from these validated bytes.
         // After durable publication, adopt the exact source instead of parsing,
         // hashing and allocating the whole document again through replay.
-        recovery.journal.current = next;
-        recovery.journal.current_hash = after_hash;
+        recovery.journal.adopt(next, after_hash);
         recovery.journal.sequence += 1;
         recovery.valid_bytes += delta.len();
         recovery.incomplete_tail = false;
@@ -1174,6 +1229,79 @@ mod tests {
                 corrupt[index] = b'9';
                 assert!(Journal::recover(recovered.journal.current.clone(), &corrupt).is_err());
             }
+        }
+    }
+    #[test]
+    fn sha_prefix_reuse_preserves_full_digest_across_boundary_edits_and_recovery() {
+        let base = vec![b'a'; HASH_STRIDE * 8 + 17];
+        let mut journal = Journal::new(base.clone()).unwrap();
+        let mut records = Vec::new();
+        for offset in [
+            0,
+            1,
+            HASH_STRIDE - 1,
+            HASH_STRIDE,
+            HASH_STRIDE + 1,
+            HASH_STRIDE * 7,
+        ] {
+            for inserted in ["雨😀".as_bytes(), b"".as_slice(), b"x"] {
+                let mut next = journal.current.clone();
+                next.splice(offset..offset + 1, inserted.iter().copied());
+                let (record, digest) = journal.prepare_hashed(&next).unwrap();
+                assert_eq!(digest, hash(&next));
+                let before = journal.current_hash.clone();
+                let mut corrupt = record.clone();
+                corrupt[0] = b'!';
+                assert!(journal.commit(&corrupt).is_err());
+                assert_eq!(journal.current_hash, before);
+                journal.commit(&record).unwrap();
+                assert_eq!(journal.current_hash, hash(journal.bytes()));
+                assert_eq!(
+                    journal.hash_prefixes.len(),
+                    journal.bytes().len() / HASH_STRIDE + 1
+                );
+                records.extend(record);
+            }
+        }
+        let recovered = Journal::recover(base, &records).unwrap();
+        assert_eq!(recovered.journal.bytes(), journal.bytes());
+        assert_eq!(recovered.journal.current_hash, hash(journal.bytes()));
+        // Truncating the full suffix must remove stale contexts.
+        let mut next = journal.current.clone();
+        next.truncate(HASH_STRIDE + 5);
+        let record = journal.prepare(&next).unwrap();
+        journal.commit(&record).unwrap();
+        assert_eq!(journal.current_hash, hash(&next));
+        assert_eq!(journal.hash_prefixes.len(), 2);
+    }
+    #[test]
+    #[ignore = "manual exact SHA-256 prefix reuse benchmark"]
+    fn benchmark_sha_prefix_reuse() {
+        let bytes = vec![b'a'; 3_000_000];
+        let (_, prefixes) = prefix_hash(&bytes, &[], 0);
+        for offset in [0, bytes.len() / 2, bytes.len() - 100] {
+            let mut next = bytes.clone();
+            next[offset] = b'b';
+            let mut full = Vec::new();
+            let mut cached = Vec::new();
+            for _ in 0..100 {
+                let start = std::time::Instant::now();
+                let expected = hash(&next);
+                full.push(start.elapsed());
+                let start = std::time::Instant::now();
+                let actual = prefix_hash(&next, &prefixes, offset).0;
+                cached.push(start.elapsed());
+                assert_eq!(actual, expected);
+            }
+            full.sort();
+            cached.sort();
+            eprintln!(
+                "SHA exact prefix offset={offset} full_p50_us={} full_p95_us={} cached_p50_us={} cached_p95_us={}",
+                full[50].as_micros(),
+                full[95].as_micros(),
+                cached[50].as_micros(),
+                cached[95].as_micros()
+            );
         }
     }
     #[test]
