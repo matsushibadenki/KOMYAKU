@@ -790,7 +790,7 @@ function extendPointerSelection(event){
 }
 document.addEventListener('pointermove',extendPointerSelection);
 document.addEventListener('mousemove',event=>{if(pointerSelection?.drag)extendPointerSelection({pointerId:pointerSelection.pointer,buttons:event.buttons||1,clientX:event.clientX,clientY:event.clientY});});
-document.addEventListener('pointerup',event=>{
+function finishPointerSelection(event){
   const pending=pointerSelection;if(!pending||pending.pointer!==event.pointerId)return;
   // Read WebKit's native hit-tested caret after its pointer default action.
   requestAnimationFrame(()=>{
@@ -820,8 +820,12 @@ document.addEventListener('pointerup',event=>{
     const focus=pending.drag?pending.focus:caretPosition(input,input.selectionDirection==='backward'?input.selectionStart:input.selectionEnd);
     selectParagraphPosition(input,pointSelection(paragraphValue(input).length,pending.anchor,focus));
   });
-});
-document.addEventListener('pointercancel',()=>{cancelAnimationFrame(selectionScrollFrame);selectionScrollFrame=0;if(pointerSelection){pointerSelection=null;clearParagraphSelection();}});
+}
+document.addEventListener('pointerup',finishPointerSelection);
+document.addEventListener('mouseup',event=>{if(pointerSelection?.drag)finishPointerSelection({pointerId:pointerSelection.pointer,clientX:event.clientX,clientY:event.clientY});});
+function cancelPointerSelection(){cancelAnimationFrame(selectionScrollFrame);selectionScrollFrame=0;if(pointerSelection){pointerSelection=null;clearParagraphSelection();}}
+document.addEventListener('pointercancel',event=>{if(event.pointerType!=='mouse')cancelPointerSelection();});
+window.addEventListener('blur',cancelPointerSelection);
 // macOS Edit > Select All can select the native textarea without a DOM keydown.
 document.addEventListener('select',event=>{
   const input=event.target;if(reflowing||paintingSelection||pointerSelection||paragraphSelection||documentSelection||composing||!native||!input.dataset.block||input.closest('.dialogue-sheet')||!input.value.length||input.selectionStart!==0||input.selectionEnd!==input.value.length)return;
