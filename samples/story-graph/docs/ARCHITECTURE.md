@@ -236,3 +236,9 @@ captureSelectionReplacementはManuscriptViewport.replacementPartsでparagraphの
 Click picking samples the same cubic curve as the renderer, with an eight screen-pixel tolerance. Edge selection is ephemeral Engine view metadata, rendered as a colored halo. Reconnection is one Disconnect+Connect batch, so invalid ports, types or cycles roll back without losing the old cable; relationship endpoints cannot duplicate the other character. Form property changes are one validated batch and one Undo step. Saving uses the existing journal store and save worker retry notifications. No image/frame data crosses IPC.
 
 Hidden canvas panels return only a hidden marker instead of cloning the workspace projection on manuscript-save events. Opening the canvas emits a refresh event to resume the tools. Inspector metadata is read from the Rust snapshot without transferring scene canonical text.
+
+### 検証済み保存構造キャッシュ
+
+段落差分の保存では、検証済みのノード構造と本文以外のDocument／Graphメタデータを保持する。候補全文をJSONとして再解析せず、同じ段落IDの変更前後・その他のプロパティ・ポート・接続・配置を照合する。差分外の変更、重複、古い段落、64件超、大きい変更は全文serializerへ戻す。キャッシュの本文はfsync成功後、完全に一致する変更前段落だけを変更後の値へ置き換える。全文経路の成功時は構造を再構築し、同期失敗やファイルstamp変化時は既存の保存キャッシュと一緒に破棄する。
+
+構造は一世代分のノード内容を追加保持するため、常駐メモリが増える。変更のない本文を毎回parse・cloneする処理を削減する一方、構造照合・バイト列生成・SHA-256・Engine snapshotの全文処理は残る。RSSとrelease測定は次の工程。

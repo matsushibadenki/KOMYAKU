@@ -77,21 +77,39 @@ pub struct Scene {
     pub visible_edges: usize,
     pub portraits: Vec<std::sync::Arc<crate::Portrait>>,
 }
-// Hallmark · modern-minimal · cool editorial graph workbench
-// Pre-emit critique: P4 H5 E4 S4 R5 V4. Native GPU palette; no document changes.
-const CANVAS: [f32; 4] = [0.945, 0.953, 0.961, 1.];
-const PAPER: [f32; 4] = [0.995, 0.997, 1., 1.];
-const INK: [f32; 4] = [0.10, 0.15, 0.22, 1.];
-const MUTED: [f32; 4] = [0.26, 0.32, 0.40, 1.];
-const RULE: [f32; 4] = [0.80, 0.84, 0.89, 1.];
-const SCENE_SURFACE: [f32; 4] = [0.88, 0.93, 0.99, 1.];
-fn card_color(accent: [f32; 4]) -> [f32; 4] {
+// Hallmark · modern-minimal · mineral paper graph, user palette references
+// Pre-emit critique: P4 H5 E4 S5 R5 V4. Soft surfaces with crisp ink and edges.
+const fn rgb(hex: u32) -> [f32; 4] {
     [
-        0.72 + accent[0] * 0.28,
-        0.72 + accent[1] * 0.28,
-        0.72 + accent[2] * 0.28,
+        ((hex >> 16) & 255) as f32 / 255.,
+        ((hex >> 8) & 255) as f32 / 255.,
+        (hex & 255) as f32 / 255.,
         1.,
     ]
+}
+const CANVAS: [f32; 4] = rgb(0xf4f3ef);
+const PAPER: [f32; 4] = rgb(0xfcfbf7);
+const INK: [f32; 4] = rgb(0x292c36);
+const MUTED: [f32; 4] = rgb(0x4f5963);
+const RULE: [f32; 4] = rgb(0xb5bbb9);
+const SCENE_SURFACE: [f32; 4] = rgb(0xe5e1dd);
+const TEAL: [f32; 4] = rgb(0x407e8c);
+const SAGE: [f32; 4] = rgb(0x65704b);
+const GOLD: [f32; 4] = rgb(0x806b45);
+const SILVER: [f32; 4] = rgb(0x606e86);
+const PLUM: [f32; 4] = rgb(0x80677a);
+fn card_color(accent: [f32; 4]) -> [f32; 4] {
+    if accent == TEAL {
+        rgb(0xc0d5d6)
+    } else if accent == SAGE {
+        rgb(0xd4d3b3)
+    } else if accent == GOLD {
+        rgb(0xe5dcb1)
+    } else if accent == SILVER {
+        rgb(0xd5dbe4)
+    } else {
+        rgb(0xe3d6dd)
+    }
 }
 fn character_accent(id: Id) -> [f32; 4] {
     // Mix all UUID bits: IDs sharing a sequential suffix still have distinct colors.
@@ -105,11 +123,11 @@ fn character_accent(id: Id) -> [f32; 4] {
 /// Relationship colors are shared by badges, connectors and the character accent palette.
 fn relation_color(kind: &str) -> [f32; 4] {
     match kind {
-        "family" => [0.78, 0.25, 0.29, 1.],
-        "friend" => [0.20, 0.43, 0.77, 1.],
-        "rival" => [0.63, 0.40, 0.10, 1.],
-        "love" => [0.68, 0.29, 0.57, 1.],
-        _ => [0.12, 0.49, 0.43, 1.],
+        "family" => SILVER,
+        "friend" => TEAL,
+        "rival" => GOLD,
+        "love" => PLUM,
+        _ => SAGE,
     }
 }
 fn relation_name(kind: &str, locale: Locale) -> &str {
@@ -476,7 +494,7 @@ impl SceneIndex {
                     &mut scene,
                     points,
                     viewport.zoom,
-                    Some([0.15, 0.42, 0.90, 0.24]),
+                    Some([TEAL[0], TEAL[1], TEAL[2], 0.28]),
                     [edge.arrow_start, edge.arrow_end],
                 );
                 for quad in &mut scene.quads[start..] {
@@ -678,7 +696,8 @@ impl SceneIndex {
         let relation = node.type_id == "story.relationship";
         let accent = node.accent;
         // Shadows and selection live outside the unchanged interaction bounds.
-        for (spread, offset, alpha) in [(4., 4., 0.025), (2., 2., 0.04)] {
+        {
+            let (spread, offset, alpha) = (1., 2., 0.045);
             scene.quads.push(Quad::rectangle(
                 Rect {
                     x: rect.x - spread,
@@ -687,7 +706,7 @@ impl SceneIndex {
                     height: rect.height + spread * 2.,
                 },
                 [INK[0], INK[1], INK[2], alpha],
-                12. + spread,
+                8. + spread,
             ));
         }
         if selected {
@@ -699,13 +718,13 @@ impl SceneIndex {
                     height: rect.height + 8.,
                 },
                 [accent[0], accent[1], accent[2], 0.24],
-                16.,
+                12.,
             ));
         }
         scene.quads.push(Quad::rectangle(
             rect,
             if selected { accent } else { RULE },
-            12.,
+            8.,
         ));
         scene.quads.push(Quad::rectangle(
             Rect {
@@ -719,7 +738,7 @@ impl SceneIndex {
             } else {
                 SCENE_SURFACE
             },
-            10.5,
+            6.5,
         ));
         let mut text_x = rect.x + 16.;
         if character {
@@ -733,7 +752,7 @@ impl SceneIndex {
                 width: side,
                 height: side,
             };
-            let mut photo = Quad::rectangle(photo_rect, accent, 9.);
+            let mut photo = Quad::rectangle(photo_rect, accent, 5.);
             if let Some(portrait) = &node.portrait
                 && scene.portraits.len() < crate::PORTRAIT_SLOTS
             {

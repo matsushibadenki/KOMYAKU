@@ -213,6 +213,129 @@ fn stamp(path: &std::path::Path) -> Option<Stamp> {
         inode: meta.ino(),
     })
 }
+// Cache only verified structure; paragraph updates replace small values in place.
+struct Structure {
+    envelope: String,
+    nodes: std::collections::BTreeMap<unge_core::Id, unge_core::Node>,
+}
+fn envelope(doc: &unge_core::Document) -> String {
+    serde_json::to_string(&(
+        &doc.title,
+        doc.schema_version,
+        &doc.engine_version,
+        &doc.plugin_versions,
+        doc.graph().id,
+        &doc.graph().name,
+        doc.graph().edges(),
+        doc.graph().groups(),
+        doc.placement(),
+    ))
+    .expect("validated document metadata")
+}
+impl Structure {
+    fn new(doc: &unge_core::Document) -> Self {
+        Self {
+            envelope: envelope(doc),
+            nodes: doc.graph().nodes().clone(),
+        }
+    }
+    fn matches(
+        &self,
+        doc: &unge_core::Document,
+        patches: &[(serde_json::Value, serde_json::Value)],
+    ) -> bool {
+        use serde_json::Value;
+        if self.envelope != envelope(doc) || self.nodes.len() != doc.graph().nodes().len() {
+            return false;
+        }
+        let mut lookup = std::collections::BTreeMap::new();
+        for (index, (old, new)) in patches.iter().enumerate() {
+            if old["type"] != "paragraph" || new["type"] != "paragraph" || old["id"] != new["id"] {
+                return false;
+            }
+            let Some(id) = old["id"].as_str() else {
+                return false;
+            };
+            if lookup.insert(id, (index, old, new)).is_some() {
+                return false;
+            }
+        }
+        let mut seen = vec![0; patches.len()];
+        fn equal(
+            a: &Value,
+            b: &Value,
+            lookup: &std::collections::BTreeMap<&str, (usize, &Value, &Value)>,
+            seen: &mut [usize],
+        ) -> bool {
+            if a["type"] == "paragraph" {
+                if let Some((index, old, new)) = a["id"].as_str().and_then(|id| lookup.get(id)) {
+                    seen[*index] += 1;
+                    return a == *old && b == *new;
+                }
+                return a == b;
+            }
+            if a == b {
+                return true;
+            }
+            match (a, b) {
+                (Value::Object(a), Value::Object(b)) => {
+                    a.len() == b.len()
+                        && a.iter()
+                            .all(|(k, v)| b.get(k).is_some_and(|w| equal(v, w, lookup, seen)))
+                }
+                (Value::Array(a), Value::Array(b)) => {
+                    a.len() == b.len() && a.iter().zip(b).all(|(v, w)| equal(v, w, lookup, seen))
+                }
+                _ => false,
+            }
+        }
+        self.nodes.iter().all(|(id, a)| {
+            doc.graph().nodes().get(id).is_some_and(|b| {
+                a.id == b.id
+                    && a.type_id == b.type_id
+                    && a.inputs == b.inputs
+                    && a.outputs == b.outputs
+                    && a.properties.len() == b.properties.len()
+                    && a.properties.iter().all(|(k, v)| {
+                        b.properties
+                            .get(k)
+                            .is_some_and(|w| equal(v, w, &lookup, &mut seen))
+                    })
+            })
+        }) && seen.iter().all(|count| *count == 1)
+    }
+    fn advance(&mut self, patches: &[(serde_json::Value, serde_json::Value)]) {
+        fn replace(
+            value: &mut serde_json::Value,
+            patches: &[(serde_json::Value, serde_json::Value)],
+        ) {
+            if value["type"] == "paragraph" {
+                if let Some((_, new)) = patches.iter().find(|(old, _)| old == value) {
+                    *value = new.clone();
+                }
+                return;
+            }
+            match value {
+                serde_json::Value::Object(map) => {
+                    for v in map.values_mut() {
+                        replace(v, patches);
+                    }
+                }
+                serde_json::Value::Array(items) => {
+                    for v in items {
+                        replace(v, patches);
+                    }
+                }
+                _ => {}
+            }
+        }
+        for node in self.nodes.values_mut() {
+            for value in node.properties.values_mut() {
+                replace(value, patches);
+            }
+        }
+    }
+}
 struct Cache {
     path: std::path::PathBuf,
     journal_path: std::path::PathBuf,
@@ -220,12 +343,14 @@ struct Cache {
     journal_stamp: Option<Stamp>,
     recovery: Recovery,
     generation: Option<String>,
+    structure: Structure,
 }
 // Transform only supplied paragraph objects; accept only an exact canonical result.
 fn patched_bytes(
     current: &[u8],
     document: &unge_core::Document,
     patches: &[(serde_json::Value, serde_json::Value)],
+    structure: Option<&Structure>,
 ) -> Option<Vec<u8>> {
     if patches.is_empty() || patches.len() > 64 {
         return None;
@@ -265,9 +390,15 @@ fn patched_bytes(
     if next.len() > LIMIT {
         return None;
     }
-    let saved: crate::SavedWorkspace = serde_json::from_slice(&next).ok()?;
-    if saved.document != *document {
-        return None;
+    if let Some(structure) = structure {
+        if !structure.matches(document, patches) {
+            return None;
+        }
+    } else {
+        let saved: crate::SavedWorkspace = serde_json::from_slice(&next).ok()?;
+        if saved.document != *document {
+            return None;
+        }
     }
     Some(next)
 }
@@ -350,6 +481,7 @@ impl Store {
                     journal_path,
                     recovery,
                     generation: previous.generation,
+                    structure: Structure::new(&previous.document),
                 }
             }
         };
@@ -362,7 +494,14 @@ impl Store {
             version: u32,
             document: &'a unge_core::Document,
         }
-        let next = if let Some(bytes) = patched_bytes(recovery.journal.bytes(), document, patches) {
+        let partial = patched_bytes(
+            recovery.journal.bytes(),
+            document,
+            patches,
+            Some(&cache.structure),
+        );
+        let used_partial = partial.is_some();
+        let next = if let Some(bytes) = partial {
             bytes
         } else {
             let mut next = Vec::with_capacity(recovery.journal.bytes().len().saturating_add(1024));
@@ -430,6 +569,11 @@ impl Store {
         recovery.journal.sequence += 1;
         recovery.valid_bytes += delta.len();
         recovery.incomplete_tail = false;
+        if used_partial {
+            cache.structure.advance(patches);
+        } else {
+            cache.structure = Structure::new(document);
+        }
         cache.journal_stamp = stamp(&cache.journal_path);
         self.cache = Some(cache);
         Ok(())
@@ -537,7 +681,9 @@ mod tests {
                 let doc: unge_core::Document = serde_json::from_value(current.clone()).unwrap();
                 if mode == "paragraph_serializer" {
                     let bytes = read_workspace(&path).unwrap();
-                    assert!(patched_bytes(&bytes, &doc, &[(old.clone(), new.clone())]).is_some());
+                    assert!(
+                        patched_bytes(&bytes, &doc, &[(old.clone(), new.clone())], None).is_some()
+                    );
                 }
                 let start = std::time::Instant::now();
                 if mode == "full_serializer" {
@@ -579,13 +725,37 @@ mod tests {
         let new = p.clone();
         let next: unge_core::Document = serde_json::from_value(value).unwrap();
         let patches = vec![(old.clone(), new.clone())];
-        assert!(patched_bytes(&bytes, &next, &patches).is_some());
-        assert!(patched_bytes(&bytes, &next, &[(old.clone(), new.clone()), (old, new)]).is_none());
+        assert!(patched_bytes(&bytes, &next, &patches, None).is_some());
+        let mut structure = Structure::new(&doc);
+        assert!(patched_bytes(&bytes, &next, &patches, Some(&structure)).is_some());
+        assert!(!structure.matches(&next, &[]));
+        let mut hidden_change = serde_json::to_value(&next).unwrap();
+        let nodes = hidden_change["graph"]["nodes"].as_object_mut().unwrap();
+        let node = nodes.values_mut().next().unwrap();
+        node["properties"]["unlisted"] = serde_json::json!("must survive fallback");
+        let hidden_change = serde_json::from_value(hidden_change).unwrap();
+        assert!(patched_bytes(&bytes, &hidden_change, &patches, Some(&structure)).is_none());
+        assert!(!structure.matches(&next, &[patches[0].clone(), patches[0].clone()]));
+        structure.advance(&patches);
+        assert_eq!(structure.nodes, *next.graph().nodes());
+        assert!(structure.matches(&next, &[]));
+
+        assert!(
+            patched_bytes(
+                &bytes,
+                &next,
+                &[(old.clone(), new.clone()), (old, new)],
+                None
+            )
+            .is_none()
+        );
         let mut other = next.clone();
         other.title.push_str("別の変更");
-        assert!(patched_bytes(&bytes, &other, &patches).is_none());
+        assert!(patched_bytes(&bytes, &other, &patches, None).is_none());
+        assert!(!Structure::new(&doc).matches(&other, &patches));
         store.save_patched(&path, &next, &patches).unwrap();
         assert_eq!(crate::load(&path).unwrap(), next);
+        assert!(store.cache.as_ref().unwrap().structure.matches(&next, &[]));
         // Stale patch must save all other changes through the full serializer.
         store.save_patched(&path, &other, &patches).unwrap();
         assert_eq!(crate::load(&path).unwrap(), other);
