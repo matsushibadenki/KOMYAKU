@@ -1,9 +1,11 @@
 import { collectAssetIds, parseCanonicalDocument } from "@komyaku/document-schema";
+import { parseStoryWorkspace } from "@komyaku/story-graph";
 import { z } from "zod";
 
 export const KOMYAKU_ARCHIVE_MEDIA_TYPE = "application/vnd.komyaku.archive+zip";
 export const KOMYAKU_ARCHIVE_FORMAT_VERSION = 1;
 export const KOMYAKU_HISTORY_ARCHIVE_FORMAT_VERSION = 2;
+export const KOMYAKU_STORY_ARCHIVE_FORMAT_VERSION = 3;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const uuid = z.string().uuid();
@@ -64,6 +66,18 @@ export const HISTORY_ARCHIVE_COLLISION_POLICY = Object.freeze({
   branch: "reject-any-existing-id-or-name",
   asset: "deduplicate-only-when-id-media-type-size-and-sha256-match"
 });
+
+// v3 retains the independently verifiable v2 Document history and adds exact
+// composite snapshots for every Version. Old readers reject its major number.
+export const storyArchiveManifestSchema = z.object({
+  format: z.literal("komyaku-archive"), formatVersion: z.literal(3),
+  createdAt: z.string().datetime(), workspaceId: lowerUuid,
+  history: z.object({ path: z.literal("history/document-history.komyaku"),
+    byteSize: z.number().int().min(1).max(512 * 1024 * 1024), sha256: hex }).strict(),
+  workspaces: z.array(z.object({ versionId: lowerUuid,
+    path: z.string().regex(/^workspaces\/[0-9a-f-]{36}\.json$/),
+    byteSize: z.number().int().min(1).max(24 * 1024 * 1024), sha256: hex }).strict()).min(1).max(5000)
+}).strict();
 
 function crc32(bytes) {
   let crc = 0xffffffff;
@@ -462,4 +476,126 @@ export async function verifyKomyakuHistoryArchive(bytes, limits = {}) {
     archiveDigest: await digest(bytes),
     byteSize: bytes.byteLength
   });
+}
+
+function comparableJson(value) {
+  if (Array.isArray(value)) return value.map(comparableJson);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.keys(value).sort().map(key => [key, comparableJson(value[key])]));
+  }
+  return value;
+}
+
+function parseCompositeSnapshot(snapshotJson, workspaceId, document) {
+  let input;
+  try { input = JSON.parse(snapshotJson); } catch { throw new Error('invalid_story_archive_snapshot'); }
+  if (!input || Object.keys(input).length !== 4
+    || Object.keys(input).some(key => !['schemaId', 'schemaVersion', 'document', 'graph'].includes(key))) {
+    throw new Error('invalid_story_archive_snapshot');
+  }
+  const workspace = parseStoryWorkspace(input);
+  if (workspace.graph.id !== workspaceId
+    || JSON.stringify(comparableJson(workspace.document)) !== JSON.stringify(comparableJson(document))) {
+    throw new Error('story_archive_snapshot_mismatch');
+  }
+  return workspace;
+}
+
+function validateCompositeClosure(history, records) {
+  const versions = new Map(history.versions.map(version => [version.id, version]));
+  const ids = new Set(records.map(record => record.versionId));
+  if (ids.size !== records.length || records.length !== versions.size
+    || records.some(record => !versions.has(record.versionId))) {
+    throw new Error('story_archive_version_set_mismatch');
+  }
+  const snapshots = new Map(records.map(record => [record.versionId, record.snapshotJson]));
+  for (const version of history.versions) {
+    if (version.reason === 'restore'
+      && snapshots.get(version.id) !== snapshots.get(version.restoredFromVersionId)) {
+      throw new Error('story_archive_restore_mismatch');
+    }
+  }
+}
+
+export async function createKomyakuStoryArchive({ history, workspaceId, workspaces }) {
+  lowerUuid.parse(workspaceId);
+  if (!Array.isArray(workspaces) || workspaces.length < 1 || workspaces.length > 5000) {
+    throw new Error('invalid_story_archive_input');
+  }
+  const historyBytes = await createKomyakuHistoryArchive(history);
+  const verifiedHistory = await verifyKomyakuHistoryArchive(historyBytes);
+  validateCompositeClosure(verifiedHistory, workspaces);
+  const versions = new Map(verifiedHistory.versions.map(version => [version.id, version]));
+  const entries = [];
+  const records = [];
+  let total = historyBytes.byteLength;
+  for (const record of [...workspaces].sort((a, b) => a.versionId.localeCompare(b.versionId))) {
+    if (typeof record.snapshotJson !== 'string') throw new Error('invalid_story_archive_snapshot');
+    const bytes = encoder.encode(record.snapshotJson);
+    if (!bytes.byteLength || bytes.byteLength > 24 * 1024 * 1024) throw new Error('story_archive_snapshot_size_limit');
+    total += bytes.byteLength;
+    if (total > 512 * 1024 * 1024) throw new Error('story_archive_size_limit');
+    parseCompositeSnapshot(record.snapshotJson, workspaceId, versions.get(record.versionId).document);
+    const path = `workspaces/${record.versionId}.json`;
+    entries.push({ path, bytes });
+    records.push({ versionId: record.versionId, path, byteSize: bytes.byteLength, sha256: await digest(bytes) });
+  }
+  const manifest = storyArchiveManifestSchema.parse({
+    format: 'komyaku-archive', formatVersion: 3, createdAt: verifiedHistory.manifest.createdAt,
+    workspaceId, history: { path: 'history/document-history.komyaku',
+      byteSize: historyBytes.byteLength, sha256: await digest(historyBytes) }, workspaces: records
+  });
+  const archive = zipStore([
+    { path: 'mimetype', bytes: encoder.encode(KOMYAKU_ARCHIVE_MEDIA_TYPE) },
+    { path: 'manifest.json', bytes: encoder.encode(JSON.stringify(manifest)) },
+    { path: manifest.history.path, bytes: historyBytes }, ...entries
+  ]);
+  if (archive.byteLength > 512 * 1024 * 1024) throw new Error('story_archive_size_limit');
+  return archive;
+}
+
+export async function verifyKomyakuStoryArchive(bytes, limits = {}) {
+  // Policy overrides can tighten, never expand, the public contract budgets.
+  const effective = {
+    maxArchiveBytes: 512 * 1024 * 1024,
+    maxEntryBytes: 512 * 1024 * 1024,
+    maxEntries: 5003
+  };
+  for (const key of Object.keys(effective)) {
+    if (limits[key] !== undefined) {
+      if (!Number.isSafeInteger(limits[key]) || limits[key] < 1) throw new Error('invalid_story_archive_limit');
+      effective[key] = Math.min(effective[key], limits[key]);
+    }
+  }
+  const entries = readZipStore(bytes, effective);
+  let manifest;
+  try { manifest = storyArchiveManifestSchema.parse(JSON.parse(decoder.decode(entries.get('manifest.json') ?? new Uint8Array()))); }
+  catch { throw new Error('invalid_story_archive_manifest'); }
+  exactEntrySet(entries, new Set(['mimetype', 'manifest.json', manifest.history.path,
+    ...manifest.workspaces.map(record => record.path)]));
+  const historyBytes = entries.get(manifest.history.path);
+  if (!historyBytes || historyBytes.byteLength !== manifest.history.byteSize
+    || await digest(historyBytes) !== manifest.history.sha256) throw new Error('story_archive_history_integrity_mismatch');
+  const history = await verifyKomyakuHistoryArchive(historyBytes, {
+    maxArchiveBytes: effective.maxArchiveBytes, maxEntries: 10002,
+    maxEntryBytes: Math.min(effective.maxEntryBytes, 100 * 1024 * 1024)
+  });
+  if (history.manifest.createdAt !== manifest.createdAt) throw new Error('story_archive_history_mismatch');
+  const versions = new Map(history.versions.map(version => [version.id, version]));
+  const workspaces = [];
+  for (const record of manifest.workspaces) {
+    if (record.path !== `workspaces/${record.versionId}.json`) throw new Error('story_archive_snapshot_path_mismatch');
+    const content = entries.get(record.path);
+    if (!content || content.byteLength !== record.byteSize || await digest(content) !== record.sha256) {
+      throw new Error('story_archive_snapshot_integrity_mismatch');
+    }
+    if (!versions.has(record.versionId)) throw new Error('story_archive_version_set_mismatch');
+    const snapshotJson = decoder.decode(content);
+    const workspace = parseCompositeSnapshot(snapshotJson, manifest.workspaceId, versions.get(record.versionId).document);
+    workspaces.push(Object.freeze({ ...record, snapshotJson, snapshotBytes: content.slice(), workspace }));
+  }
+  validateCompositeClosure(history, workspaces);
+  return Object.freeze({ kind: 'story-history', manifest, history,
+    workspaceId: manifest.workspaceId, workspaces: Object.freeze(workspaces),
+    archiveDigest: await digest(bytes), byteSize: bytes.byteLength });
 }

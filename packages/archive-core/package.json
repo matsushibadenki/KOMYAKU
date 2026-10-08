@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@komyaku/document-schema": "workspace:*",
+    "@komyaku/story-graph": "workspace:*",
     "zod": "^4.1.5"
   }
 }

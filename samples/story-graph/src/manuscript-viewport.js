@@ -40,6 +40,10 @@ export class ManuscriptViewport {
       }
     },{root,rootMargin:'800px'});
     blocks.forEach(block=>this.register(block));
+    this.batchBlocks(blocks);
+  }
+  insertionAnchor(block){return this.blockGroups.get(block)?.node??block;}
+  batchBlocks(blocks){
     const parents=new Map();for(const block of blocks){const list=parents.get(block.parentElement)??[];list.push(block);parents.set(block.parentElement,list);}
     for(const [parent,list]of parents){if(list.length<64)continue;
       for(let start=0;start<list.length;start+=32){const members=list.slice(start,start+32),node=document.createElement('div');node.className='manuscript-batch';members[0].before(node);for(const block of members)node.append(block);
@@ -166,7 +170,7 @@ export class ManuscriptViewport {
   remove(block) {
     const scope=this.entries.get(block)?.scope??block.closest('.manuscript');
     this.observer.unobserve(block);this.entries.delete(block);
-    const group=this.blockGroups?.get(block);if(group){const index=group.blocks.indexOf(block);if(index>=0)group.blocks.splice(index,1);this.blockGroups.delete(block);if(group.collapsed)this.groupExtent(group);}
+    const group=this.blockGroups?.get(block);if(group){const index=group.blocks.indexOf(block);if(index>=0)group.blocks.splice(index,1);this.blockGroups.delete(block);if(!group.blocks.length){this.groupObserver.unobserve(group.node);this.groups.delete(group.node);group.node.remove();}else if(group.collapsed)this.groupExtent(group);}
     const peers=this.paragraphs.get(scope)?.get(block.dataset.paragraph);
     if(peers){const index=peers.indexOf(block);if(index>=0)peers.splice(index,1);}
   }

@@ -42,7 +42,12 @@ impl Format {
 enum Part {
     Heading(usize, String),
     Paragraph(String),
+    Rich(String, String),
+    RichHeading(usize, String, String),
+    RichContainer(String, String, Vec<Part>),
+    Image(String, String, String, f32, f32),
     Dialogue(String, String),
+    RichDialogue(String, String, String),
 }
 fn title(node: &Node) -> String {
     node.properties
@@ -85,42 +90,95 @@ fn append_scene(parts: &mut Vec<Part>, document: &Document, scene: &Node) -> Res
     parts.push(Part::Heading(4, title(scene)));
     let canonical = super::central_document::canonical(document, scene)?;
     domain::validate_text(canonical)?;
-    fn append(parts: &mut Vec<Part>, node: &serde_json::Value) {
-        match node["type"].as_str() {
-            Some("paragraph" | "code_block" | "image") => parts.push(Part::Paragraph(inline(node))),
-            Some("heading") => parts.push(Part::Heading(5, inline(node))),
-            Some("table")
-                if node["content"].as_array().is_some_and(|rows| {
-                    rows.len() == 1
-                        && rows[0]["content"].as_array().is_some_and(|cells| {
-                            cells.len() == 2
-                                && cells.iter().all(|cell| {
-                                    cell["content"].as_array().is_some_and(|v| {
-                                        v.len() == 1 && v[0]["type"] == "paragraph"
-                                    })
-                                })
-                        })
-                }) =>
-            {
-                let cells = &node["content"][0]["content"];
-                parts.push(Part::Dialogue(
-                    inline(&cells[0]["content"][0]),
-                    inline(&cells[1]["content"][0]),
-                ));
-            }
-            _ => {
-                if let Some(children) = node["content"].as_array() {
-                    for child in children {
-                        append(parts, child);
-                    }
-                }
-            }
-        }
-    }
     for node in canonical["content"].as_array().ok_or("invalid_document")? {
-        append(parts, node);
+        parts.push(rich_part(node, canonical));
     }
     Ok(())
+}
+fn rich_part(node: &serde_json::Value, canonical: &serde_json::Value) -> Part {
+    if node["type"] == "image" {
+        let data = canonical["extensions"]["komyaku.images"]
+            [node["assetId"].as_str().unwrap_or("")]
+        .as_str()
+        .unwrap_or("")
+        .to_owned();
+        Part::Image(
+            inline(node),
+            rich_markdown(node, canonical),
+            data,
+            node["width"].as_f64().unwrap_or(320.) as f32,
+            node["height"].as_f64().unwrap_or(240.) as f32,
+        )
+    } else if node["type"] == "table"
+        && node["content"].as_array().is_some_and(|rows| {
+            rows.len() == 1
+                && rows[0]["content"].as_array().is_some_and(|cells| {
+                    cells.len() == 2
+                        && cells.iter().all(|cell| {
+                            cell["content"]
+                                .as_array()
+                                .is_some_and(|v| v.len() == 1 && v[0]["type"] == "paragraph")
+                        })
+                })
+        })
+    {
+        let cells = &node["content"][0]["content"];
+        let plain = cells.as_array().unwrap().iter().all(|cell| {
+            cell["content"][0]["content"].as_array().is_some_and(|v| {
+                v.iter().all(|n| {
+                    n["type"] == "text" && n["marks"].as_array().is_some_and(Vec::is_empty)
+                })
+            })
+        });
+        if plain {
+            Part::Dialogue(inline(&cells[0]), inline(&cells[1]))
+        } else {
+            Part::RichDialogue(
+                inline(&cells[0]),
+                inline(&cells[1]),
+                rich_markdown(node, canonical),
+            )
+        }
+    } else if node["type"] == "paragraph"
+        && node["content"].as_array().is_some_and(|v| {
+            v.iter()
+                .all(|n| n["type"] == "text" && n["marks"].as_array().is_some_and(Vec::is_empty))
+        })
+    {
+        Part::Paragraph(inline(node))
+    } else if node["type"] == "heading" {
+        Part::RichHeading(5, inline(node), rich_markdown(node, canonical))
+    } else if let Some(children) = node["content"]
+        .as_array()
+        .filter(|_| !matches!(node["type"].as_str(), Some("paragraph" | "heading")))
+    {
+        Part::RichContainer(
+            inline(node),
+            rich_markdown(node, canonical),
+            children
+                .iter()
+                .map(|child| rich_part(child, canonical))
+                .collect(),
+        )
+    } else {
+        Part::Rich(inline(node), rich_markdown(node, canonical))
+    }
+}
+fn render_parts(parts: &[Part]) -> Vec<&Part> {
+    fn visit<'a>(part: &'a Part, out: &mut Vec<&'a Part>) {
+        if let Part::RichContainer(_, _, children) = part {
+            for child in children {
+                visit(child, out);
+            }
+        } else {
+            out.push(part);
+        }
+    }
+    let mut out = Vec::new();
+    for part in parts {
+        visit(part, &mut out);
+    }
+    out
 }
 #[derive(Clone, Debug, Default, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -267,6 +325,170 @@ fn markdown(value: &str) -> String {
     }
     out
 }
+fn rich_markdown(node: &serde_json::Value, doc: &serde_json::Value) -> String {
+    let children = || {
+        node["content"]
+            .as_array()
+            .map(|v| v.iter().map(|n| rich_markdown(n, doc)).collect::<Vec<_>>())
+            .unwrap_or_default()
+    };
+    match node["type"].as_str().unwrap_or("") {
+        "text" => {
+            let mut text = markdown(node["text"].as_str().unwrap_or(""));
+            if let Some(marks) = node["marks"].as_array() {
+                for mark in marks {
+                    text = match mark["type"].as_str().unwrap_or("") {
+                        "bold" => format!("**{text}**"),
+                        "italic" => format!("*{text}*"),
+                        "strike" => format!("~~{text}~~"),
+                        "underline" => format!("<u>{text}</u>"),
+                        "code" => format!("<code>{text}</code>"),
+                        "link" => format!(
+                            "[{text}](<{}>)",
+                            mark["href"]
+                                .as_str()
+                                .unwrap_or("")
+                                .replace('>', "%3E")
+                                .replace('<', "%3C")
+                        ),
+                        _ => text,
+                    };
+                }
+            }
+            text
+        }
+        "hard_break" => "  \n".into(),
+        "paragraph" => children().join(""),
+        "heading" => format!(
+            "{} {}",
+            "#".repeat(node["attrs"]["level"].as_u64().unwrap_or(2).min(6) as usize),
+            children().join("")
+        ),
+        "blockquote" => children()
+            .join("\n\n")
+            .lines()
+            .map(|s| format!("> {s}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        "bullet_list" | "ordered_list" => children()
+            .iter()
+            .enumerate()
+            .map(|(i, item)| {
+                let prefix = if node["type"] == "ordered_list" {
+                    format!(
+                        "{}. ",
+                        node["attrs"]["start"].as_u64().unwrap_or(1) + i as u64
+                    )
+                } else {
+                    "- ".into()
+                };
+                let indent = " ".repeat(prefix.len());
+                format!("{prefix}{}", item.replace('\n', &format!("\n{indent}")))
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        "code_block" => format!(
+            "<pre><code>{}</code></pre>",
+            xml(node["source"].as_str().unwrap_or(""))
+        ),
+        "horizontal_rule" => "---".into(),
+        "image" => {
+            let alt = markdown(node["altText"].as_str().unwrap_or(""));
+            let data = doc["extensions"]["komyaku.images"][node["assetId"].as_str().unwrap_or("")]
+                .as_str()
+                .unwrap_or("");
+            format!(
+                "![{alt}]({data})\n\n{}",
+                node["caption"]
+                    .as_array()
+                    .map(|v| v.iter().map(|n| rich_markdown(n, doc)).collect::<String>())
+                    .unwrap_or_default()
+            )
+        }
+        "table" => rich_html(node, doc),
+        "table_row" => format!("<tr>{}</tr>", children().join("")),
+        "table_cell" => format!(
+            "<td colspan=\"{}\" rowspan=\"{}\">{}</td>",
+            node["attrs"]["colspan"].as_u64().unwrap_or(1),
+            node["attrs"]["rowspan"].as_u64().unwrap_or(1),
+            children().join("<br>")
+        ),
+        _ => children().join("\n\n"),
+    }
+}
+fn rich_html(node: &serde_json::Value, doc: &serde_json::Value) -> String {
+    let children = || {
+        node["content"]
+            .as_array()
+            .map(|v| v.iter().map(|n| rich_html(n, doc)).collect::<String>())
+            .unwrap_or_default()
+    };
+    match node["type"].as_str().unwrap_or("") {
+        "text" => {
+            let mut text = xml(node["text"].as_str().unwrap_or(""));
+            for mark in node["marks"].as_array().into_iter().flatten() {
+                let tag = match mark["type"].as_str() {
+                    Some("bold") => "strong",
+                    Some("italic") => "em",
+                    Some("underline") => "u",
+                    Some("strike") => "s",
+                    Some("code") => "code",
+                    Some("link") => {
+                        text = format!(
+                            "<a href=\"{}\">{text}</a>",
+                            xml(mark["href"].as_str().unwrap_or(""))
+                        );
+                        continue;
+                    }
+                    _ => continue,
+                };
+                text = format!("<{tag}>{text}</{tag}>");
+            }
+            text
+        }
+        "hard_break" => "<br>".into(),
+        "paragraph" => format!("<p>{}</p>", children()),
+        "heading" => {
+            let level = node["attrs"]["level"].as_u64().unwrap_or(2).clamp(1, 6);
+            format!("<h{level}>{}</h{level}>", children())
+        }
+        "blockquote" => format!("<blockquote>{}</blockquote>", children()),
+        "bullet_list" => format!("<ul>{}</ul>", children()),
+        "ordered_list" => format!(
+            "<ol start=\"{}\">{}</ol>",
+            node["attrs"]["start"].as_u64().unwrap_or(1),
+            children()
+        ),
+        "list_item" => format!("<li>{}</li>", children()),
+        "table" => format!("<table>{}</table>", children()),
+        "table_row" => format!("<tr>{}</tr>", children()),
+        "table_cell" => format!(
+            "<td colspan=\"{}\" rowspan=\"{}\">{}</td>",
+            node["attrs"]["colspan"].as_u64().unwrap_or(1),
+            node["attrs"]["rowspan"].as_u64().unwrap_or(1),
+            children()
+        ),
+        "image" => format!(
+            "<figure><img src=\"{}\" alt=\"{}\"><figcaption>{}</figcaption></figure>",
+            xml(
+                doc["extensions"]["komyaku.images"][node["assetId"].as_str().unwrap_or("")]
+                    .as_str()
+                    .unwrap_or("")
+            ),
+            xml(node["altText"].as_str().unwrap_or("")),
+            node["caption"]
+                .as_array()
+                .map(|v| v.iter().map(|n| rich_html(n, doc)).collect::<String>())
+                .unwrap_or_default()
+        ),
+        "code_block" => format!(
+            "<pre><code>{}</code></pre>",
+            xml(node["source"].as_str().unwrap_or(""))
+        ),
+        "horizontal_rule" => "<hr>".into(),
+        _ => children(),
+    }
+}
 fn normalized(value: &str) -> String {
     value.replace("\r\n", "\n").replace('\r', "\n")
 }
@@ -279,11 +501,27 @@ fn serialize(parts: &[Part], md: bool, language: &str) -> String {
     let mut out = String::new();
     for part in parts {
         let text = match part {
+            Part::RichHeading(_, text, rich) => {
+                if md {
+                    rich.clone()
+                } else {
+                    text.clone()
+                }
+            }
             Part::Heading(level, text) => {
                 if md {
                     format!("{} {}", "#".repeat(*level), markdown(text))
                 } else {
                     text.clone()
+                }
+            }
+            Part::Rich(text, rich)
+            | Part::RichContainer(text, rich, _)
+            | Part::Image(text, rich, _, _, _) => {
+                if md {
+                    rich.clone()
+                } else {
+                    normalized(text)
                 }
             }
             Part::Paragraph(text) => {
@@ -293,7 +531,8 @@ fn serialize(parts: &[Part], md: bool, language: &str) -> String {
                     normalized(text)
                 }
             }
-            Part::Dialogue(name, text) => {
+            Part::RichDialogue(_, _, rich) if md => rich.clone(),
+            Part::Dialogue(name, text) | Part::RichDialogue(name, text, _) => {
                 if md {
                     format!(
                         "| {actor} | {dialogue} |\n| --- | --- |\n| {} | {} |",
@@ -422,6 +661,7 @@ struct Line {
     heading: bool,
     actor: Option<String>,
     actor_width: f32,
+    image: Option<(String, f32, f32)>,
 }
 fn wrap(text: &str, capacity: usize) -> Vec<String> {
     let mut lines = Vec::new();
@@ -465,9 +705,28 @@ fn pdf_configured(parts: &[Part], settings: &pdf_settings::Settings) -> Result<V
     let body_font = settings.font_size;
     let mut pages: Vec<Vec<Line>> = vec![Vec::new()];
     let mut used = 0.0;
-    for part in parts {
+    for part in render_parts(parts) {
+        if let Part::Image(_, _, data, w, h) = part
+            && !data.is_empty()
+        {
+            let scale = (usable / w.max(1.)).min(body_height / h.max(1.)).min(1.);
+            let (w, h) = (w * scale, h * scale);
+            if used + h > body_height && used > 0. {
+                pages.push(Vec::new());
+                used = 0.;
+            }
+            pages.last_mut().unwrap().push(Line {
+                text: String::new(),
+                size: h / 1.6,
+                heading: false,
+                actor: None,
+                actor_width: 0.,
+                image: Some((data.clone(), w, h)),
+            });
+            used += h;
+        }
         let (text, size, heading) = match part {
-            Part::Heading(level, text) => (
+            Part::Heading(level, text) | Part::RichHeading(level, text, _) => (
                 text.clone(),
                 match level {
                     1 => body_font * 2.,
@@ -477,10 +736,15 @@ fn pdf_configured(parts: &[Part], settings: &pdf_settings::Settings) -> Result<V
                 },
                 true,
             ),
-            Part::Paragraph(text) => (text.clone(), body_font, false),
-            Part::Dialogue(actor, text) => (format!("{actor}    {text}"), body_font, false),
+            Part::Paragraph(text)
+            | Part::Rich(text, _)
+            | Part::RichContainer(text, _, _)
+            | Part::Image(text, _, _, _, _) => (text.clone(), body_font, false),
+            Part::Dialogue(actor, text) | Part::RichDialogue(actor, text, _) => {
+                (format!("{actor}    {text}"), body_font, false)
+            }
         };
-        let actor_width = if let Part::Dialogue(actor, _) = part {
+        let actor_width = if let Part::Dialogue(actor, _) | Part::RichDialogue(actor, _, _) = part {
             normalized(actor)
                 .split('\n')
                 .map(|row| row.graphemes(true).count() as f32 * body_font)
@@ -489,23 +753,24 @@ fn pdf_configured(parts: &[Part], settings: &pdf_settings::Settings) -> Result<V
         } else {
             0.
         };
-        let lines: Vec<_> = if let Part::Dialogue(actor, text) = part {
-            let actors = wrap(actor, (actor_width / body_font) as usize);
-            let dialogue = wrap(text, ((usable - actor_width - body_font) / size) as usize);
-            (0..actors.len().max(dialogue.len()))
-                .map(|i| {
-                    (
-                        dialogue.get(i).cloned().unwrap_or_default(),
-                        actors.get(i).cloned(),
-                    )
-                })
-                .collect()
-        } else {
-            wrap(&text, (usable / size) as usize)
-                .into_iter()
-                .map(|text| (text, None))
-                .collect()
-        };
+        let lines: Vec<_> =
+            if let Part::Dialogue(actor, text) | Part::RichDialogue(actor, text, _) = part {
+                let actors = wrap(actor, (actor_width / body_font) as usize);
+                let dialogue = wrap(text, ((usable - actor_width - body_font) / size) as usize);
+                (0..actors.len().max(dialogue.len()))
+                    .map(|i| {
+                        (
+                            dialogue.get(i).cloned().unwrap_or_default(),
+                            actors.get(i).cloned(),
+                        )
+                    })
+                    .collect()
+            } else {
+                wrap(&text, (usable / size) as usize)
+                    .into_iter()
+                    .map(|text| (text, None))
+                    .collect()
+            };
         if heading && used + (lines.len() as f32 * size * 1.6) + 40. > body_height && used > 0. {
             pages.push(Vec::new());
             used = 0.;
@@ -521,6 +786,7 @@ fn pdf_configured(parts: &[Part], settings: &pdf_settings::Settings) -> Result<V
                 heading,
                 actor,
                 actor_width,
+                image: None,
             });
             used += size * 1.6;
         }
@@ -531,6 +797,7 @@ fn pdf_configured(parts: &[Part], settings: &pdf_settings::Settings) -> Result<V
                 heading: false,
                 actor: None,
                 actor_width: 0.,
+                image: None,
             });
             used += 9.6;
         }
@@ -543,6 +810,15 @@ fn pdf_configured(parts: &[Part], settings: &pdf_settings::Settings) -> Result<V
             settings.family()
         );
         for line in lines {
+            if let Some((data, w, h)) = &line.image {
+                svg.push_str(&format!(
+                    "<image x=\"{margin}\" y=\"{}\" width=\"{w}\" height=\"{h}\" href=\"{}\"/>",
+                    y - body_font,
+                    xml(data)
+                ));
+                y += h;
+                continue;
+            }
             let x = margin
                 + if line.actor_width > 0. {
                     line.actor_width + body_font
@@ -611,6 +887,51 @@ pub(super) fn svg_pdf(pages: &[String]) -> Result<Vec<u8>, String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn rich_markdown_preserves_authored_structure() {
+        let node = serde_json::json!({"type":"blockquote","content":[{"type":"paragraph","content":[{"type":"text","text":"太字 <本文>","marks":[{"type":"bold"}]}]},{"type":"bullet_list","content":[{"type":"list_item","content":[{"type":"paragraph","content":[{"type":"text","text":"項目"}]}]}]}]});
+        let result = super::rich_markdown(&node, &serde_json::Value::Null);
+        assert_eq!(result, "> **太字 &lt;本文&gt;**\n> \n> - 項目");
+        let image =
+            serde_json::json!({"type":"image","assetId":"portrait","altText":"写真","caption":[]});
+        let doc = serde_json::json!({"extensions":{"komyaku.images":{"portrait":"data:image/png;base64,AAA"}}});
+        assert!(super::rich_markdown(&image, &doc).contains("![写真](data:image/png;base64,AAA)"));
+    }
+
+    #[test]
+    fn rich_tables_keep_marks_and_nested_pdf_content() {
+        let node = serde_json::json!({"type":"table","content":[{"type":"table_row","content":[{"type":"table_cell","attrs":{"colspan":2,"rowspan":1},"content":[{"type":"paragraph","content":[{"type":"text","text":"<雨>","marks":[{"type":"bold"}]}]}]}]}]});
+        let markdown = super::rich_markdown(&node, &serde_json::Value::Null);
+        assert!(markdown.contains("<strong>&lt;雨&gt;</strong>"));
+        assert!(markdown.contains("colspan=\"2\""));
+        assert!(!markdown.contains("**"));
+        let nested = super::Part::RichContainer(
+            "plain".into(),
+            "rich".into(),
+            vec![
+                super::Part::Paragraph("before".into()),
+                super::Part::RichContainer(
+                    "inner".into(),
+                    "inner".into(),
+                    vec![super::Part::Image(
+                        "alt".into(),
+                        "caption".into(),
+                        "data".into(),
+                        120.,
+                        80.,
+                    )],
+                ),
+            ],
+        );
+        let parts = [nested];
+        let flattened = super::render_parts(&parts);
+        assert_eq!(flattened.len(), 2);
+        assert!(matches!(
+            flattened[1],
+            super::Part::Image(_, _, _, 120., 80.)
+        ));
+    }
+
     use super::*;
     #[test]
     fn scoped_exports_keep_structure_and_exclude_other_scenes() {
@@ -770,6 +1091,61 @@ mod tests {
         let empty = domain::blank_document(&registry, "ja").unwrap();
         assert!(!bytes(&empty, Format::Markdown, "ja").unwrap().is_empty());
         assert!(Format::parse("html").is_err());
+    }
+    #[test]
+    #[ignore = "PDF image integration fixture requires system fonts"]
+    fn rich_image_pdf_fixture() {
+        use base64::Engine;
+        let image = image::RgbImage::from_fn(120, 80, |x, y| {
+            if x < 60 {
+                image::Rgb([40, 126, 140])
+            } else {
+                image::Rgb([229, 220, (177 + y / 4) as u8])
+            }
+        });
+        let mut png = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgb8(image)
+            .write_to(&mut png, image::ImageFormat::Png)
+            .unwrap();
+        let data = format!(
+            "data:image/png;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(png.into_inner())
+        );
+        let parts = vec![
+            Part::Heading(4, "画像付きシーン".into()),
+            Part::RichContainer(
+                "画像の説明".into(),
+                String::new(),
+                vec![Part::Image(
+                    "画像の説明".into(),
+                    String::new(),
+                    data,
+                    240.,
+                    160.,
+                )],
+            ),
+            Part::Paragraph("画像の後の本文。".into()),
+        ];
+        for (name, bytes) in [
+            ("horizontal", pdf(&parts).unwrap()),
+            (
+                "vertical",
+                script_pdf::standard(&parts, &pdf_settings::Settings::default()).unwrap(),
+            ),
+            ("script", script_pdf::render(&parts).unwrap()),
+        ] {
+            let parsed = lopdf::Document::load_mem(&bytes).unwrap();
+            assert!(
+                parsed
+                    .objects
+                    .values()
+                    .any(|object| object.as_stream().is_ok_and(|stream| stream
+                        .dict
+                        .get(b"Subtype")
+                        .is_ok_and(|v| v.as_name().is_ok_and(|name| name == b"Image"))))
+            );
+            std::fs::write(format!("/private/tmp/komyaku-rich-image-{name}.pdf"), bytes).unwrap();
+        }
     }
     #[test]
     #[ignore = "Creates an isolated PDF for visual QA; requires system fonts"]

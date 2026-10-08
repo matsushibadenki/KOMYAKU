@@ -12,6 +12,9 @@ mod story_graph_validation;
 #[allow(dead_code)]
 mod story_workspace_store;
 
+#[allow(dead_code)]
+mod story_workspace_history;
+
 use image::{ImageFormat, ImageReader, Limits};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

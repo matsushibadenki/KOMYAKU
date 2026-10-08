@@ -42,3 +42,7 @@ Object.assign(messages['zh-CN'],{graphPreparing:'正在准备图表…'});
 Object.assign(messages.ja,{formatting:'書式',bold:'太字',italic:'斜体',underline:'下線',strike:'打ち消し',paragraph:'段落',heading:'見出し',quote:'引用',bulletList:'箇条書き',image:'画像'});
 Object.assign(messages.en,{formatting:'Formatting',bold:'Bold',italic:'Italic',underline:'Underline',strike:'Strikethrough',paragraph:'Paragraph',heading:'Heading',quote:'Quote',bulletList:'Bullet list',image:'Image'});
 Object.assign(messages['zh-CN'],{formatting:'格式',bold:'粗体',italic:'斜体',underline:'下划线',strike:'删除线',paragraph:'段落',heading:'标题',quote:'引用',bulletList:'项目列表',image:'图片'});
+
+Object.assign(messages.ja,{orderedList:'番号付きリスト',table:'表'});
+Object.assign(messages.en,{orderedList:'Numbered list',table:'Table'});
+Object.assign(messages['zh-CN'],{orderedList:'编号列表',table:'表格'});

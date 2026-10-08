@@ -15,3 +15,9 @@ Quit the app completely and confirm its process has exited. Relaunch the same bu
 - [Next] Independently exercise the ordinary editor's visible full-history export and file-picker import into an empty profile, then inspect its lineage graph. The deterministic runner validates native IPC and bytes; it does not exercise those controls.
 
 The app was not launched for this record because the macOS session was locked. Build and unit-test success do not count as packaged runtime evidence.
+
+## Follow-up — 2026-10-08
+
+[Done] The ordinary editor's full-history export, file-picker import into a fresh isolated receiver profile, lineage display, complete quit and relaunch passed native macOS verification. Exact immutable Snapshots, ordered parents, Branch heads and historical Asset bytes were checked. See [N3 verification](n3-document-history-verification-2026-10-08.md) for evidence and the receiver's initial default draft.
+
+[Pending] The dedicated deterministic runner described above was not rerun. Its own first/second-launch result remains unverified; the ordinary-control portability gate has independent native evidence.

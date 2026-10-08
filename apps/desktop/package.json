@@ -17,7 +17,9 @@
     "tauri": "tauri",
     "test:integration-retry:package": "tauri build --debug --bundles app --config src-tauri/tauri.integration-retry-qa.conf.json",
     "test:integration-ui:package": "tauri build --debug --bundles app --config src-tauri/tauri.integration-ui-qa.conf.json",
-    "test:editing:gate": "bun scripts/editing-qa-save-gate.mjs"
+    "test:editing:gate": "bun scripts/editing-qa-save-gate.mjs",
+    "test:workflow:package": "tauri build --debug --bundles app --config src-tauri/tauri.workflow-qa.conf.json",
+    "test:archive-receiver:package": "tauri build --debug --bundles app --config src-tauri/tauri.archive-receiver-qa.conf.json"
   },
   "dependencies": {
     "@komyaku/archive-core": "workspace:*",

@@ -8,8 +8,8 @@ export function frameSummary(values) {
 export async function installPerformanceQA({native,invoke}) {
  if(!native||!await invoke('performance_qa_enabled'))return;
  let frame=null,previous=null,values=[],kind='idle';
- const finish=()=>{const summary=frameSummary(values);if(summary&&summary.samples>=8)invoke('performance_qa_sample',{sample:{...summary,kind,vertical:Boolean(document.querySelector('.vertical-writing')),blocks:document.querySelectorAll('.manuscript-block').length,batches:document.querySelectorAll('.manuscript-batch').length,inputs:document.querySelectorAll('textarea[data-block]').length}}).catch(()=>{});};
+ const finish=()=>{const summary=frameSummary(values);if(summary&&summary.samples>=8)invoke('performance_qa_sample',{sample:{...summary,kind,vertical:Boolean(document.querySelector('.vertical-writing')),blocks:document.querySelectorAll('.manuscript-block,.rich-editor .ProseMirror p,.rich-editor .ProseMirror h1,.rich-editor .ProseMirror h2').length,batches:document.querySelectorAll('.manuscript-batch').length,inputs:document.querySelectorAll('textarea[data-block],.rich-editor .ProseMirror').length}}).catch(()=>{});};
  const tick=time=>{if(previous!==null)values.push(time-previous);previous=time;if(values.length>=120){frame=null;finish();return;}frame=requestAnimationFrame(tick);};
- const start=event=>{if(frame!==null){cancelAnimationFrame(frame);finish();}kind=event?.type??'idle';values=[];previous=null;frame=requestAnimationFrame(tick);};
- window.addEventListener('wheel',start,{passive:true});window.addEventListener('resize',start,{passive:true});start();
+ const start=event=>{const next=event?.type??'idle';if(frame!==null&&kind===next)return;if(frame!==null){cancelAnimationFrame(frame);finish();}kind=next;values=[];previous=null;frame=requestAnimationFrame(tick);};
+ window.addEventListener('wheel',start,{passive:true});window.addEventListener('resize',start,{passive:true});window.addEventListener('scroll',start,{passive:true,capture:true});window.addEventListener('input',start,{passive:true,capture:true});window.addEventListener('paste',start,{passive:true,capture:true});start();
 }

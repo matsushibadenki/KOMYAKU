@@ -1,5 +1,11 @@
 import {canonicalPosition,graphemeCut,graphemeCuts} from './text-performance.js';
 import {estimatedExtent,estimatedDialogueExtent} from './manuscript-viewport.js';
+// Styled inline nodes share one logical text offset for scroll restoration.
+function textRange(element,index){
+ const walker=document.createTreeWalker(element,NodeFilter.SHOW_TEXT);let node,remaining=index,last;
+ while((node=walker.nextNode())){last=node;if(remaining<node.length){const range=document.createRange();range.setStart(node,remaining);range.setEnd(node,Math.min(remaining+1,node.length));return range;}remaining-=node.length;}
+ if(last){const range=document.createRange();range.setStart(last,last.length);range.collapse(true);return range;}return null;
+}
 // Group whole canonical paragraphs: virtualization never invents paragraph breaks.
 export function readingChunks(blocks,limit=32768,maxBlocks=32) {
  const chunks=[];let current=[],size=0;
@@ -33,7 +39,7 @@ export class ReadingViewport {
    const first=paragraph(selection.anchorNode),last=paragraph(selection.focusNode);
    if(!first?.dataset.readingBlock||!last?.dataset.readingBlock)return;
    const source=blocks.find(block=>block.id===first.dataset.readingBlock);if(!source)return;
-   const position=(element,node,offset)=>{const range=document.createRange();range.selectNodeContents(element);range.setEnd(node,offset);const start=Number(element.dataset.readingStart),part=blocks.find(block=>block.id===element.dataset.readingBlock&&(block.kind!=='paragraph'||(block.sourceStart??0)===start));const text=element.dataset.readingCell!==undefined?part.texts[Number(element.dataset.readingCell)]:part.text;return start+canonicalPosition(text,range.toString().length);};
+   const position=(element,node,offset)=>{const range=document.createRange();range.selectNodeContents(element);range.setEnd(node,offset);const start=Number(element.dataset.readingStart),part=blocks.find(block=>block.id===element.dataset.readingBlock&&(block.kind!=='paragraph'||(block.sourceStart??0)===start));const text=element.dataset.readingCell!==undefined?part.texts[Number(element.dataset.readingCell)]:part.text;return start+canonicalPosition(element.dataset.readingTableCell!==undefined?text.slice(start):text,range.toString().length);};
    const anchor=position(first,selection.anchorNode,selection.anchorOffset),focus=position(last,selection.focusNode,selection.focusOffset);
    const text=readingSelectionText(blocks,{id:first.dataset.readingBlock,offset:anchor},{id:last.dataset.readingBlock,offset:focus});
    if(text===null)return;event.preventDefault();event.clipboardData.setData('text/plain',text);
@@ -51,14 +57,14 @@ export class ReadingViewport {
    const rect=node.getBoundingClientRect();if(!(this.vertical?rect.left<bounds.right&&rect.right>bounds.left:rect.top<bounds.bottom&&rect.bottom>bounds.top))continue;
    for(const element of node.querySelectorAll?.('[data-reading-block]')??[]){
     const visible=element.getBoundingClientRect();if(!(this.vertical?visible.left<bounds.right&&visible.right>bounds.left:visible.top<bounds.bottom&&visible.bottom>bounds.top))continue;
-    const text=element.firstChild;if(text?.nodeType!==3||!text.length)continue;
-    const range=document.createRange();let low=0,high=text.length-1;
-    const coordinate=index=>{range.setStart(text,index);range.setEnd(text,index+1);return range.getBoundingClientRect();};
+    const text=element.textContent;if(!text.length)continue;
+    let low=0,high=text.length-1;
+    const coordinate=index=>{const range=textRange(element,index);const rect=range.getBoundingClientRect();range.detach();return rect;};
     while(low<high){const middle=(low+high)>>1,r=coordinate(middle);if(this.vertical?r.left>=bounds.right:r.bottom<=bounds.top)low=middle+1;else high=middle;}
-    if(low>0&&/[\uDC00-\uDFFF]/.test(text.data[low]))low--;
+    if(low>0&&/[\uDC00-\uDFFF]/.test(text[low]))low--;
     const r=coordinate(low),start=Number(element.dataset.readingStart),part=entry.blocks.find(block=>block.id===element.dataset.readingBlock&&(block.kind!=='paragraph'||(block.sourceStart??0)===start));
-    range.detach();if(!part)continue;
-    const original=element.dataset.readingCell!==undefined?part.texts[Number(element.dataset.readingCell)]:part.text;
+    if(!part)continue;
+    const original=element.dataset.readingCell!==undefined?part.texts[Number(element.dataset.readingCell)]:element.dataset.readingTableCell!==undefined?part.text.slice(start):part.text;
     return {id:part.id,start:start+canonicalPosition(original,low),offset:this.vertical?r.right-bounds.right:r.top-bounds.top,character:true};
    }
    const first=entry.blocks[0];return {id:first.id,text:first.text,start:first.sourceStart??0,offset:this.vertical?rect.right-bounds.right:rect.top-bounds.top};
@@ -73,10 +79,10 @@ export class ReadingViewport {
    for(const element of node.querySelectorAll?.('[data-reading-block]')??[]){
     if(element.dataset.readingBlock!==anchor.id)continue;
     const start=Number(element.dataset.readingStart),part=entry.blocks.find(block=>block.id===anchor.id&&(block.kind!=='paragraph'||(block.sourceStart??0)===start));
-    const original=element.dataset.readingCell!==undefined?part?.texts[Number(element.dataset.readingCell)]:part?.text;
-    if(original===undefined||anchor.start<start||anchor.start>start+original.length||element.firstChild?.nodeType!==3)continue;
-    const index=original.slice(0,anchor.start-start).replace(/\r\n?/g,'\n').length,range=document.createRange(),text=element.firstChild;
-    range.setStart(text,Math.min(index,text.length));range.setEnd(text,Math.min(index+1,text.length));rect=range.getBoundingClientRect();range.detach();break;
+    const original=element.dataset.readingCell!==undefined?part?.texts[Number(element.dataset.readingCell)]:element.dataset.readingTableCell!==undefined?part?.text.slice(start):part?.text;
+    if(original===undefined||anchor.start<start||anchor.start>start+original.length)continue;
+    const index=original.slice(0,anchor.start-start).replace(/\r\n?/g,'\n').length,range=textRange(element,index);
+    if(!range)continue;rect=range.getBoundingClientRect();range.detach();break;
    }
   }
   if(this.vertical)this.root.scrollLeft+=rect.right-bounds.right-anchor.offset;else this.root.scrollTop+=rect.top-bounds.top-anchor.offset;

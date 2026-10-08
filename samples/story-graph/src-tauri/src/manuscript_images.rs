@@ -44,7 +44,11 @@ fn normalize(path: &Path) -> Result<Asset, String> {
         .unwrap_or(image::metadata::Orientation::NoTransforms);
     let mut image = image::DynamicImage::from_decoder(decoder).map_err(|_| "portrait_invalid")?;
     image.apply_orientation(orientation);
-    let image = image.thumbnail(1536, 1536);
+    let image = if image.width() > 1536 || image.height() > 1536 {
+        image.thumbnail(1536, 1536)
+    } else {
+        image
+    };
     let width = image.width();
     let height = image.height();
     let mut png = Cursor::new(Vec::new());
@@ -89,6 +93,9 @@ mod tests {
         let asset = normalize(&path).unwrap();
         assert_eq!((asset.width, asset.height), (1536, 768));
         assert!(asset.data.starts_with("data:image/png;base64,"));
+        image::RgbImage::new(120, 80).save(&path).unwrap();
+        let small = normalize(&path).unwrap();
+        assert_eq!((small.width, small.height), (120, 80));
         std::fs::write(&path, b"<svg/>").unwrap();
         assert!(normalize(&path).is_err());
     }

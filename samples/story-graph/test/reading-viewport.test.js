@@ -46,18 +46,19 @@ test('reading copy accepts heading and dialogue endpoints in either direction',a
 });
 test('reading resize retains a visible canonical character across changed chunk boundaries',async()=>{
  const {ReadingViewport}=await import('../src/reading-viewport.js');
- const previous=globalThis.document;let changed=false,rangeStart=0;
- globalThis.document={createRange:()=>({setStart:(_,index)=>rangeStart=index,setEnd(){},detach(){},getBoundingClientRect:()=>changed?{left:570,right:580,top:0,bottom:20}:rangeStart<3?{left:600,right:610,top:0,bottom:20}:{left:480,right:490,top:0,bottom:20}})};
+ const previous=globalThis.document,previousFilter=globalThis.NodeFilter;let changed=false,rangeStart=0;
+ globalThis.document={createTreeWalker:element=>{let read=false;return {nextNode:()=>read?null:(read=true,element.firstChild)};},createRange:()=>({setStart:(_,index)=>rangeStart=index,setEnd(){},detach(){},getBoundingClientRect:()=>changed?{left:570,right:580,top:0,bottom:20}:rangeStart<3?{left:600,right:610,top:0,bottom:20}:{left:480,right:490,top:0,bottom:20}})};
  try {
   const root={scrollLeft:-100,getBoundingClientRect:()=>({left:0,right:500,top:0,bottom:500})};
-  const element={dataset:{readingBlock:'p',readingStart:'0'},firstChild:{nodeType:3,length:7,data:'aa\nbbcc'},getBoundingClientRect:()=>({left:0,right:700,top:0,bottom:500})};
+  globalThis.NodeFilter={SHOW_TEXT:4};
+  const element={get textContent(){return this.firstChild.data;},dataset:{readingBlock:'p',readingStart:'0'},firstChild:{nodeType:3,length:7,data:'aa\nbbcc'},getBoundingClientRect:()=>({left:0,right:700,top:0,bottom:500})};
   const node={getBoundingClientRect:element.getBoundingClientRect,querySelectorAll:()=>[element]};
   const viewport=Object.create(ReadingViewport.prototype);Object.assign(viewport,{root,vertical:true,entries:new Map([[node,{blocks:[{id:'p',kind:'paragraph',text:'aa\r\nbbcc'}]}]])});
   const anchor=viewport.anchor();expect(anchor.start).toBe(4);expect(anchor.offset).toBe(-10);expect(anchor.character).toBe(true);
   changed=true;element.dataset.readingStart='4';element.firstChild={nodeType:3,length:4,data:'bbcc'};
   viewport.entries=new Map([[node,{blocks:[{id:'p',kind:'paragraph',sourceStart:4,text:'bbcc'}]}]]);viewport.mount=()=>{};
   viewport.restore(anchor);expect(root.scrollLeft).toBe(-10);
- }finally{globalThis.document=previous;}
+ }finally{globalThis.document=previous;globalThis.NodeFilter=previousFilter;}
 });
 
 test('visual reading boundaries retain emoji joins, combining marks and canonical CRLF',async()=>{
@@ -72,4 +73,20 @@ test('visual reading boundaries retain emoji joins, combining marks and canonica
 test('cached Unicode boundaries progress through long clusters without truncating context',async()=>{
  const {graphemeCuts}=await import('../src/text-performance.js');const cluster='か'+'\u3099'.repeat(200);const text='前'+cluster+'後';const cut=graphemeCuts(text);
  expect(cut(100)).toBe(1);expect(cut(100,1)).toBe(202);expect(cut(202,202)).toBe(text.length);
+});
+
+test('styled reading restoration crosses bold and combined-number text nodes',async()=>{
+ const {ReadingViewport}=await import('../src/reading-viewport.js');
+ const previous=globalThis.document,filter=globalThis.NodeFilter;let selected;
+ const nodes=['前','12','後😀'].map(data=>({data,length:data.length}));
+ globalThis.NodeFilter={SHOW_TEXT:4};
+ globalThis.document={createTreeWalker:()=>{let i=0;return{nextNode:()=>nodes[i++]??null};},createRange:()=>({setStart:(node,index)=>selected={node,index},setEnd(){},collapse(){},detach(){},getBoundingClientRect:()=>({top:40,bottom:60,left:0,right:20})})};
+ try{
+  const element={textContent:'前12後😀',dataset:{readingBlock:'styled',readingStart:'0'}};
+  const node={querySelectorAll:()=>[element],getBoundingClientRect:()=>({top:0,bottom:100})};
+  const root={scrollTop:0,getBoundingClientRect:()=>({top:0,bottom:100})};
+  const viewport=Object.create(ReadingViewport.prototype);Object.assign(viewport,{root,vertical:false,mount:()=>{},entries:new Map([[node,{blocks:[{id:'styled',kind:'paragraph',text:element.textContent}]}]])});
+  viewport.restore({id:'styled',start:3,offset:10,character:true});
+  expect(selected.node).toBe(nodes[2]);expect(selected.index).toBe(0);expect(root.scrollTop).toBe(30);
+ }finally{globalThis.document=previous;globalThis.NodeFilter=filter;}
 });

@@ -191,6 +191,15 @@ impl<'a> Walker<'a> {
                 .parts
                 .push(node["source"].as_str().ok_or("invalid_document")?),
             Some("image") => {
+                for key in ["width", "height"] {
+                    if !node[key].is_null()
+                        && !node[key]
+                            .as_f64()
+                            .is_some_and(|v| v.is_finite() && v > 0. && v <= 16384.)
+                    {
+                        return Err("invalid_document".into());
+                    }
+                }
                 node["assetId"]
                     .as_str()
                     .ok_or("invalid_document")?

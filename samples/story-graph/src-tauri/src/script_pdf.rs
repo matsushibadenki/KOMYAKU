@@ -1,5 +1,5 @@
 //! Portrait screenplay layout. Scene frames and prose share the same column flow.
-use super::{Part, normalized, pdf_settings::Settings, svg_pdf, wrap, xml};
+use super::{Part, normalized, pdf_settings::Settings, render_parts, svg_pdf, xml};
 use unicode_segmentation::UnicodeSegmentation;
 #[path = "vertical_glyphs.rs"]
 mod vertical_glyphs;
@@ -62,6 +62,12 @@ impl Layout {
 }
 #[derive(Debug)]
 enum Item {
+    Image {
+        caption: String,
+        data: String,
+        width: f32,
+        height: f32,
+    },
     Scene {
         number: usize,
         title: String,
@@ -74,6 +80,13 @@ enum Item {
 }
 #[derive(Debug)]
 enum Column {
+    Image {
+        x: f32,
+        top: f32,
+        data: String,
+        width: f32,
+        height: f32,
+    },
     Frame {
         right: f32,
         width: f32,
@@ -88,8 +101,8 @@ enum Column {
 }
 fn items(parts: &[Part]) -> Vec<Item> {
     let mut number = 0;
-    parts
-        .iter()
+    render_parts(parts)
+        .into_iter()
         .filter_map(|part| match part {
             Part::Heading(4, title) => {
                 number += 1;
@@ -98,12 +111,22 @@ fn items(parts: &[Part]) -> Vec<Item> {
                     title: title.clone(),
                 })
             }
-            Part::Paragraph(text) => Some(Item::Text {
+            Part::Image(caption, _, data, width, height) if !data.is_empty() => Some(Item::Image {
+                caption: caption.clone(),
+                data: data.clone(),
+                width: *width,
+                height: *height,
+            }),
+            Part::Paragraph(text)
+            | Part::RichHeading(_, text, _)
+            | Part::Rich(text, _)
+            | Part::RichContainer(text, _, _)
+            | Part::Image(text, _, _, _, _) => Some(Item::Text {
                 text: text.clone(),
                 stage: true,
                 actor_length: 0,
             }),
-            Part::Dialogue(actor, text) => Some(Item::Text {
+            Part::Dialogue(actor, text) | Part::RichDialogue(actor, text, _) => Some(Item::Text {
                 text: format!("{}「{}」", normalized(actor).replace('\n', "　"), text),
                 stage: false,
                 actor_length: normalized(actor)
@@ -114,6 +137,31 @@ fn items(parts: &[Part]) -> Vec<Item> {
             _ => None,
         })
         .collect()
+}
+fn wrap(text: &str, capacity: usize) -> Vec<String> {
+    let mut result = Vec::new();
+    for line in normalized(text).split('\n') {
+        let cells = vertical_glyphs::vertical_cells(line);
+        if cells.is_empty() {
+            result.push(String::new());
+            continue;
+        }
+        let mut start = 0;
+        while start < cells.len() {
+            let mut end = (start + capacity.max(1)).min(cells.len());
+            if end < cells.len() {
+                while end > start + 1
+                    && ("、。，．！？!?)]）］｝」』】〉》”’".contains(cells[end])
+                        || "([（［｛「『【〈《“‘".contains(cells[end - 1]))
+                {
+                    end -= 1;
+                }
+            }
+            result.push(cells[start..end].concat());
+            start = end;
+        }
+    }
+    result
 }
 fn capacity(top: f32, l: &Layout) -> usize {
     ((l.bottom - top - l.font) / l.advance).floor() as usize + 1
@@ -127,6 +175,44 @@ fn layout_configured(parts: &[Part], l: &Layout) -> Vec<Vec<Column>> {
     let mut cursor = l.right;
     for item in items(parts) {
         match item {
+            Item::Image {
+                caption,
+                data,
+                width,
+                height,
+            } => {
+                let scale = ((l.right - l.left) / width.max(1.))
+                    .min((l.bottom - l.text_top) / height.max(1.))
+                    .min(1.);
+                let (width, height) = (width * scale, height * scale);
+                if cursor - width < l.left {
+                    pages.push(Vec::new());
+                    cursor = l.right;
+                }
+                pages.last_mut().unwrap().push(Column::Image {
+                    x: cursor - width,
+                    top: l.text_top,
+                    data,
+                    width,
+                    height,
+                });
+                cursor -= width + l.frame_gap;
+                if !caption.is_empty() {
+                    let top = l.text_top + l.stage_indent;
+                    for text in wrap(&caption, capacity(top, l)) {
+                        if cursor - l.pitch < l.left {
+                            pages.push(Vec::new());
+                            cursor = l.right;
+                        }
+                        pages.last_mut().unwrap().push(Column::Body {
+                            x: cursor - l.pitch / 2.,
+                            top,
+                            text,
+                        });
+                        cursor -= l.pitch;
+                    }
+                }
+            }
             Item::Scene { number, title } => {
                 let titles = wrap(&title, capacity(l.text_top, l));
                 let width = l.pitch * titles.len() as f32 + l.font;
@@ -147,7 +233,7 @@ fn layout_configured(parts: &[Part], l: &Layout) -> Vec<Vec<Column>> {
                     let before = match pages.last().unwrap().last() {
                         None => 0.,
                         Some(Column::Frame { .. }) => l.frame_gap - after,
-                        Some(Column::Body { .. }) => before,
+                        Some(Column::Body { .. } | Column::Image { .. }) => before,
                     };
                     if cursor - before - width - after - l.pitch < l.left {
                         pages.push(Vec::new());
@@ -241,6 +327,7 @@ fn svgs_configured(parts: &[Part], settings: &Settings) -> Result<Vec<String>, S
                     for (i,title) in titles.iter().enumerate(){svg.push_str(&glyphs.vertical(right-1.5*font-i as f32*pitch,text_top,title)?);}
                 },
                 Column::Body{x,top,text}=>svg.push_str(&glyphs.vertical(*x,*top,text)?),
+                Column::Image{x,top,data,width,height}=>svg.push_str(&format!("<image x=\"{x}\" y=\"{top}\" width=\"{width}\" height=\"{height}\" href=\"{}\"/>",xml(data))),
             }
         }
         svg.push_str(&format!("<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"9\" fill=\"#666\">— {} —</text></g></svg>",width/2.,height-settings.margin()/2.,index+1));Ok(svg)
@@ -261,11 +348,41 @@ pub(super) fn standard(parts: &[Part], settings: &Settings) -> Result<Vec<u8>, S
     let count = ((l.bottom - top - l.font) / l.advance).floor() as usize + 1;
     let mut glyphs = vertical_glyphs::Renderer::configured(l.font, l.advance, &settings.font);
     let mut pages = vec![Vec::new()];
+    let mut images = std::collections::BTreeMap::new();
     let mut x = l.right - l.font;
-    for part in parts {
+    for part in render_parts(parts) {
+        if let Part::Image(_, _, data, w, h) = part
+            && !data.is_empty()
+        {
+            if !pages.last().unwrap().is_empty() {
+                pages.push(Vec::new());
+            }
+            let scale = ((l.right - l.left) / w.max(1.))
+                .min((l.bottom - top) / h.max(1.))
+                .min(1.);
+            images.insert(
+                pages.len() - 1,
+                format!(
+                    "<image x=\"{}\" y=\"{top}\" width=\"{}\" height=\"{}\" href=\"{}\"/>",
+                    l.left,
+                    w * scale,
+                    h * scale,
+                    xml(data)
+                ),
+            );
+            pages.push(Vec::new());
+            x = l.right - l.font;
+        }
         let text = match part {
-            Part::Heading(_, s) | Part::Paragraph(s) => s.clone(),
-            Part::Dialogue(actor, text) => format!("{actor}「{text}」"),
+            Part::Heading(_, s)
+            | Part::RichHeading(_, s, _)
+            | Part::Paragraph(s)
+            | Part::Rich(s, _)
+            | Part::RichContainer(s, _, _)
+            | Part::Image(s, _, _, _, _) => s.clone(),
+            Part::Dialogue(actor, text) | Part::RichDialogue(actor, text, _) => {
+                format!("{actor}「{text}」")
+            }
         };
         for column in wrap(&text, count) {
             if x - l.font / 2. < l.left {
@@ -277,7 +394,7 @@ pub(super) fn standard(parts: &[Part], settings: &Settings) -> Result<Vec<u8>, S
         }
         x -= l.font;
     }
-    let svgs=pages.iter().enumerate().map(|(index,columns)|{let mut svg=format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\"><g fill=\"#151515\" font-family=\"{}\" font-size=\"{}\">",l.width,l.height,settings.family(),l.font);for (x,text) in columns{svg.push_str(&glyphs.vertical(*x,top,text)?);}svg.push_str(&format!("<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"9\">— {} —</text></g></svg>",l.width/2.,l.height-settings.margin()/2.,index+1));Ok(svg)}).collect::<Result<Vec<_>,String>>()?;
+    let svgs=pages.iter().enumerate().map(|(index,columns)|{let mut svg=format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\"><g fill=\"#151515\" font-family=\"{}\" font-size=\"{}\">",l.width,l.height,settings.family(),l.font);if let Some(image)=images.get(&index){svg.push_str(image);}for (x,text) in columns{svg.push_str(&glyphs.vertical(*x,top,text)?);}svg.push_str(&format!("<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"9\">— {} —</text></g></svg>",l.width/2.,l.height-settings.margin()/2.,index+1));Ok(svg)}).collect::<Result<Vec<_>,String>>()?;
     svg_pdf(&svgs)
 }
 
@@ -309,6 +426,17 @@ mod tests {
                 ) {
                     for column in page {
                         match column {
+                            Column::Image {
+                                x,
+                                top,
+                                width,
+                                height,
+                                ..
+                            } => {
+                                assert!(
+                                    x >= l.left && x + width <= l.right && top + height <= l.bottom
+                                );
+                            }
                             Column::Frame { right, width, .. } => {
                                 assert!(right <= l.right);
                                 assert!(right - width >= l.left);
@@ -509,6 +637,15 @@ mod tests {
         assert!(copied.contains("太郎「こんにちは。」"));
         for column in columns {
             match column {
+                Column::Image {
+                    x,
+                    top,
+                    width,
+                    height,
+                    ..
+                } => {
+                    assert!(*x >= LEFT && x + width <= RIGHT && top + height <= BOTTOM);
+                }
                 Column::Frame { right, width, .. } => {
                     assert!(*right <= RIGHT && right - width >= LEFT)
                 }

@@ -14,7 +14,7 @@ export function richText(node){
 export function richInlineHtml(content,escape,start=0,end=Infinity){
  let offset=0;return content.map(inline=>{
   const text=richText(inline),from=Math.max(0,start-offset),to=Math.min(text.length,end-offset);offset+=text.length;
-  if(to<=from)return '';let html=escape(text.slice(from,to));
+  if(to<=from)return '';let html=readingTextHtml(text.slice(from,to),escape);
   for(const mark of inline.marks??[]){const tag={bold:'strong',italic:'em',underline:'u',strike:'s',code:'code'}[mark.type];if(tag)html=`<${tag}>${html}</${tag}>`;else if(mark.type==='link'&&/^(https?:|mailto:)/i.test(mark.href))html=`<a href="${escape(mark.href)}" rel="noopener noreferrer">${html}</a>`;}
   return html;
  }).join('');
@@ -25,3 +25,14 @@ export function changeBlockType(type,attrs={}){return (state,dispatch)=>{
  const targets=[];for(const range of state.selection.ranges)state.doc.nodesBetween(range.$from.pos,range.$to.pos,(node,pos)=>{if(!node.isTextblock)return;const resolved=state.doc.resolve(pos);if(resolved.parent.canReplaceWith(resolved.index(),resolved.index()+1,type))targets.push({node,pos});});
  if(!targets.length)return false;if(dispatch){const tr=state.tr;for(const {node,pos} of targets)tr.setNodeMarkup(pos,type,{...node.attrs,...attrs},node.marks);dispatch(tr);}return true;
 };}
+
+export function readingTextHtml(text,escape){let result="",offset=0;for(const match of text.matchAll(/(?<![0-9])[0-9]{2}(?![0-9])/g)){result+=escape(text.slice(offset,match.index))+`<span class="tate-chu-yoko">${match[0]}</span>`;offset=match.index+2;}return result+escape(text.slice(offset));}
+
+export function richParagraphRange(doc,id,start,end){
+ let result=null;doc.descendants((node,pos)=>{if(node.isTextblock&&node.attrs.nodeId===id){result={from:pos+1+Math.min(node.content.size,Math.max(0,start)),to:pos+1+Math.min(node.content.size,Math.max(0,end))};return false;}});return result;
+}
+export function richParagraphSelection(selection){
+ const { $from,$to }=selection;if(!$from.sameParent($to)||$from.parent.type.name!=='paragraph')return null;
+ let plain=true;$from.parent.forEach(node=>{if(!node.isText)plain=false;});
+ return plain?{id:$from.parent.attrs.nodeId,start:$from.parentOffset,end:$to.parentOffset}:null;
+}

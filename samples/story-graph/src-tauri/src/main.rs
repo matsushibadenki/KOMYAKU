@@ -467,6 +467,62 @@ fn replace_paragraph_text(
     if text.len() > domain::MAX_SCENE_TEXT_BYTES {
         return Err("limit_exceeded".into());
     }
+    // Retain the untouched styled spans when replacing an AI selection.
+    let styled = paragraph["content"].as_array().is_some_and(|nodes| {
+        nodes.iter().any(|node| {
+            node["marks"]
+                .as_array()
+                .is_some_and(|marks| !marks.is_empty())
+                || ["metadata", "extensions"].iter().any(|key| {
+                    node[key]
+                        .as_object()
+                        .is_some_and(|values| !values.is_empty())
+                })
+        })
+    });
+    if let (true, Some(start), Some(end)) = (styled, change.start, change.end) {
+        let mut before = Vec::new();
+        let mut after = Vec::new();
+        let mut offset = 0;
+        for node in paragraph["content"].as_array().ok_or("invalid_document")? {
+            let source = node["text"].as_str().ok_or("invalid_document")?;
+            let length = source.encode_utf16().count();
+            let byte_at = |units: usize| -> std::result::Result<usize, String> {
+                if units == length {
+                    return Ok(source.len());
+                }
+                let mut total = 0;
+                for (byte, ch) in source.char_indices() {
+                    if total == units {
+                        return Ok(byte);
+                    }
+                    total += ch.len_utf16();
+                }
+                Err("invalid_document".into())
+            };
+            let prefix = start.saturating_sub(offset).min(length);
+            let suffix = end.saturating_sub(offset).min(length);
+            if prefix > 0 {
+                let mut kept = node.clone();
+                kept["text"] = json!(&source[..byte_at(prefix)?]);
+                before.push(kept);
+            }
+            if suffix < length {
+                let mut kept = node.clone();
+                kept["text"] = json!(&source[byte_at(suffix)?..]);
+                after.push(kept);
+            }
+            offset += length;
+        }
+        if !change.text.is_empty() {
+            before.push(
+                json!({"type":"text","text":change.text,"marks":[],"metadata":{},"extensions":{}}),
+            );
+        }
+        before.extend(after);
+        paragraph["content"] = json!(before);
+        return Ok(());
+    }
     paragraph["content"] = if text.is_empty() {
         json!([])
     } else {
@@ -2402,6 +2458,26 @@ mod persistence_tests {
             assert_eq!(paragraph_node["content"][0]["text"], "a😃z");
             std::fs::remove_file(&host.path).unwrap();
         }
+    }
+    #[test]
+    fn selected_replacement_preserves_unselected_inline_styles() {
+        let id = Id::new_v4();
+        let mut paragraph = json!({"type":"paragraph","id":id,"content":[{"type":"text","text":"前😀","marks":[{"type":"bold"}]},{"type":"text","text":"後ろ","marks":[{"type":"italic"}]}]});
+        replace_paragraph_text(
+            &mut paragraph,
+            &ParagraphChange {
+                paragraph: id,
+                text: "雪".into(),
+                start: Some(1),
+                end: Some(4),
+            },
+        )
+        .unwrap();
+        assert_eq!(paragraph["content"][0]["text"], "前");
+        assert_eq!(paragraph["content"][0]["marks"][0]["type"], "bold");
+        assert_eq!(paragraph["content"][1]["text"], "雪");
+        assert_eq!(paragraph["content"][2]["text"], "ろ");
+        assert_eq!(paragraph["content"][2]["marks"][0]["type"], "italic");
     }
     #[test]
     fn dialogue_sheet_persists_with_text_and_undo() {

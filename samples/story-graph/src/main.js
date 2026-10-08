@@ -1,5 +1,6 @@
-import {needsRichEditor,richText,richInlineHtml} from './rich-content.js';
-let richEditor=null,richTicket=0;let richControllers=[];const richModeScenes=new Set();
+import {needsRichEditor,richText,richInlineHtml,readingTextHtml} from './rich-content.js';
+let richEditor=null,richTicket=0;let richControllers=[],richMount=Promise.resolve();const richModeScenes=new Set();
+document.addEventListener("focusin",event=>{const controller=richControllers.find(value=>value.root.contains(event.target));if(controller)richEditor=controller;});
 import {hitTextPosition} from './text-hit.js';
 import {mountGraphTools} from './graph-tools.js';
 import {createParagraphLayouts} from './paragraph-layout.js';
@@ -43,7 +44,7 @@ const native = Boolean(window.__TAURI__);
 let diskDirty=false;
 const invoke = async(command,args={}) => {const result=await window.__TAURI__.core.invoke(command,args);if(command==='edit'||command==='save_now'){diskDirty=result.saved===false;if(diskDirty)error='save_failed';}return result;};
 const openAssistant=installAssistant({invoke,native,t:key=>t(key),escape:value=>escape(value),getLanguage:()=>language,getScene:()=>detail?.type_id==='story.scene'?{id:detail.id,revision:model.revision,selection:bodyCaret?.scene===detail.id&&bodyCaret.end>bodyCaret.start?{paragraph:bodyCaret.id,start:bodyCaret.start,end:bodyCaret.end}:null}:null,refresh,commit:commitDraft,settings:()=>{preferencesTab='ai';showPreferences();}});
-syncDockedGraph=installDockedGraph({invoke,native,revision:()=>model?.revision??0,onError:value=>{error=value;const notice=document.querySelector('.notice span');if(notice)notice.textContent=t(value);if(value==='gpu_unavailable'){embeddedGraph=false;render();invoke('canvas').catch(()=>{});}}});
+syncDockedGraph=installDockedGraph({invoke,native:native&&!new URLSearchParams(location.search).has("panel"),revision:()=>model?.revision??0,onError:value=>{error=value;const notice=document.querySelector('.notice span');if(notice)notice.textContent=t(value);if(value==='gpu_unavailable'){embeddedGraph=false;render();invoke('canvas').catch(()=>{});}}});
 const loadPanelLayout=installPanelLayout({invoke,native,t:key=>t(key),commit:commitDraft,onChange:()=>{if(model&&!composing)render();}});
 const panelWindow = new URLSearchParams(location.search).get('panel');
 const floatingWindow = panelWindow === 'editor';
@@ -207,7 +208,7 @@ ${escape(latestDetail.properties.notes||'')}</pre><div>${button('applyDraft','ap
   const groupViewport=shell.querySelector('.group-manuscript');if(groupViewport){groupViewport.scrollLeft=preferences.writingMode==='vertical'?groupScroll.left:0;groupViewport.scrollTop=preferences.writingMode==='horizontal'?groupScroll.top:0;}
   if(reading) renderReading();
   if(!reading&&tab==='scenes'&&!document.querySelector('[data-rich-scene]'))observeManuscriptSize();
-  for(const root of shell.querySelectorAll('[data-rich-scene]'))mountSceneRich(root,richSelection);
+  richMount=Promise.all([...shell.querySelectorAll('[data-rich-scene]')].map(root=>mountSceneRich(root,richSelection)));
   if(tab==='history'&&!floatingWindow){const panel=shell.querySelector('.writing');panel.classList.add('history-panel');disposeHistory=mountHistory(panel,{native,invoke,t,escape,language,commit:commitDraft,revision:()=>model.revision,title:projectTitle});if(native)panel.insertAdjacentHTML('afterbegin',`<button class="history-float-button" data-float-panel="history">${escape(t(panelWindow==='history'?'returnSidePanel':'floatSidePanel'))}</button>`);}
   if(native&&!panelWindow&&historyDocked()){const panel=shell.querySelector('.history-docked');disposeHistory=mountHistory(panel,{native,invoke,t,escape,language,commit:commitDraft,revision:()=>model.revision,title:projectTitle});}
   if(embeddedGraph&&native&&!panelWindow){shell.querySelector('.writing').classList.add('graph-writing');const content=shell.querySelector('.editor-content');content.className='editor-content docked-graph-content';content.innerHTML=`<div class="docked-graph-actions"><button data-action="graph">${escape(t('editor'))}</button><button data-action="floatGraph">${escape(t('graph'))} ↗</button><button data-docked-action="zoom" data-factor="1.2" aria-label="${escape(t('zoomIn'))}">＋</button><button data-docked-action="zoom" data-factor="0.8333333333" aria-label="${escape(t('zoomOut'))}">−</button><button data-docked-action="fit">${escape(t('fit'))}</button></div><div class="docked-graph-workspace"><nav class="docked-graph-tools"><div class="icon-menu-items"></div></nav><div data-docked-graph aria-busy="true" data-loading-label="${escape(t('graphPreparing'))}" aria-label="${escape(t('relationships'))}" tabindex="0"></div><aside class="docked-graph-inspector" hidden><div id="inspector"></div></aside></div>`;const rail=content.querySelector('.docked-graph-tools'),panel=content.querySelector('.docked-graph-inspector');dockedGraphTools=[mountGraphTools(rail),mountGraphTools(panel,{inspector:true,onState:state=>{panel.hidden=!state.open;}})];}
@@ -241,7 +242,7 @@ async function renderReading(anchor=null) {
     if(!target.isConnected||layoutAbort.signal.aborted||path!==requestPath)return;
     readingViewport?.disconnect();readingViewport=new ReadingViewport({root:vertical?root:document.querySelector('.editor-content'),article:target,blocks:bounded,vertical,
       options:()=>({vertical,span:vertical?root.clientHeight:target.clientWidth,fontSize:preferences.bodySize,lineHeight:preferences.lineHeight}),
-      markup:block=>block.kind==='heading'?`<h${block.level} class="${block.style}" data-reading-block="${escape(block.id)}" data-reading-start="0">${block.node?richInlineHtml(block.node.content,escape):escape(block.text)}</h${block.level}>`:block.kind==='paragraph'?`<p data-reading-block="${escape(block.id??'')}" data-reading-start="${block.sourceStart??0}">${block.node?richInlineHtml(block.node.content,escape,block.sourceStart??0,(block.sourceStart??0)+block.text.length):escape(block.text)}</p>`:block.kind==='image'?`<figure><img src="${escape(block.data??'')}" alt="${escape(block.text)}"><figcaption data-reading-block="${escape(block.id)}" data-reading-start="0">${escape(block.text)}</figcaption></figure>`:`<table class="dialogue-sheet reading-dialogue" data-width="${block.actorWidth??''}"><tbody><tr>${block.texts.map((text,index)=>`<td data-reading-block="${escape(block.id)}" data-reading-start="${index?block.texts[0].length+1:0}" data-reading-cell="${index}">${block.cells?richInlineHtml(block.cells[index].content,escape):escape(text)}</td>`).join('')}</tr></tbody></table>`,
+      markup:block=>block.kind==='heading'?`<h${block.level} class="${block.style}" data-reading-block="${escape(block.id)}" data-reading-start="0">${block.node?richInlineHtml(block.node.content,escape):readingTextHtml(block.text,escape)}</h${block.level}>`:block.kind==='paragraph'?`<p class="${block.quote?'reading-quote':''} ${block.marker?'reading-list-item':''}" ${block.marker?`data-marker="${escape(block.marker)}"`:""} data-reading-block="${escape(block.id??'')}" data-reading-start="${block.sourceStart??0}">${block.node?richInlineHtml(block.node.content,escape,block.sourceStart??0,(block.sourceStart??0)+block.text.length):readingTextHtml(block.text,escape)}</p>`:block.kind==='rich-table'?richTableMarkup(block):block.kind==='image'?`<figure><img ${Number.isFinite(block.width)&&block.width>0?`width="${Math.min(block.width,1536)}"`:""} ${Number.isFinite(block.height)&&block.height>0?`height="${Math.min(block.height,1536)}"`:""} src="${escape(block.data??'')}" alt="${escape(block.text)}"><figcaption data-reading-block="${escape(block.id)}" data-reading-start="0">${escape(block.text)}</figcaption></figure>`:`<table class="dialogue-sheet reading-dialogue" data-width="${block.actorWidth??''}"><tbody><tr>${block.texts.map((text,index)=>`<td data-reading-block="${escape(block.id)}" data-reading-start="${index?block.texts[0].length+1:0}" data-reading-cell="${index}">${block.cells?richInlineHtml(block.cells[index].content,escape):escape(text)}</td>`).join('')}</tr></tbody></table>`,
       measure:()=>resizeDialogueColumns(),reflow:anchor=>renderReading(anchor)
     });
     readingViewport.restore(anchor);
@@ -764,14 +765,17 @@ function focusLogicalParagraph(input,position) {
 }
 function reflowParagraph(input,position,focus=true) {
   if(input.closest('.dialogue-sheet'))return;
-  const oldBlocks=manuscriptViewport?[...manuscriptViewport.paragraphBlocks(input)]:paragraphInputs(input).map(peer=>peer.closest('.manuscript-block')),node=paragraphById(paragraphDocument(input),input.dataset.block),template=document.createElement('template');
+  const node=paragraphById(paragraphDocument(input),input.dataset.block);
+  if(!manuscriptViewport&&paragraphText(node).length>16384)observeManuscript();
+  const oldBlocks=manuscriptViewport?[...manuscriptViewport.paragraphBlocks(input)]:paragraphInputs(input).map(peer=>peer.closest('.manuscript-block')),template=document.createElement('template');
   for(const block of oldBlocks){manuscriptViewport?.attach(block);virtualSources.delete(block.dataset.manuscriptBlock);}
   template.innerHTML=paragraphMarkup(node,Boolean(manuscriptViewport),inputScene(input)??detail?.id);
   const wrappers=[...template.content.children],first=oldBlocks[0];
-  reflowing=true;clearParagraphSelection();first.before(template.content);
+  reflowing=true;clearParagraphSelection();(manuscriptViewport?.insertionAnchor(first)??first).before(template.content);
   for(const block of oldBlocks){manuscriptViewport?.remove(block);block.remove();}
   for(const block of wrappers){manuscriptViewport?.register(block);if(!manuscriptViewport)resizeManuscript(block);}
   if(manuscriptViewport){
+    manuscriptViewport.batchBlocks(wrappers);
     const target=wrappers.find(block=>{const part=virtualSources.get(block.dataset.manuscriptBlock);return position>=part.start&&position<=part.start+part.text.length;})??wrappers.at(-1);
     manuscriptViewport.mount(target);if(focus)focusParagraphPosition([target.querySelector('textarea')],position);
   }else if(focus)focusParagraphPosition(wrappers.map(block=>block.querySelector('textarea')),position);
@@ -795,7 +799,7 @@ document.addEventListener('pointerdown',event=>{
   }
   clearParagraphSelection();
   if(native&&!composing&&event.button===0&&input.dataset.block){
-    const owned=Boolean(input.closest('.dialogue-sheet')),anchor=owned?hitParagraphPosition(input,event.clientX,event.clientY):null;
+    const owned=Boolean(input.closest('.dialogue-sheet'))||(manuscriptViewport?manuscriptViewport.paragraphBlocks(input).length:paragraphInputs(input).length)>1,anchor=owned?hitParagraphPosition(input,event.clientX,event.clientY):null;
     const pending={input,anchor,pointer:event.pointerId,drag:true,crossed:false,owned:owned&&anchor!==null};pointerSelection=pending;
     if(pending.owned){event.preventDefault();input.setPointerCapture(event.pointerId);reflowing=true;focusLogicalParagraph(input,anchor);reflowing=false;return;}
     // Let the native pointer default action establish the anchor. In WebKit,
@@ -856,12 +860,14 @@ function finishPointerSelection(event){
     if(pending.drag){
       // A native text drag can suppress intermediate pointer events on macOS.
       // Always resolve the release point, including a move across a block.
-      const block=document.elementFromPoint(event.clientX,event.clientY)?.closest('.manuscript-block');
+      const root=pending.input.closest('.group-manuscript')??pending.input.closest(preferences.writingMode==='vertical'?'.manuscript-pages':'.editor-content'),bounds=root?.getBoundingClientRect();
+      const x=bounds?Math.max(bounds.left+2,Math.min(event.clientX,bounds.right-2)):event.clientX,y=bounds?Math.max(bounds.top+2,Math.min(event.clientY,bounds.bottom-2)):event.clientY;
+      const block=document.elementFromPoint(x,y)?.closest('.manuscript-block');
       if(block&&inputScene(block)===inputScene(pending.input)){
         manuscriptViewport?.mount(block);
-        const target=pointerParagraph(block,event.clientX,event.clientY);
+        const target=pointerParagraph(block,x,y);
         if(target&&(target!==pending.input||pending.owned)){
-          const focus=hitParagraphPosition(target,event.clientX,event.clientY);
+          const focus=hitParagraphPosition(target,x,y);
           if(focus!==null){pending.anchorPoint??={id:pending.input.dataset.block,offset:pending.anchor};pending.crossed=true;pending.focus=focus;
             if(target.dataset.block===pending.anchorPoint.id&&!documentSelection)selectParagraphPosition(target,pointSelection(paragraphValue(target).length,pending.anchor,focus));
             else selectDocumentPoint(target,pending.anchorPoint,{id:target.dataset.block,offset:focus});
@@ -979,6 +985,18 @@ for(const type of ['copy','cut'])document.addEventListener(type,event=>{
   if(!selectedParagraph(input))return;
   const text=paragraphValue(input),{start,end}=selectionRange(paragraphSelection);event.preventDefault();event.clipboardData.setData('text/plain',text.slice(start,end));
   if(type==='cut'){clearParagraphSelection();queueParagraphPatch(input,{start,end,text:'',removed:text.slice(start,end)});reflowParagraph(input,start);}
+});
+// Keep bulk clipboard data out of a native textarea's synchronous layout.
+// The canonical model is patched first; only bounded visible fragments mount.
+document.addEventListener('paste',event=>{
+ const input=event.target,text=event.clipboardData?.getData('text/plain');
+ if(!native||composing||!input.dataset.block||input.closest('.dialogue-sheet')||!text||text.length<=16384)return;
+ event.preventDefault();
+ if(documentSelection){applyDocumentReplacement(paragraphDocument(input),documentSelection,text,inputScene(input));return;}
+ const range=selectedParagraph(input)?selectionRange(paragraphSelection):{start:caretPosition(input,input.selectionStart),end:caretPosition(input,input.selectionEnd)};
+ const old=paragraphValue(input);selectionReplacements.delete(input);clearParagraphSelection();
+ queueParagraphPatch(input,{...range,text,removed:old.slice(range.start,range.end)});
+ reflowParagraph(input,range.start+text.length);
 });
 document.addEventListener('input',event=>{
   if(event.target.dataset.block) {
@@ -1306,6 +1324,7 @@ function showSearch() {
       if(!await commitDraft())return;tab='scenes';reading=false;await choose(hit.scene);
       if(model.revision!==revision)return;
       if(hit.paragraph){
+        await richMount;const controller=richControllers.find(value=>value.scene===hit.scene);if(controller?.selectParagraph(hit.paragraph,hit.start,hit.end))return;
         const peers=[...document.querySelectorAll('[data-paragraph]')].filter(block=>block.dataset.paragraph===hit.paragraph);
         const block=manuscriptViewport?.findParagraphFragment(hit.paragraph,hit.start,hit.scene)??peers.find(block=>hit.start>=Number(block.dataset.start)&&hit.start<Number(block.dataset.start)+Number(block.dataset.length))??peers.at(-1);
         if(block)mountManuscriptInput(document,hit.paragraph,Number(block.dataset.manuscriptBlock.split('-').at(-1)));
@@ -1322,19 +1341,29 @@ async function mountSceneRich(root,savedSelection){
  const scene=root.dataset.richScene,canonical=scene===detail?.id?(draft?.canonical??detail.properties.canonical):(groupEdits.get(scene)?.canonical??groupDetails.find(n=>n.id===scene)?.properties.canonical);
  bodyCaret=null;const ticket=richTicket;try{
   const {mountRichEditor}=await import('./rich-text.js');if(!root.isConnected||ticket!==richTicket)return;
-  const controller=mountRichEditor(root,{document:canonical,t,selection:savedSelection?.scene===scene?savedSelection:null,
-   onChange:document=>setWholeManuscript(document,isContainer()?scene:null),onComposition:value=>{composing=value;if(!value){clearTimeout(autosaveTimer);autosaveTimer=setTimeout(()=>commitDraft(),900);}},onUndo:redo=>mutate({kind:redo?'redo':'undo'}),
+  const controller=mountRichEditor(root,{document:canonical,t,editable:native,selection:savedSelection?.scene===scene?savedSelection:null,
+   onSelection:selection=>{bodyCaret=selection?{scene,...selection}:null;},onChange:document=>setWholeManuscript(document,isContainer()?scene:null),onComposition:value=>{composing=value;if(!value){clearTimeout(autosaveTimer);autosaveTimer=setTimeout(()=>commitDraft(),900);}},onUndo:redo=>mutate({kind:redo?'redo':'undo'}),
    onImage:async view=>{try{const asset=await invoke('import_manuscript_image');if(!asset||!root.isConnected)return;const node=view.state.schema.nodes.image.create({nodeId:crypto.randomUUID(),assetId:asset.id,mediaType:'image/png',altText:'',width:asset.width,height:asset.height});const extensions={...view.state.doc.attrs.extensions,'komyaku.images':{...view.state.doc.attrs.extensions['komyaku.images'],[asset.id]:asset.data}};view.dispatch(view.state.tr.setDocAttribute('extensions',extensions).replaceSelectionWith(node));view.focus();}catch(e){error=String(e);render();}}
   });controller.root=root;controller.scene=scene;richEditor=controller;richControllers.push(controller);
  }catch(e){root.textContent=t('error')+': '+String(e);}
 }
 
 function richReadingEntries(doc,scene){
- const entries=[];const visit=node=>{
-  if(node.type==='paragraph'||node.type==='heading'){entries.push({kind:node.type==='heading'?'heading':'paragraph',id:`${scene}:${node.id}`,text:richText(node),node,level:node.attrs?.level??2,style:'rich-heading'});return;}
+ const entries=[];const visit=(node,context={})=>{
+  if(node.type==='paragraph'||node.type==='heading'){entries.push({kind:node.type==='heading'?'heading':'paragraph',id:`${scene}:${node.id}`,text:richText(node),node,...context,level:node.attrs?.level??2,style:'rich-heading'});return;}
   if(node.type==='table'&&node.content.length===1&&node.content[0].content.length===2&&node.content[0].content.every(cell=>cell.content.length===1&&cell.content[0].type==='paragraph')){const cells=node.content[0].content.map(cell=>cell.content[0]);entries.push({kind:'dialogue',id:`dialogue:${scene}:${node.id}`,texts:cells.map(richText),cells,actorWidth:node.extensions?.['komyaku.dialogue']?.actorWidth});return;}
-  if(node.type==='image'){entries.push({kind:'image',id:`${scene}:${node.id}`,text:richText(node),data:String(doc.extensions?.['komyaku.images']?.[node.assetId]??'').startsWith('data:image/png;base64,')?doc.extensions['komyaku.images'][node.assetId]:''});return;}
+  if(node.type==='table'){entries.push({kind:'rich-table',id:`${scene}:${node.id}`,text:richText(node),node});return;}
+  if(node.type==='image'){entries.push({kind:'image',id:`${scene}:${node.id}`,text:richText(node),width:node.width,height:node.height,data:String(doc.extensions?.['komyaku.images']?.[node.assetId]??'').startsWith('data:image/png;base64,')?doc.extensions['komyaku.images'][node.assetId]:''});return;}
   if(node.type==='code_block'){entries.push({kind:'paragraph',id:`${scene}:${node.id}`,text:node.source});return;}
-  for(const child of node.content??[])visit(child);
- };doc.content.forEach(visit);return entries;
+  if(node.type==='blockquote'){for(const child of node.content)visit(child,{...context,quote:true});return;}
+  if(node.type==='bullet_list'||node.type==='ordered_list'){node.content.forEach((child,index)=>visit(child,{...context,marker:node.type==='bullet_list'?'•':`${(node.attrs?.start??1)+index}.`}));return;}
+  if(node.type==='list_item'){node.content.forEach((child,index)=>visit(child,index?{...context,marker:''}:context));return;}
+  for(const child of node.content??[])visit(child,context);
+ };doc.content.forEach(node=>visit(node));return entries;
+}
+
+function richTableMarkup(block){
+ let offset=0;
+ const inline=node=>node.type==='paragraph'||node.type==='heading'?richInlineHtml(node.content,escape):(node.content??[]).map(inline).join('\n');
+ return `<table class="reading-rich-table"><tbody>${block.node.content.map((row,rowIndex)=>`<tr>${row.content.map((cell,cellIndex)=>{const start=offset,text=richText(cell);offset+=text.length+(cellIndex<row.content.length-1?1:0);return `<td colspan="${cell.attrs?.colspan??1}" rowspan="${cell.attrs?.rowspan??1}" data-reading-block="${escape(block.id)}" data-reading-start="${start}" data-reading-table-cell="true">${inline(cell)}</td>`;}).join('')}</tr>${(offset+=rowIndex<block.node.content.length-1?1:0,'')}`).join('')}</tbody></table>`;
 }

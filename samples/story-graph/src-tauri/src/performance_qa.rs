@@ -33,7 +33,7 @@ impl Sample {
                 .all(|v| v.is_finite() && (0. ..=60000.).contains(v))
             && self.p50 <= self.p95
             && self.p95 <= self.max
-            && ["idle", "wheel", "resize"].contains(&self.kind.as_str())
+            && ["idle", "wheel", "resize", "scroll", "input", "paste"].contains(&self.kind.as_str())
     }
 }
 #[tauri::command]

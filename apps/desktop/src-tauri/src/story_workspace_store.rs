@@ -32,6 +32,7 @@ pub(crate) async fn migrate(pool: &Pool<Sqlite>) -> Result<(), sqlx::Error> {
     )
     .execute(&mut *tx)
     .await?;
+    super::story_workspace_history::migrate(&mut tx).await?;
     tx.commit().await
 }
 
@@ -42,6 +43,19 @@ pub(crate) async fn commit(
     expected_revision: i64,
     request_json: &str,
     snapshot_json: &str,
+) -> Result<Receipt, String> {
+    commit_with_history(pool, workspace_id, operation_id, expected_revision,
+        request_json, snapshot_json, None).await
+}
+
+pub(crate) async fn commit_with_history(
+    pool: &Pool<Sqlite>,
+    workspace_id: &str,
+    operation_id: &str,
+    expected_revision: i64,
+    request_json: &str,
+    snapshot_json: &str,
+    history: Option<&super::story_workspace_history::HistoryCommit>,
 ) -> Result<Receipt, String> {
     if workspace_id.is_empty()
         || workspace_id.len() > 100
@@ -81,6 +95,17 @@ pub(crate) async fn commit(
         });
     }
     let asset_ids = verify_workspace_assets(&mut tx, snapshot_json).await?;
+    if history.is_some() {
+        let previous: Option<String> = sqlx::query_scalar("SELECT snapshot_json FROM story_workspace_states WHERE workspace_id=?")
+            .bind(workspace_id).fetch_optional(&mut *tx).await.map_err(|e|e.to_string())?;
+        if let Some(previous) = previous {
+            let previous: serde_json::Value = serde_json::from_str(&previous).map_err(|_| "invalid_stored_story_workspace")?;
+            let next: serde_json::Value = serde_json::from_str(snapshot_json).map_err(|_| "invalid_story_storage_request")?;
+            if previous["document"]["id"] != next["document"]["id"] {
+                return Err("story_workspace_document_mismatch".into());
+            }
+        }
+    }
     let revision = expected_revision + 1;
     if expected_revision == 0 {
         let inserted = sqlx::query("INSERT INTO story_workspace_states(workspace_id, revision, snapshot_json) VALUES (?, ?, ?) ON CONFLICT(workspace_id) DO NOTHING")
@@ -101,6 +126,10 @@ pub(crate) async fn commit(
         .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
+    if let Some(history) = history {
+        super::story_workspace_history::adopt(&mut tx, workspace_id, revision,
+            snapshot_json, &asset_ids, history).await?;
+    }
     for asset_id in asset_ids {
         sqlx::query("INSERT INTO story_workspace_assets(workspace_id,asset_id) VALUES (?,?)")
             .bind(workspace_id)

@@ -74,9 +74,12 @@ fn hold(
 #[cfg(all(test, debug_assertions))]
 mod tests {
     use super::*;
+    static NEXT_ROOT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     fn root() -> std::path::PathBuf {
         let root = std::env::temp_dir().join(format!(
-            "komyaku-gate-test-{}",
+            "komyaku-gate-test-{}-{}-{}",
+            std::process::id(),
+            NEXT_ROOT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()

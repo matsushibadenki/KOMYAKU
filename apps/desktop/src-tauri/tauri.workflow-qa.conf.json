@@ -1,0 +1,11 @@
+{
+  "productName": "KOMYAKU Workflow QA",
+  "identifier": "app.komyaku.desktop.workflow-qa",
+  "app": {
+    "windows": [{
+      "label": "main", "title": "KOMYAKU Workflow QA",
+      "url": "/", "width": 390, "height": 844,
+      "minWidth": 320, "minHeight": 568, "resizable": true
+    }]
+  }
+}

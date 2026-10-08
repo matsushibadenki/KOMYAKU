@@ -1,0 +1,11 @@
+{
+  "productName": "KOMYAKU Archive Receiver QA",
+  "identifier": "app.komyaku.desktop.archive-receiver-qa",
+  "app": {
+    "windows": [{
+      "label": "main", "title": "KOMYAKU Archive Receiver QA",
+      "url": "/", "width": 1000, "height": 900,
+      "minWidth": 320, "minHeight": 568, "resizable": true
+    }]
+  }
+}

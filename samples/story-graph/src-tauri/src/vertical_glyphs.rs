@@ -108,13 +108,15 @@ impl Renderer {
                             }) {
                                 return None;
                             }
+                            let upright_pair =
+                                grapheme.len() == 2 && grapheme.bytes().all(|b| b.is_ascii_digit());
                             let orientation =
                                 unicode_vo::char_orientation(grapheme.chars().next()?);
                             let mut rotated =
                                 matches!(orientation, unicode_vo::Orientation::Rotated);
                             let mut buffer = UnicodeBuffer::new();
                             buffer.push_str(grapheme);
-                            buffer.set_direction(if rotated {
+                            buffer.set_direction(if rotated || upright_pair {
                                 Direction::LeftToRight
                             } else {
                                 Direction::TopToBottom
@@ -164,7 +166,15 @@ impl Renderer {
                             if out.is_empty() && !grapheme.chars().all(char::is_whitespace) {
                                 return None;
                             }
-                            let transform = if rotated {
+                            let transform = if upright_pair {
+                                let sx = scale.min(self.font / dx.max(1.));
+                                format!(
+                                    "translate({} {}) scale({sx} {})",
+                                    -dx * sx / 2.,
+                                    self.font * 0.8,
+                                    -scale
+                                )
+                            } else if rotated {
                                 // Centre sideways Latin within the same full-width cell.
                                 format!(
                                     "translate({} {}) rotate(90) scale({scale} {})",
@@ -193,7 +203,7 @@ impl Renderer {
             xml(text)
         );
         let advance = self.advance;
-        for (i, grapheme) in text.graphemes(true).enumerate() {
+        for (i, grapheme) in vertical_cells(text).into_iter().enumerate() {
             let glyph = self.glyph(grapheme)?;
             let _ = write!(
                 out,
@@ -202,5 +212,43 @@ impl Renderer {
             );
         }
         Ok(out)
+    }
+}
+
+pub(super) fn vertical_cells(text: &str) -> Vec<&str> {
+    let chars = text.grapheme_indices(true).collect::<Vec<_>>();
+    let mut result = Vec::new();
+    let mut i = 0;
+    while i < chars.len() {
+        let digit = |index: usize| {
+            chars
+                .get(index)
+                .is_some_and(|(_, s)| s.len() == 1 && s.as_bytes()[0].is_ascii_digit())
+        };
+        if digit(i) && digit(i + 1) && (i == 0 || !digit(i - 1)) && !digit(i + 2) {
+            let end = chars.get(i + 2).map(|v| v.0).unwrap_or(text.len());
+            result.push(&text[chars[i].0..end]);
+            i += 2;
+        } else {
+            result.push(chars[i].1);
+            i += 1;
+        }
+    }
+    result
+}
+
+#[cfg(test)]
+mod tcy_tests {
+    #[test]
+    fn isolated_two_digits_share_one_cell_without_changing_source() {
+        let source = "12日、123年、4人、56。🌕";
+        let cells = super::vertical_cells(source);
+        assert_eq!(cells.concat(), source);
+        assert_eq!(
+            cells,
+            vec![
+                "12", "日", "、", "1", "2", "3", "年", "、", "4", "人", "、", "56", "。", "🌕"
+            ]
+        );
     }
 }

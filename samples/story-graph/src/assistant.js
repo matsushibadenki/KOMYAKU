@@ -47,8 +47,10 @@ export function installAssistant({invoke, native, t, escape, getScene, refresh, 
     if(!native)return;
     if(!dialog){dialog=document.createElement('dialog');dialog.className='preferences-dialog assistant-dialog';dialog.setAttribute('aria-label',t('writingAssist'));document.body.append(dialog);dialog.addEventListener('close',()=>clearTimeout(timer));}
     if(state&&!reset&&state.phase!=='ready'){draw();if(!dialog.open)dialog.showModal();if(state.phase==='generating')poll();return;}
+    const requested=getScene();
     if(!await commit())return;
-    const scene=getScene();if(!scene)return;
+    const scene=getScene();if(!scene||scene.id!==requested?.id)return;
+    scene.selection=requested.selection;
     state=await invoke('ai_prepare',{sceneId:scene.id,expectedRevision:scene.revision,selection:scene.selection});diff=null;
     const auth=await invoke('chatgpt_status');accounts=auth.accounts.filter(a=>a.connected&&a.planEnabled);
     if(!accounts.some(a=>a.id===selectedAccount)){selectedAccount=accounts[0]?.id||'';selectedModel='';}

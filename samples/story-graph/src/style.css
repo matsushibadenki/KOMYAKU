@@ -513,3 +513,19 @@ body[data-panel-window=history] main>.writing {display:flex!important;height:100
 .rich-editor table {border-collapse:collapse;width:100%;}.rich-editor td {padding:0 .5em;vertical-align:top;}
 .vertical-writing .rich-editor .ProseMirror {writing-mode:vertical-rl;text-orientation:mixed;height:60vh;min-height:0;width:max-content;}
 [data-rich-scene] {min-width:0;overflow:auto;}.vertical-writing [data-rich-scene] {overflow-y:hidden;overflow-x:auto;flex:1;min-height:0;}
+
+.reading-rich-table {border-collapse:collapse;max-width:100%;font:inherit;}
+.reading-rich-table td {border:1px solid var(--line);padding:.4em .6em;vertical-align:top;white-space:pre-wrap;}
+.reading figure {margin:1em 0;}.reading figure img {max-width:100%;max-height:60vh;object-fit:contain;}
+.vertical-writing [data-rich-scene] {direction:rtl;}
+.vertical-writing .rich-toolbar {direction:ltr;}
+.vertical-writing .rich-editor .ProseMirror {direction:ltr;}
+.vertical-writing .reading figure img {max-width:60vw;max-height:100%;}
+
+.vertical-writing .tate-chu-yoko {text-combine-upright:all;}
+
+.rich-editor table:has(tr+tr) td {border:1px solid var(--line);min-inline-size:2em;padding:.3em .5em;}
+.vertical-writing .rich-editor table {width:max-content;max-width:none;}
+
+.reading-list-item::before {content:attr(data-marker);margin-inline-end:.6em;}
+.reading-quote {border-inline-start:2px solid var(--line);padding-inline-start:.8em;}

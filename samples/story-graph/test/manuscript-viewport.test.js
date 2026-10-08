@@ -100,6 +100,14 @@ test('offscreen batches reduce attached placeholders and retain paragraph lookup
   viewport.mount(blocks[80]);expect(blocks[80].input.value).toBe('雨😀');
   viewport.remove(blocks[0]);blocks[0].remove();expect(viewport.paragraphBlocks(blocks[80].input).length).toBe(95);
   expect(viewport.groups.get(parent.children[0]).node.style.height).toBe('620px');
+  const anchor=viewport.insertionAnchor(blocks[80]);expect(anchor).toBe(group.node);
+  const replacements=Array.from({length:96},(_,index)=>{const block=new Node();block.dataset={paragraph:'p',manuscriptBlock:`scene:p-${index}`,start:String(index*5),length:'5'};anchor.before(block);return block;});
+  for(const block of blocks.slice(1)){viewport.attach(block);viewport.remove(block);block.remove();}
+  expect(viewport.groups.size).toBe(0);
+  replacements.forEach(block=>viewport.register(block));viewport.batchBlocks(replacements);
+  expect(parent.children.length).toBe(3);expect(viewport.groups.size).toBe(3);
+  expect([...viewport.groups.values()].every(value=>value.parent===parent)).toBe(true);
+  viewport.mount(replacements[95]);expect(viewport.paragraphBlocks(replacements[95].input).length).toBe(96);
   viewport.disconnect();expect(observers.every(observer=>observer.observed.size===0)).toBe(true);
  }finally{globalThis.document=previousDocument;globalThis.IntersectionObserver=previousObserver;}
 });
