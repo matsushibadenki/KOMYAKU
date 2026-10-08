@@ -1,3 +1,4 @@
+import {createParagraphLayouts} from './paragraph-layout.js';
 import {installDockedGraph} from './docked-graph.js';
 import {installPerformanceQA} from './performance-qa.js';
 import { applyRemoteParagraphs } from './remote-paragraphs.js';
@@ -95,6 +96,7 @@ async function loadDetail(id) {
 }
 async function refresh() { model = native ? await invoke('workspace') : preview; await loadDetail(model.selected); pendingRemote=null; render(); }
 function render() {
+  paragraphLayouts.cancel();
   readingLayoutAbort?.abort();
   if(model?.paths?.length&&!model.paths.some(p=>p.key===path))path=model.paths[0].key;
 
@@ -382,8 +384,13 @@ async function choose(id) {
   await loadDetail(id);render();
 }
 const fragmentKey=(scene,id,index)=>`${scene}:${id}-${index}`;
+const paragraphLayouts=createParagraphLayouts({
+  blocked:()=>composing||Boolean(pointerSelection)||Boolean(widthDrag)||busy||reading||embeddedGraph,
+  current:input=>paragraphById(paragraphDocument(input),input.dataset.block),
+  apply:input=>{const active=document.activeElement;const focused=active?.dataset.block===input.dataset.block&&inputScene(active)===inputScene(input);reflowParagraph(focused?active:input,focused?caretPosition(active):Number(input.dataset.start),focused);}
+});
 function paragraphMarkup(node,lazy=false,scene=detail?.id) {
-  return fragments(paragraphText(node)).map((part,index)=>{
+  return (paragraphLayouts.get(node)??fragments(paragraphText(node))).map((part,index)=>{
     const key=fragmentKey(scene,node.id,index),source={text:part.text,start:part.start};
     const markup=()=>`<textarea class="manuscript-text" data-block="${node.id}" data-start="${source.start}" data-length="${source.text.length}" data-fragment="${index}" aria-label="${escape(t('body'))}" rows="1" ${native?'':'readonly'}>${escape(source.text)}</textarea>`;
     source.markup=markup;virtualSources.set(key,source);
@@ -462,6 +469,7 @@ function resizeManuscript(scope=null) {
   resizeDialogueColumns(scope);
   (scope.matches?.('[data-block]')?[scope]:scope.querySelectorAll('[data-block]')).forEach(input=>{
     const wrapper=input.closest('.manuscript-block');
+    if(!input.closest('.dialogue-sheet')){const node=paragraphById(paragraphDocument(input),input.dataset.block);paragraphLayouts.queue(input,node,node?paragraphText(node):'');}
     const stretch=wrapper?.parentElement.classList.contains('manuscript-pages')&&wrapper===wrapper.parentElement.lastElementChild&&input.parentElement===wrapper;
     if(preferences.writingMode==='vertical'){input.style.flex='none';input.style.minHeight='0px';input.style.height='100%';input.style.minWidth='0px';const capacity=Math.max(1,Math.floor(input.clientHeight/preferences.bodySize));const columns=(input.value||input.placeholder||' ').split('\n').reduce((sum,line)=>sum+Math.max(1,Math.ceil([...line].length/capacity)),0);input.style.width=`${columns*preferences.bodySize*preferences.lineHeight}px`;input.style.width=`${Math.max(input.scrollWidth,columns*preferences.bodySize*preferences.lineHeight)}px`;if(wrapper)wrapper.style.width=`${Math.max(...[...wrapper.querySelectorAll('textarea')].map(item=>parseFloat(item.style.width)||preferences.bodySize*preferences.lineHeight))}px`;const actor=wrapper?.querySelector('.dialogue-actor');if(actor)wrapper.querySelectorAll('.dialogue-sheet td').forEach(cell=>cell.style.setProperty('width',wrapper.style.width,'important'));return;}
     if(wrapper){wrapper.style.width='';wrapper.querySelectorAll('.dialogue-sheet td').forEach(cell=>cell.style.removeProperty('width'));}input.style.width='';input.style.minWidth='';
@@ -714,7 +722,7 @@ function focusParagraphPosition(inputs,position) {
 function focusLogicalParagraph(input,position) {
   focusParagraphPosition(manuscriptViewport?[manuscriptViewport.positionInput(input,position)]:paragraphInputs(input),position);
 }
-function reflowParagraph(input,position) {
+function reflowParagraph(input,position,focus=true) {
   if(input.closest('.dialogue-sheet'))return;
   const oldBlocks=manuscriptViewport?[...manuscriptViewport.paragraphBlocks(input)]:paragraphInputs(input).map(peer=>peer.closest('.manuscript-block')),node=paragraphById(paragraphDocument(input),input.dataset.block),template=document.createElement('template');
   for(const block of oldBlocks){manuscriptViewport?.attach(block);virtualSources.delete(block.dataset.manuscriptBlock);}
@@ -725,8 +733,8 @@ function reflowParagraph(input,position) {
   for(const block of wrappers){manuscriptViewport?.register(block);if(!manuscriptViewport)resizeManuscript(block);}
   if(manuscriptViewport){
     const target=wrappers.find(block=>{const part=virtualSources.get(block.dataset.manuscriptBlock);return position>=part.start&&position<=part.start+part.text.length;})??wrappers.at(-1);
-    manuscriptViewport.mount(target);focusParagraphPosition([target.querySelector('textarea')],position);
-  }else focusParagraphPosition(wrappers.map(block=>block.querySelector('textarea')),position);
+    manuscriptViewport.mount(target);if(focus)focusParagraphPosition([target.querySelector('textarea')],position);
+  }else if(focus)focusParagraphPosition(wrappers.map(block=>block.querySelector('textarea')),position);
   reflowing=false;
 }
 document.addEventListener('pointerdown',event=>{
