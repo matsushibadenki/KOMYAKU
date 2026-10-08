@@ -1,6 +1,6 @@
 use std::sync::{
-    Arc,
     atomic::{AtomicBool, Ordering},
+    Arc,
 };
 use unge_core::*;
 
@@ -173,23 +173,63 @@ fn central_document_entries_and_nested_edits_are_atomic_and_undoable() {
     let mut e = editor(2_000_000, 100);
     let mut n = node();
     let id = n.id;
-    n.properties.insert("document".into(), json!({"text":"雨".repeat(100_000),"paragraph":{"text":"初稿😀"}}));
+    n.properties.insert(
+        "document".into(),
+        json!({"text":"雨".repeat(100_000),"paragraph":{"text":"初稿😀"}}),
+    );
     e.execute(add(n)).unwrap();
     let mut doc = e.document().clone();
-    doc.move_property_to_extension(id,"document","documents","scene",json!({"ref":"scene"})).unwrap();
+    doc.move_property_to_extension(id, "document", "documents", "scene", json!({"ref":"scene"}))
+        .unwrap();
     let before = doc.clone();
-    assert!(doc.move_property_to_extension(id,"document","documents","scene",json!({"ref":"other"})).is_err());
-    assert_eq!(doc,before);
-    let mut e = Editor::new(doc,100).unwrap();
-    e.execute(Command::SetNestedDocumentExtension {extension:"documents".into(),pointer:"/scene/paragraph/text".into(),value:json!("改稿😀")}).unwrap();
-    assert_eq!(e.document().extensions["documents"]["scene"]["paragraph"]["text"],"改稿😀");
-    assert!(e.history_stats().bytes<1024);
-    let changed=e.document().clone();
-    assert!(e.execute(Command::Batch {commands:vec![Command::SetDocumentEntry{extension:"documents".into(),key:"scene".into(),value:None},Command::SetNestedDocumentExtension{extension:"documents".into(),pointer:"/missing/text".into(),value:json!("must roll back")}]}).is_err());
-    assert_eq!(e.document(),&changed);
-    assert!(e.undo().unwrap());assert_eq!(e.document(),&before);
-    assert!(e.redo().unwrap());assert_eq!(e.document(),&changed);
-    e.execute(Command::SetDocumentEntry{extension:"documents".into(),key:"scene".into(),value:None}).unwrap();
-    assert!(e.document().extensions["documents"].as_object().unwrap().is_empty());
-    assert!(e.undo().unwrap());assert_eq!(e.document(),&changed);
+    assert!(doc
+        .move_property_to_extension(id, "document", "documents", "scene", json!({"ref":"other"}))
+        .is_err());
+    assert_eq!(doc, before);
+    let mut e = Editor::new(doc, 100).unwrap();
+    e.execute(Command::SetNestedDocumentExtension {
+        extension: "documents".into(),
+        pointer: "/scene/paragraph/text".into(),
+        value: json!("改稿😀"),
+    })
+    .unwrap();
+    assert_eq!(
+        e.document().extensions["documents"]["scene"]["paragraph"]["text"],
+        "改稿😀"
+    );
+    assert!(e.history_stats().bytes < 1024);
+    let changed = e.document().clone();
+    assert!(e
+        .execute(Command::Batch {
+            commands: vec![
+                Command::SetDocumentEntry {
+                    extension: "documents".into(),
+                    key: "scene".into(),
+                    value: None
+                },
+                Command::SetNestedDocumentExtension {
+                    extension: "documents".into(),
+                    pointer: "/missing/text".into(),
+                    value: json!("must roll back")
+                }
+            ]
+        })
+        .is_err());
+    assert_eq!(e.document(), &changed);
+    assert!(e.undo().unwrap());
+    assert_eq!(e.document(), &before);
+    assert!(e.redo().unwrap());
+    assert_eq!(e.document(), &changed);
+    e.execute(Command::SetDocumentEntry {
+        extension: "documents".into(),
+        key: "scene".into(),
+        value: None,
+    })
+    .unwrap();
+    assert!(e.document().extensions["documents"]
+        .as_object()
+        .unwrap()
+        .is_empty());
+    assert!(e.undo().unwrap());
+    assert_eq!(e.document(), &changed);
 }

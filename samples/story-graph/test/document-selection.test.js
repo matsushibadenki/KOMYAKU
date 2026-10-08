@@ -1,0 +1,42 @@
+import {test,expect} from 'bun:test';
+import {documentRange,documentSelectionText,documentLeafRange,replaceDocumentSelection,moveDocumentPoint} from '../src/document-selection.js';
+const paragraph=(id,text)=>({id,type:'paragraph',metadata:{keep:id},content:[{type:'text',text,marks:[]}]});
+test('multi-paragraph ranges retain Unicode, CRLF, direction and unaffected identities',()=>{
+  const document={id:'doc',content:[paragraph('a','前😀後\r\n'),paragraph('b','中段'),paragraph('c','終点'),paragraph('d','保持')]};
+  const selection={anchor:{id:'c',offset:1},focus:{id:'a',offset:1}};
+  expect(documentRange(document,selection).forward).toBe(false);
+  expect(documentSelectionText(document,selection)).toBe('😀後\r\n\n中段\n終');
+  expect(documentLeafRange(document,selection,'b')).toEqual({start:0,end:2});
+  const result=replaceDocumentSelection(document,selection,'採用🌕');
+  expect(result.caret).toEqual({id:'a',offset:5});
+  expect(result.document.content[0].content[0].text).toBe('前採用🌕点');
+  expect(result.document.content[0].metadata).toBe(document.content[0].metadata);
+  expect(result.document.content[1]).toBe(document.content[3]);
+  expect(document.content.length).toBe(4);
+  expect(()=>documentRange(document,{anchor:{id:'a',offset:2},focus:{id:'b',offset:0}})).toThrow('invalid_selection');
+  expect(()=>documentRange(document,{anchor:{id:'a',offset:5},focus:{id:'b',offset:0}})).toThrow('invalid_selection');
+});
+test('keyboard ranges cross empty paragraphs and preserve grapheme boundaries',()=>{
+  const document={content:[paragraph('a','鍵👨‍👩‍👧‍👦'),paragraph('b',''),paragraph('c','続き')]};
+  const end=paragraph('a','鍵👨‍👩‍👧‍👦').content[0].text.length;
+  expect(moveDocumentPoint(document,{id:'a',offset:end},1)).toEqual({id:'b',offset:0});
+  expect(moveDocumentPoint(document,{id:'b',offset:0},1)).toEqual({id:'c',offset:0});
+  expect(moveDocumentPoint(document,{id:'b',offset:0},-1)).toEqual({id:'a',offset:end});
+  expect(documentSelectionText(document,{anchor:{id:'a',offset:end},focus:{id:'c',offset:0}})).toBe('\n\n');
+  expect(()=>documentRange(document,{anchor:{id:'a',offset:3},focus:{id:'c',offset:0}})).toThrow('invalid_selection');
+  documentRange(document,{anchor:{id:'a',offset:0},focus:{id:'c',offset:0}});
+  expect(()=>documentRange(document,{anchor:{id:'a',offset:'0'},focus:{id:'c',offset:0}})).toThrow('invalid_selection');
+});
+test('table endpoints preserve unselected cells and copy canonical tab separators',()=>{
+  const actor=paragraph('actor','高橋'),line=paragraph('line','こんにちは😀');
+  const table={id:'table',type:'table',extensions:{width:70},content:[{type:'table_row',content:[{content:[actor]},{content:[line]}]}]};
+  const document={content:[paragraph('a','前文'),table,paragraph('b','終文')]};
+  const selection={anchor:{id:'actor',offset:1},focus:{id:'b',offset:1}};
+  expect(documentSelectionText(document,selection)).toBe('橋\tこんにちは😀\n終');
+  const result=replaceDocumentSelection(document,selection,'置換');
+  expect(result.document.content[0]).toBe(document.content[0]);
+  expect(result.document.content[1].extensions).toBe(table.extensions);
+  expect(result.document.content[1].content[0].content[0].content[0].content[0].text).toBe('高置換');
+  expect(result.document.content[1].content[0].content[1].content[0].content).toEqual([]);
+  expect(result.document.content[2].content[0].text).toBe('文');
+});

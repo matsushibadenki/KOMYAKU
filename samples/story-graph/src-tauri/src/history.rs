@@ -429,10 +429,7 @@ pub async fn version_structure_diff(
                     if node.type_id != domain::SCENE {
                         return Err("version_invalid".into());
                     }
-                    Ok(Some(
-                        super::central_document::canonical(doc, node)?
-                            .clone(),
-                    ))
+                    Ok(Some(super::central_document::canonical(doc, node)?.clone()))
                 }
                 let pair = (canonical(&before, node_id)?, canonical(after, node_id)?);
                 if pair.0.is_none() && pair.1.is_none() {

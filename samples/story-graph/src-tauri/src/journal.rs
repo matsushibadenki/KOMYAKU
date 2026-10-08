@@ -377,7 +377,10 @@ fn envelope(doc: &unge_core::Document) -> String {
         doc.graph().edges(),
         doc.graph().groups(),
         doc.placement(),
-        doc.extensions.iter().filter(|(key, _)| key.as_str() != super::central_document::STORE).collect::<std::collections::BTreeMap<_, _>>(),
+        doc.extensions
+            .iter()
+            .filter(|(key, _)| key.as_str() != super::central_document::STORE)
+            .collect::<std::collections::BTreeMap<_, _>>(),
     ))
     .expect("validated document metadata")
 }
@@ -385,7 +388,10 @@ impl Structure {
     fn new(doc: &unge_core::Document) -> Self {
         Self {
             envelope: envelope(doc),
-            documents: doc.extensions.get(super::central_document::STORE).map(Shape::new),
+            documents: doc
+                .extensions
+                .get(super::central_document::STORE)
+                .map(Shape::new),
             nodes: doc
                 .graph()
                 .nodes()
@@ -461,7 +467,10 @@ impl Structure {
                             .is_some_and(|w| equal(v, w, &lookup, &mut seen))
                     })
             })
-        }) && match (&self.documents, doc.extensions.get(super::central_document::STORE)) {
+        }) && match (
+            &self.documents,
+            doc.extensions.get(super::central_document::STORE),
+        ) {
             (None, None) => true,
             (Some(a), Some(b)) => equal(a, b, &lookup, &mut seen),
             _ => false,
@@ -504,7 +513,9 @@ impl Structure {
                 replace(value, &lookup);
             }
         }
-        if let Some(documents) = &mut self.documents { replace(documents, &lookup); }
+        if let Some(documents) = &mut self.documents {
+            replace(documents, &lookup);
+        }
     }
 }
 struct Cache {

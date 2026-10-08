@@ -66,6 +66,15 @@ pub fn performance_qa_sample(
     );
     Ok(())
 }
+#[tauri::command]
+pub fn performance_qa_caret(window: tauri::WebviewWindow, values: Vec<f64>) -> std::result::Result<(), String> {
+    allowed(&window)?;
+    if !enabled() || values.len()!=10 || values.iter().any(|v| !v.is_finite() || v.abs()>100_000_000.) {
+        return Err("diagnostic_disabled".into());
+    }
+    eprintln!("QA_CARET window={} values={:?}",window.label(),values);
+    Ok(())
+}
 #[cfg(test)]
 mod tests {
     use super::*;

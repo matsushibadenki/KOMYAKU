@@ -66,7 +66,7 @@
 - [Done] 保存失敗時の入力保持・閉じる保護・復旧後の再保存をnativeで確認。メモリ受理と保存成功を分離し、再保存による編集の重複適用を防止。
 - [Next] IME入力中の保存／閉じる、分離パネルの競合、DPI変更のnative QAを完了。
 - [Done] 保存正本を共有Canonical Story Workspace v1へ移行するcheckpoint v3と、ローカルschemaパッケージ0.1.0／schemaVersion 1の基準を明記。
-- [Next] メモリ内Scene propertyと編集APIを中央Document参照へ移行。
+- [Done] メモリ内の本文をRust Documentの中央ストアへ移し、Scene propertyは参照だけを保持。段落編集・Undo／Redo・シーン追加／削除・検索・AI・書き出し・履歴比較は参照を解決する。旧保存形式と互換性を保ち、nativeで編集→履歴→再起動を確認。
 
 ## S1 — 文章構築と人物相関
 
@@ -125,7 +125,7 @@
 - [Done] 共有Canonical Archive v1の書き出し／取込み。単一Documentの拡張にGraph参照を保持し、ZIP整合性・参照・損失なし復元を検証。Rust出力を本体Archive verifierと共有Workspace schemaで照合。
 - [Done] 共有履歴Archive v2の書き出し／取込み。現在原稿、Branch、2親Merge、元の不変版IDを保持。独立した共有Archive検証器との照合、改ざん拒否、別作品への4版復元をnativeで確認。アプリ変換拡張を持つArchiveに対応。
 - [Done] Native checkpoint v3に共有Workspace正本を保存。本文は一つのCanonical Document、Graphは参照。旧v1/v2・ジャーナル・履歴・マージ・Archiveを保持し、橋渡し上限を超える原稿は既存形式で保存。Rust全体の互換テストを通過。
-- [Next] Rust Engineのシーン投影から中央Document参照を使う編集APIへの移行。
+- [Done] Rust Engineの中央Document参照を使う編集APIへ移行。本文移行は所有権を移し、通常の段落命令は該当Document内の小さい値だけを更新する。参照切れ・孤立本文・Undo・ジャーナル復旧・旧形式マージを検証。
 - [Done] 名前付きBranchと2親Merge。RustのDAG永続化・3-way比較・作者の競合選択・別作品としての統合・Archive保持。実macOSで過去の版から分岐→タイトル編集→本編との競合確認→採用側の選択→統合作品の起動と5版／2親の保存を検証。本文配列はまとまり単位で選択し、変更の細かい自動統合は行わない。
 - [Done] ファイル→「バックアップから復元…」。現在の作品のバックアップ日時・シーン数・項目数を確認し、作品名を指定して別作品へ復元。元の作品／バックアップは変更せず、破損・未対応形式は拒否。Rust workerで作成・検証・復元し、復元した作品を保存済み一覧へ登録。
 - [Done] ファイル→「snapshotを取り込む…」。外部JSON snapshotをRustで検証し、ID・本文・人物・画像・接続・配置を保持した別作品へ取り込み。元ファイルは変更せず、破損／未対応形式／上限超過を拒否。隠しディレクトリに保存後、完成した作品だけを作品一覧へ公開。完全履歴Archiveとは別のsnapshot取り込み。

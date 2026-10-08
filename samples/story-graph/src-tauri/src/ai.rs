@@ -308,10 +308,17 @@ pub fn ai_generate(
     {
         let host = app.state::<super::Host>();
         let _gate = host.gate.lock().map_err(|_| "state_unavailable")?;
-        let unchanged = host.engine.read_document(|document, _| {
-            let node = document.graph().nodes().get(&job.scene).ok_or("missing_node")?;
-            Ok::<_, String>(super::central_document::canonical(document, node)? == &job.source)
-        }).map_err(|e| e.code)??;
+        let unchanged = host
+            .engine
+            .read_document(|document, _| {
+                let node = document
+                    .graph()
+                    .nodes()
+                    .get(&job.scene)
+                    .ok_or("missing_node")?;
+                Ok::<_, String>(super::central_document::canonical(document, node)? == &job.source)
+            })
+            .map_err(|e| e.code)??;
         if !unchanged {
             return Err("ai_source_changed".into());
         }
@@ -599,7 +606,11 @@ pub async fn ai_append(
                         &text,
                     )?
                 } else {
-                    append_result(&job.source, super::central_document::canonical(&snapshot, scene)?, &text)?
+                    append_result(
+                        &job.source,
+                        super::central_document::canonical(&snapshot, scene)?,
+                        &text,
+                    )?
                 },
                 summary.revision,
             )

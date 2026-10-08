@@ -85,7 +85,11 @@ fn native_skeleton(document: &Document) -> std::result::Result<Value, String> {
     }
     let graph = document.graph();
     serde_json::to_value(NativeDocument {
-        extensions: document.extensions.iter().filter(|(key, _)| key.as_str() != central_document::STORE).collect(),
+        extensions: document
+            .extensions
+            .iter()
+            .filter(|(key, _)| key.as_str() != central_document::STORE)
+            .collect(),
         title: &document.title,
         schema_version: document.schema_version,
         engine_version: &document.engine_version,

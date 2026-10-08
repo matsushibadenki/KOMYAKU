@@ -520,7 +520,8 @@ impl DocumentValidator for Validator {
                 return Err(Error::Invalid("invalid_parent".into()));
             }
             if node.type_id == SCENE {
-                text(super::central_document::canonical(document, node).map_err(Error::Invalid)?).map_err(Error::Invalid)?;
+                text(super::central_document::canonical(document, node).map_err(Error::Invalid)?)
+                    .map_err(Error::Invalid)?;
             }
         }
         Ok(())

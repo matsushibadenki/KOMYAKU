@@ -73,19 +73,42 @@ impl Command {
                     value: previous,
                 }
             }
-            Self::SetDocumentEntry { extension, key, value } => {
-                let entries = doc.extensions.get_mut(&extension)
+            Self::SetDocumentEntry {
+                extension,
+                key,
+                value,
+            } => {
+                let entries = doc
+                    .extensions
+                    .get_mut(&extension)
                     .and_then(serde_json::Value::as_object_mut)
                     .ok_or_else(|| Error::Invalid("missing_document_store".into()))?;
-                let previous = match value { Some(value) => entries.insert(key.clone(), value), None => entries.remove(&key) };
-                Self::SetDocumentEntry { extension, key, value: previous }
+                let previous = match value {
+                    Some(value) => entries.insert(key.clone(), value),
+                    None => entries.remove(&key),
+                };
+                Self::SetDocumentEntry {
+                    extension,
+                    key,
+                    value: previous,
+                }
             }
-            Self::SetNestedDocumentExtension { extension, pointer, value } => {
-                let target = doc.extensions.get_mut(&extension)
+            Self::SetNestedDocumentExtension {
+                extension,
+                pointer,
+                value,
+            } => {
+                let target = doc
+                    .extensions
+                    .get_mut(&extension)
                     .and_then(|store| store.pointer_mut(&pointer))
                     .ok_or_else(|| Error::Invalid("invalid_document_path".into()))?;
                 let previous = std::mem::replace(target, value);
-                Self::SetNestedDocumentExtension { extension, pointer, value: previous }
+                Self::SetNestedDocumentExtension {
+                    extension,
+                    pointer,
+                    value: previous,
+                }
             }
             Self::SetNestedProperty {
                 id,

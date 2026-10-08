@@ -1,8 +1,8 @@
 mod ai;
 mod archive;
 mod autosave;
-mod character_groups;
 mod central_document;
+mod character_groups;
 mod chatgpt;
 mod domain;
 mod export;
@@ -257,14 +257,21 @@ fn selected(
     id: Id,
 ) -> std::result::Result<Node, String> {
     allowed(&window)?;
-    host.engine.read_document(|document, _| {
-        let mut node = document.graph().nodes().get(&id).ok_or("missing_node")?.clone();
-        if node.type_id == domain::SCENE {
-            let body = central_document::canonical(document, &node)?.clone();
-            node.properties.insert("canonical".into(), body);
-        }
-        Ok(node)
-    }).map_err(|e| e.code)?
+    host.engine
+        .read_document(|document, _| {
+            let mut node = document
+                .graph()
+                .nodes()
+                .get(&id)
+                .ok_or("missing_node")?
+                .clone();
+            if node.type_id == domain::SCENE {
+                let body = central_document::canonical(document, &node)?.clone();
+                node.properties.insert("canonical".into(), body);
+            }
+            Ok(node)
+        })
+        .map_err(|e| e.code)?
 }
 #[tauri::command]
 fn choose(
@@ -824,9 +831,12 @@ fn build_command_from_document(
                 let mut temporary =
                     Editor::new(document.clone(), 1).map_err(|_| "invalid_document")?;
                 temporary
-                    .execute(Command::Batch {
-                        commands: commands.clone(),
-                    })
+                    .execute(central_document::command(
+                        document,
+                        Command::Batch {
+                            commands: commands.clone(),
+                        },
+                    )?)
                     .map_err(|_| "invalid_document")?;
                 commands.push(paths::command(temporary.document(), definitions)?);
             }
@@ -1164,7 +1174,9 @@ fn edit_blocking(
         let paragraphs = host
             .engine
             .read_document(|document, _| {
-                let canonical = central_document::canonical(document, document.graph().nodes().get(scene)?).ok()?;
+                let canonical =
+                    central_document::canonical(document, document.graph().nodes().get(scene)?)
+                        .ok()?;
                 before
                     .keys()
                     .map(|id| find_paragraph(canonical, *id).cloned())
@@ -1184,7 +1196,9 @@ fn edit_blocking(
                 let Some(node) = snapshot.graph().nodes().get(&id) else {
                     return Vec::new();
                 };
-                let Ok(after) = central_document::canonical(snapshot, node) else { return Vec::new(); };
+                let Ok(after) = central_document::canonical(snapshot, node) else {
+                    return Vec::new();
+                };
                 before
                     .into_iter()
                     .filter_map(|(id, paragraph)| {
@@ -1662,6 +1676,7 @@ fn main() {
             floating_panels::float_side_panel,
             performance_qa::performance_qa_enabled,
             performance_qa::performance_qa_sample,
+            performance_qa::performance_qa_caret,
             layout::get_layout,
             layout::resize_panel,
             layout::dock_panel,

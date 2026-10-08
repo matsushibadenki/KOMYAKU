@@ -690,3 +690,10 @@ Checkpoint v3: all 137 native test cases (including ignored hardware/manual fixt
 - 検索からの移動を、横書きと縦書きの実画面で確認。大きな入力欄全体を表示する処理では不十分だったため、実文字のRange矩形に基づくスクロールに修正した。
 - ローカルopt-in診断：縦書き起動時120フレーム p50=17ms / p95=18ms / max=28ms、接続本文DOM32 / 集約DOM4 / 入力欄1。横書きwheel後120フレーム p50=17ms / p95=18ms / max=25ms、本文DOM27 / 集約DOM4 / 入力欄2。50ms超はいずれも0。連続スクロール全区間のFPSや入力遅延保証ではない。
 - DOMを切り離した群で段落参照・検索・再接続・編集値保持・フォーカスによる保護・削除後の検索インデックス・observer解除をユニットテスト。JS 44件 / 774 assertions成功。
+
+## 中央Document参照 — 2026-10-08
+
+- Rust正本の本文を `komyaku.canonicalDocuments` に一度保持し、Sceneは自身のIDの `documentRef` を保持する。起動時は旧本文の所有権を移し、再変換でもIDと内容を保持する。
+- 正本から選択シーンだけをWebViewへ投影。検索、Path、AI、書き出し、履歴差分、三方向マージ、checkpoint、差分ジャーナルで旧形式と新形式を扱う。
+- 全Rust workspaceテスト成功。アプリ143件中129成功・14 opt-in除外。参照切れ、シーン削除のUndo、ジャーナル再読込、不変版保存、TXT出力を追加検証。
+- 専用native QA profileで `central Document QA` の編集とUndo／Redo、`中央Document QA` シーン追加とUnicode本文保存、`Central Document native QA` の版保存、旧版との追加20字の差分、再起動後の両本文復元を確認。実ユーザーの原稿・認証情報は使用していない。
