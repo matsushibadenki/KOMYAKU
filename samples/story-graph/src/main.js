@@ -604,11 +604,11 @@ function hitParagraphPosition(input,x,y) {
   const mirror=paragraphOverlay(input),text=document.createTextNode(input.value||' ');
   mirror.append(text);mirror.style.pointerEvents='auto';mirror.style.zIndex='4';input.after(mirror);
   const bounds=input.getBoundingClientRect();
+  Object.assign(mirror.style,{position:'fixed',inset:'auto',left:`${bounds.left}px`,top:`${bounds.top}px`});
   const px=Math.max(bounds.left+1,Math.min(x,bounds.right-1)),py=Math.max(bounds.top+1,Math.min(y,bounds.bottom-1));
   const caret=document.caretPositionFromPoint?.(px,py),range=caret?null:document.caretRangeFromPoint?.(px,py);
   const node=caret?.offsetNode??range?.startContainer,offset=caret?.offset??range?.startOffset;
   const position=node===text?caretPosition(input,Math.min(offset,input.value.length)):null;
-  if(caretQA)invoke('performance_qa_caret',{values:[-7,Number(input.dataset.start),position??-1,offset??-1,bounds.left,bounds.right,px,py,node===text?1:0,input.value.length]}).catch(()=>{});
   mirror.remove();range?.detach();return position;
 }
 function paintParagraphSelection(input) {
@@ -738,24 +738,48 @@ document.addEventListener('pointerdown',event=>{
     return;
   }
   clearParagraphSelection();
-  if(native&&!composing&&event.button===0&&input.dataset.block&&!input.closest('.dialogue-sheet')){
+  if(native&&!composing&&event.button===0&&input.dataset.block){
     const pending={input,anchor:null,pointer:event.pointerId,drag:true,crossed:false};pointerSelection=pending;
     // Let the native pointer default action establish the anchor. In WebKit,
     // a mirror inserted before pointerdown completes can report its start.
     requestAnimationFrame(()=>{if(pointerSelection===pending)pending.anchor=caretPosition(input,input.selectionDirection==='backward'?input.selectionEnd:input.selectionStart);});
   }
 },true);
-let selectionPointerFrame=0;
-document.addEventListener('pointermove',event=>{
-  const pending=pointerSelection;if(caretQA&&event.buttons)invoke('performance_qa_caret',{values:[-9,pending?.drag?1:0,pending?.anchor??-1,pending?.pointer??-1,event.pointerId,event.buttons,event.clientX,event.clientY,0,0]}).catch(()=>{});if(!pending?.drag||pending.pointer!==event.pointerId||pending.anchor===null||!event.buttons)return;
+let selectionPointerFrame=0,selectionScrollFrame=0;
+function scrollPointerSelection(){
+  selectionScrollFrame=0;const pending=pointerSelection;if(!pending?.drag||!pending.point)return;
+  const vertical=preferences.writingMode==='vertical',root=pending.input.closest('.group-manuscript')??pending.input.closest(vertical?'.manuscript-pages':'.editor-content');
+  if(!root)return;const r=root.getBoundingClientRect(),{x,y}=pending.point,axis=vertical?x:y,min=vertical?r.left:r.top,max=vertical?r.right:r.bottom;
+  const delta=axis<min+28?-Math.min(22,(min+28-axis)/3):axis>max-28?Math.min(22,(axis-max+28)/3):0;
+  if(delta){const before=vertical?root.scrollLeft:root.scrollTop;if(vertical)root.scrollLeft+=delta;else root.scrollTop+=delta;
+    if((vertical?root.scrollLeft:root.scrollTop)!==before)extendPointerSelection({pointerId:pending.pointer,buttons:1,clientX:x,clientY:y});
+  }
+  selectionScrollFrame=requestAnimationFrame(scrollPointerSelection);
+}
+
+function pointerParagraph(block,x,y){
+  const direct=document.elementFromPoint(x,y)?.closest('textarea[data-block]');
+  if(direct&&block.contains(direct))return direct;
+  // A newly mounted dialogue block may not be hit-tested until the next frame.
+  let closest=null,distance=Infinity;
+  for(const input of block.querySelectorAll('textarea[data-block]')){
+    const r=input.getBoundingClientRect(),dx=Math.max(r.left-x,0,x-r.right),dy=Math.max(r.top-y,0,y-r.bottom),d=dx*dx+dy*dy;
+    if(d<distance){closest=input;distance=d;}
+  }
+  return closest;
+}
+function extendPointerSelection(event){
+  const pending=pointerSelection;if(!pending?.drag||pending.pointer!==event.pointerId||pending.anchor===null||!event.buttons)return;
   cancelAnimationFrame(selectionPointerFrame);
-  const x=event.clientX,y=event.clientY;
+  pending.point={x:event.clientX,y:event.clientY};if(!selectionScrollFrame)selectionScrollFrame=requestAnimationFrame(scrollPointerSelection);
+  const root=pending.input.closest('.group-manuscript')??pending.input.closest(preferences.writingMode==='vertical'?'.manuscript-pages':'.editor-content'),bounds=root?.getBoundingClientRect();
+  const x=bounds?Math.max(bounds.left+2,Math.min(event.clientX,bounds.right-2)):event.clientX,y=bounds?Math.max(bounds.top+2,Math.min(event.clientY,bounds.bottom-2)):event.clientY;
   selectionPointerFrame=requestAnimationFrame(()=>{
     if(pointerSelection!==pending)return;
     const block=document.elementFromPoint(x,y)?.closest('.manuscript-block');
-    if(!block||!block.dataset.paragraph||inputScene(block)!==inputScene(pending.input))return;
+    if(!block||inputScene(block)!==inputScene(pending.input))return;
     manuscriptViewport?.mount(block);
-    const target=block.querySelector('textarea[data-block]');if(!target||target===pending.input&&!pending.crossed)return;
+    const target=pointerParagraph(block,x,y);if(!target||target===pending.input&&!pending.crossed)return;
     const focus=hitParagraphPosition(target,x,y);if(focus===null)return;
     pending.anchorPoint??={id:pending.input.dataset.block,offset:pending.anchor};
     pending.crossed=true;pending.focus=focus;
@@ -763,13 +787,32 @@ document.addEventListener('pointermove',event=>{
     else selectDocumentPoint(target,pending.anchorPoint,{id:target.dataset.block,offset:focus});
     pending.input=target;
   });
-});
+}
+document.addEventListener('pointermove',extendPointerSelection);
+document.addEventListener('mousemove',event=>{if(pointerSelection?.drag)extendPointerSelection({pointerId:pointerSelection.pointer,buttons:event.buttons||1,clientX:event.clientX,clientY:event.clientY});});
 document.addEventListener('pointerup',event=>{
   const pending=pointerSelection;if(!pending||pending.pointer!==event.pointerId)return;
   // Read WebKit's native hit-tested caret after its pointer default action.
   requestAnimationFrame(()=>{
     if(pointerSelection!==pending)return;
-    pointerSelection=null;const input=pending.input;
+    if(pending.drag){
+      // A native text drag can suppress intermediate pointer events on macOS.
+      // Always resolve the release point, including a move across a block.
+      const block=document.elementFromPoint(event.clientX,event.clientY)?.closest('.manuscript-block');
+      if(block&&inputScene(block)===inputScene(pending.input)){
+        manuscriptViewport?.mount(block);
+        const target=pointerParagraph(block,event.clientX,event.clientY);
+        if(target&&target!==pending.input){
+          const focus=hitParagraphPosition(target,event.clientX,event.clientY);
+          if(focus!==null){pending.anchorPoint??={id:pending.input.dataset.block,offset:pending.anchor};pending.crossed=true;pending.focus=focus;
+            if(target.dataset.block===pending.anchorPoint.id&&!documentSelection)selectParagraphPosition(target,pointSelection(paragraphValue(target).length,pending.anchor,focus));
+            else selectDocumentPoint(target,pending.anchorPoint,{id:target.dataset.block,offset:focus});
+            pending.input=target;
+          }
+        }
+      }
+    }
+    pointerSelection=null;cancelAnimationFrame(selectionScrollFrame);selectionScrollFrame=0;const input=pending.input;
     if(pending.drag&&!pending.crossed)return;
     if(pending.document){selectDocumentPoint(input,pending.anchorPoint,{id:input.dataset.block,offset:caretPosition(input,input.selectionDirection==='backward'?input.selectionStart:input.selectionEnd)});return;}
     if(pending.drag&&documentSelection){paintDocumentSelection(input);return;}
@@ -778,7 +821,7 @@ document.addEventListener('pointerup',event=>{
     selectParagraphPosition(input,pointSelection(paragraphValue(input).length,pending.anchor,focus));
   });
 });
-document.addEventListener('pointercancel',()=>{if(pointerSelection){pointerSelection=null;clearParagraphSelection();}});
+document.addEventListener('pointercancel',()=>{cancelAnimationFrame(selectionScrollFrame);selectionScrollFrame=0;if(pointerSelection){pointerSelection=null;clearParagraphSelection();}});
 // macOS Edit > Select All can select the native textarea without a DOM keydown.
 document.addEventListener('select',event=>{
   const input=event.target;if(reflowing||paintingSelection||pointerSelection||paragraphSelection||documentSelection||composing||!native||!input.dataset.block||input.closest('.dialogue-sheet')||!input.value.length||input.selectionStart!==0||input.selectionEnd!==input.value.length)return;
@@ -1180,6 +1223,12 @@ async function start() {
     });
     await listen('story://layout',event=>applyLayout(event.payload));
     await listen('story://panel',event=>{floating=event.payload;render();});
+    await listen('story://history-command',async event=>{
+      const input=document.activeElement;
+      if(composing||busy)return;
+      if(input?.matches('input,textarea,[contenteditable="true"]')&&!input.dataset.block){document.execCommand(event.payload);return;}
+      await mutate({kind:event.payload});
+    });
     await listen('story://save-error',()=>{status='unsaved';error='save_failed';render();});
   }
 }

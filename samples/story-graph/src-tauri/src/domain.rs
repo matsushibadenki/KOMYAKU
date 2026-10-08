@@ -288,7 +288,7 @@ pub fn registry() -> Arc<Registry> {
 pub fn canonical(text: &str, id: Id, paragraph: Id) -> Json {
     json!({"schemaId":"https://komyaku.example/schemas/document/v1","schemaVersion":1,"id":id,"type":"document","attrs":{"language":"und","direction":"auto","writingMode":"horizontal-tb"},"metadata":{},"extensions":{},"content":[{"id":paragraph,"schemaVersion":1,"type":"paragraph","attrs":{"lang":null,"dir":"auto"},"metadata":{},"extensions":{},"renderArtifacts":[],"content":if text.is_empty(){json!([])}else{json!([{"type":"text","text":text,"marks":[],"metadata":{},"extensions":{}}])}}]})
 }
-pub fn text(document: &Json) -> std::result::Result<String, String> {
+fn text_parts(document: &Json) -> std::result::Result<Vec<&str>, String> {
     if document["schemaId"] != "https://komyaku.example/schemas/document/v1"
         || document["schemaVersion"] != 1
         || document["type"] != "document"
@@ -296,23 +296,23 @@ pub fn text(document: &Json) -> std::result::Result<String, String> {
         return Err("invalid_document".into());
     }
     let blocks = document["content"].as_array().ok_or("invalid_document")?;
-    fn paragraph(
-        node: &Json,
+    fn paragraph<'a>(
+        node: &'a Json,
         ids: &mut std::collections::BTreeSet<Id>,
-    ) -> std::result::Result<String, String> {
+        parts: &mut Vec<&'a str>,
+    ) -> std::result::Result<(), String> {
         check_id(node, ids)?;
         if node["type"] != "paragraph" {
             return Err("unsupported_document".into());
         }
-        let mut text = String::new();
         for inline in node["content"].as_array().ok_or("invalid_document")? {
             if inline["type"] != "text" || inline["marks"].as_array().is_none_or(|v| !v.is_empty())
             {
                 return Err("unsupported_document".into());
             }
-            text.push_str(inline["text"].as_str().ok_or("invalid_document")?);
+            parts.push(inline["text"].as_str().ok_or("invalid_document")?);
         }
-        Ok(text)
+        Ok(())
     }
     fn check_id(
         node: &Json,
@@ -331,9 +331,12 @@ pub fn text(document: &Json) -> std::result::Result<String, String> {
         return Err("limit_exceeded".into());
     }
     let mut parts = Vec::new();
-    for block in blocks {
+    for (index, block) in blocks.iter().enumerate() {
+        if index > 0 {
+            parts.push("\n");
+        }
         if block["type"] == "paragraph" {
-            parts.push(paragraph(block, &mut ids)?);
+            paragraph(block, &mut ids, &mut parts)?;
             continue;
         }
         if block["type"] != "table" {
@@ -361,8 +364,10 @@ pub fn text(document: &Json) -> std::result::Result<String, String> {
         if cells.len() != 2 {
             return Err("unsupported_document".into());
         }
-        let mut line = Vec::new();
-        for cell in cells {
+        for (index, cell) in cells.iter().enumerate() {
+            if index > 0 {
+                parts.push("\t");
+            }
             check_id(cell, &mut ids)?;
             if cell["type"] != "table_cell"
                 || cell["attrs"]["colspan"] != 1
@@ -374,20 +379,34 @@ pub fn text(document: &Json) -> std::result::Result<String, String> {
             if content.len() != 1 {
                 return Err("unsupported_document".into());
             }
-            line.push(paragraph(&content[0], &mut ids)?);
+            paragraph(&content[0], &mut ids, &mut parts)?;
         }
-        parts.push(line.join("\t"));
     }
-    let result = parts.join("\n");
-    if result.len() > MAX_SCENE_TEXT_BYTES
-        || serde_json::to_vec(document)
-            .map_err(|_| "invalid_document")?
-            .len()
-            > 16 * 1024 * 1024
-    {
+    if parts.iter().map(|text| text.len()).sum::<usize>() > MAX_SCENE_TEXT_BYTES {
         return Err("limit_exceeded".into());
     }
-    Ok(result)
+    // Enforce the same serialized limit without allocating a second full body.
+    struct BoundedSize(usize);
+    impl std::io::Write for BoundedSize {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0 = self.0.saturating_add(bytes.len());
+            if self.0 > 16 * 1024 * 1024 {
+                return Err(std::io::Error::other("limit_exceeded"));
+            }
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    serde_json::to_writer(&mut BoundedSize(0), document).map_err(|_| "limit_exceeded")?;
+    Ok(parts)
+}
+pub fn validate_text(document: &Json) -> std::result::Result<(), String> {
+    text_parts(document).map(|_| ())
+}
+pub fn text(document: &Json) -> std::result::Result<String, String> {
+    Ok(text_parts(document)?.concat())
 }
 /// Wrap legacy root scenes without changing their canonical documents or route links.
 pub fn migrate_hierarchy(
@@ -519,9 +538,15 @@ impl DocumentValidator for Validator {
             } else if [SEQUENCE, SCENE].contains(&node.type_id.as_str()) {
                 return Err(Error::Invalid("invalid_parent".into()));
             }
-            if node.type_id == SCENE {
-                text(super::central_document::canonical(document, node).map_err(Error::Invalid)?)
-                    .map_err(Error::Invalid)?;
+            if node.type_id == SCENE
+                && !document
+                    .extensions
+                    .contains_key(super::central_document::STORE)
+            {
+                validate_text(
+                    super::central_document::canonical(document, node).map_err(Error::Invalid)?,
+                )
+                .map_err(Error::Invalid)?;
             }
         }
         Ok(())
@@ -775,6 +800,20 @@ pub fn legacy_compile(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn borrowed_validation_preserves_text_and_counts_escaped_serialized_bytes() {
+        let document = canonical("雨😀\r\n末尾", Id::new_v4(), Id::new_v4());
+        validate_text(&document).unwrap();
+        assert_eq!(text(&document).unwrap(), "雨😀\r\n末尾");
+        let escaped = canonical(&"\0".repeat(3 * 1024 * 1024), Id::new_v4(), Id::new_v4());
+        assert_eq!(validate_text(&escaped).unwrap_err(), "limit_exceeded");
+        let oversized = canonical(
+            &"a".repeat(MAX_SCENE_TEXT_BYTES + 1),
+            Id::new_v4(),
+            Id::new_v4(),
+        );
+        assert_eq!(validate_text(&oversized).unwrap_err(), "limit_exceeded");
+    }
     #[test]
     fn narrative_executors_validate_cancel_and_cache() {
         let registry = registry();

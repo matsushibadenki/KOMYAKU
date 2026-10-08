@@ -61,6 +61,29 @@ struct RenderEdge {
     arrow_end: bool,
 }
 /// Build once per document revision, not once per animation frame.
+/// Conservative dependency map for the cached graph projection. Document
+/// extensions and manuscript properties are not read by this renderer.
+impl SceneIndex {
+    pub fn command_affects_scene(command: &unge_core::Command) -> bool {
+        use unge_core::Command;
+        match command {
+            Command::SetDocumentExtension { .. }
+            | Command::SetDocumentEntry { .. }
+            | Command::SetNestedDocumentExtension { .. }
+            | Command::SetDocumentTitle { .. } => false,
+            Command::SetProperty { key, .. } | Command::SetNestedProperty { key, .. } => {
+                ["title", "role", "kind", "portrait", "mutual"].contains(&key.as_str())
+            }
+            Command::Batch { commands } => commands.iter().any(Self::command_affects_scene),
+            Command::AddNode { .. }
+            | Command::RemoveNode { .. }
+            | Command::MoveNode { .. }
+            | Command::Connect { .. }
+            | Command::Disconnect { .. }
+            | Command::SetGroup { .. } => true,
+        }
+    }
+}
 pub struct SceneIndex {
     nodes: BTreeMap<Id, RenderNode>,
     edges: BTreeMap<Id, RenderEdge>,

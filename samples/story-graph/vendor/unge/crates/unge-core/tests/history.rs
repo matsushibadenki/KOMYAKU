@@ -1,6 +1,6 @@
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
     Arc,
+    atomic::{AtomicBool, Ordering},
 };
 use unge_core::*;
 
@@ -182,9 +182,16 @@ fn central_document_entries_and_nested_edits_are_atomic_and_undoable() {
     doc.move_property_to_extension(id, "document", "documents", "scene", json!({"ref":"scene"}))
         .unwrap();
     let before = doc.clone();
-    assert!(doc
-        .move_property_to_extension(id, "document", "documents", "scene", json!({"ref":"other"}))
-        .is_err());
+    assert!(
+        doc.move_property_to_extension(
+            id,
+            "document",
+            "documents",
+            "scene",
+            json!({"ref":"other"})
+        )
+        .is_err()
+    );
     assert_eq!(doc, before);
     let mut e = Editor::new(doc, 100).unwrap();
     e.execute(Command::SetNestedDocumentExtension {
@@ -199,8 +206,8 @@ fn central_document_entries_and_nested_edits_are_atomic_and_undoable() {
     );
     assert!(e.history_stats().bytes < 1024);
     let changed = e.document().clone();
-    assert!(e
-        .execute(Command::Batch {
+    assert!(
+        e.execute(Command::Batch {
             commands: vec![
                 Command::SetDocumentEntry {
                     extension: "documents".into(),
@@ -214,7 +221,8 @@ fn central_document_entries_and_nested_edits_are_atomic_and_undoable() {
                 }
             ]
         })
-        .is_err());
+        .is_err()
+    );
     assert_eq!(e.document(), &changed);
     assert!(e.undo().unwrap());
     assert_eq!(e.document(), &before);
@@ -226,10 +234,12 @@ fn central_document_entries_and_nested_edits_are_atomic_and_undoable() {
         value: None,
     })
     .unwrap();
-    assert!(e.document().extensions["documents"]
-        .as_object()
-        .unwrap()
-        .is_empty());
+    assert!(
+        e.document().extensions["documents"]
+            .as_object()
+            .unwrap()
+            .is_empty()
+    );
     assert!(e.undo().unwrap());
     assert_eq!(e.document(), &changed);
 }

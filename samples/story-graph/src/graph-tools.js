@@ -51,5 +51,6 @@ function panel(){document.querySelector('[role="status"]')?.remove();const root=
 }
 function nodeType(id){return state.nodes.find(n=>n.id===id)?.type;}
 async function refresh(force=false){if(inspector&&focusedDirty&&!force){return;}const ticket=++refreshTicket;try{const next=await invoke('graph_state');if(ticket!==refreshTicket||next.hidden)return;state=next;document.documentElement.lang=state.language;inspector?panel():rail();}catch(e){message(t('error'));}}
+await listen('story://history-command',event=>{if(document.activeElement?.matches('input,textarea'))document.execCommand(event.payload);else if(state)act({kind:event.payload});});
 await listen('graph://changed',()=>refresh());await listen('story://view-changed',()=>refresh());await listen('story://changed',()=>refresh());await listen('story://preferences',()=>refresh());
 await refresh();

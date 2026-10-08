@@ -369,6 +369,13 @@ impl Editor {
     pub fn document(&self) -> &Document {
         &self.document
     }
+    /// Inspect only the adjacent history command; no document/body clone.
+    pub fn next_undo(&self) -> Option<&Command> {
+        self.undo.back().map(|entry| &entry.command)
+    }
+    pub fn next_redo(&self) -> Option<&Command> {
+        self.redo.back().map(|entry| &entry.command)
+    }
     pub fn revision(&self) -> u64 {
         self.revision
     }

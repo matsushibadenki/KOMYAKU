@@ -1922,8 +1922,63 @@ fn main() {
                     )?;
                     application.append(&quit)?;
                 }
+                // Native AppKit Undo otherwise targets a disposable textarea's
+                // undo stack. Route it through the focused projection instead.
+                let language = app
+                    .state::<preferences::Store>()
+                    .value
+                    .lock()
+                    .map_err(|_| "state_unavailable")?
+                    .language
+                    .clone();
+                let (undo_label, redo_label) = match language.as_str() {
+                    "ja" => ("元に戻す", "やり直す"),
+                    "zh-CN" => ("撤销", "重做"),
+                    _ => ("Undo", "Redo"),
+                };
+                for item in menu.items()? {
+                    if let tauri::menu::MenuItemKind::Submenu(submenu) = item
+                        && submenu.text()? == "Edit"
+                    {
+                        submenu.remove_at(0)?;
+                        submenu.remove_at(0)?;
+                        submenu.insert(
+                            &tauri::menu::MenuItem::with_id(
+                                app,
+                                "story-undo",
+                                undo_label,
+                                true,
+                                Some("CmdOrCtrl+Z"),
+                            )?,
+                            0,
+                        )?;
+                        submenu.insert(
+                            &tauri::menu::MenuItem::with_id(
+                                app,
+                                "story-redo",
+                                redo_label,
+                                true,
+                                Some("CmdOrCtrl+Shift+Z"),
+                            )?,
+                            1,
+                        )?;
+                    }
+                }
                 app.set_menu(menu)?;
                 app.on_menu_event(|app, event| {
+                    if matches!(event.id().as_ref(), "story-undo" | "story-redo") {
+                        let action = if event.id().as_ref() == "story-undo" {
+                            "undo"
+                        } else {
+                            "redo"
+                        };
+                        for window in app.webview_windows().values() {
+                            if window.is_focused().unwrap_or(false) {
+                                let _ = window.emit("story://history-command", action);
+                                break;
+                            }
+                        }
+                    }
                     if event.id().as_ref() == "story-quit" {
                         if app.state::<autosave::Worker>().flush().is_ok() {
                             app.exit(0);

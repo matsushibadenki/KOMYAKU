@@ -37,7 +37,6 @@ pub fn normalize(mut document: Document) -> std::result::Result<Document, String
         .or_insert_with(|| json!({}));
     for id in scenes {
         let node = &document.graph().nodes()[&id];
-        domain::text(canonical(&document, node)?)?;
         if node.properties["canonical"].get("documentRef").is_none() {
             document
                 .move_property_to_extension(
@@ -69,7 +68,7 @@ pub fn validate(document: &Document) -> std::result::Result<(), String> {
         if node.properties["canonical"].get("documentRef").is_none() {
             return Err("invalid_document_reference".into());
         }
-        domain::text(canonical(document, node)?)?;
+        domain::validate_text(canonical(document, node)?)?;
         references.insert(node.id.to_string());
     }
     if store.len() != references.len() || store.keys().any(|k| !references.contains(k)) {
@@ -149,7 +148,7 @@ pub fn command(document: &Document, command: Command) -> std::result::Result<Com
                 .properties
                 .remove("canonical")
                 .ok_or("invalid_document")?;
-            domain::text(&value)?;
+            domain::validate_text(&value)?;
             let key = node.id.to_string();
             node.properties
                 .insert("canonical".into(), json!({"documentRef":node.id}));
@@ -184,7 +183,7 @@ pub fn command(document: &Document, command: Command) -> std::result::Result<Com
         }
         Command::SetProperty { id, key, value } if key == "canonical" => {
             let value = value.ok_or("invalid_document")?;
-            domain::text(&value)?;
+            domain::validate_text(&value)?;
             Command::SetDocumentEntry {
                 extension: STORE.into(),
                 key: id.to_string(),

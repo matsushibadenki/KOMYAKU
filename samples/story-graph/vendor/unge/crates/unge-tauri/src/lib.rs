@@ -19,6 +19,8 @@ struct State {
     labels: LabelCatalog,
     editor: Editor,
     scene: SceneIndex,
+    #[cfg(test)]
+    scene_builds: usize,
     views: BTreeMap<String, ViewState>,
 }
 /// Manage one Engine per application document service. No window owns a document.
@@ -110,8 +112,14 @@ fn summary(state: &State) -> Summary {
         edges: state.editor.document().graph().edges().len(),
     }
 }
-fn refresh_scene(state: &mut State) {
-    state.scene = SceneIndex::new(state.editor.document());
+fn refresh_scene(state: &mut State, affects_scene: bool) {
+    if affects_scene {
+        state.scene = SceneIndex::new(state.editor.document());
+        #[cfg(test)]
+        {
+            state.scene_builds += 1;
+        }
+    }
     let existing: BTreeSet<_> = state
         .editor
         .document()
@@ -152,6 +160,8 @@ impl Engine {
                 labels: LabelCatalog::new(),
                 editor,
                 scene,
+                #[cfg(test)]
+                scene_builds: 1,
                 views: BTreeMap::new(),
             })),
             renderers: Arc::new(Mutex::new(BTreeMap::new())),
@@ -323,6 +333,19 @@ impl Engine {
             }
             return Err(ApiError::new("revision_conflict", state.editor.revision()));
         }
+        let affects_scene = match &request {
+            Request::Apply { command, .. } => SceneIndex::command_affects_scene(command),
+            Request::Undo { .. } => state
+                .editor
+                .next_undo()
+                .is_some_and(SceneIndex::command_affects_scene),
+            Request::Redo { .. } => state
+                .editor
+                .next_redo()
+                .is_some_and(SceneIndex::command_affects_scene),
+            Request::Pointer { .. } => true,
+            _ => false,
+        };
         let before = state.editor.revision();
         match request {
             Request::SetLocale { locale } => {
@@ -383,7 +406,7 @@ impl Engine {
             Request::Summary => {}
         }
         if state.editor.revision() != before {
-            refresh_scene(&mut state);
+            refresh_scene(&mut state, affects_scene);
         }
         Ok(summary(&state))
     }
@@ -540,8 +563,9 @@ impl unge_acx::GraphHost for Engine {
             revision: state.editor.revision(),
         };
         unge_acx::check_snapshot(&before, document, expected_revision)?;
+        let affects_scene = SceneIndex::command_affects_scene(&command);
         state.editor.execute(command)?;
-        refresh_scene(&mut state);
+        refresh_scene(&mut state, affects_scene);
         Ok(unge_acx::Snapshot {
             document: state.editor.document().clone(),
             revision: state.editor.revision(),
@@ -557,16 +581,123 @@ impl unge_acx::GraphHost for Engine {
             revision: state.editor.revision(),
         };
         unge_acx::check_snapshot(&before, document, expected_revision)?;
+        let affects_scene = state
+            .editor
+            .next_undo()
+            .is_some_and(SceneIndex::command_affects_scene);
         if !state.editor.undo()? {
             return Err(unge_acx::AcxError::new(
                 "recovery_unavailable",
                 "undo history unavailable",
             ));
         }
-        refresh_scene(&mut state);
+        refresh_scene(&mut state, affects_scene);
         Ok(unge_acx::Snapshot {
             document: state.editor.document().clone(),
             revision: state.editor.revision(),
         })
+    }
+}
+
+#[cfg(test)]
+mod render_cache_tests {
+    use super::*;
+    #[test]
+    fn manuscript_updates_and_their_undo_reuse_scene_but_visual_changes_refresh() {
+        let engine = Engine::new(Document::default()).unwrap();
+        engine
+            .register_view(
+                "main",
+                Viewport {
+                    origin: [0., 0.],
+                    zoom: 1.,
+                    size: [800., 600.],
+                },
+            )
+            .unwrap();
+        let id = Id::new_v4();
+        let apply = |command| {
+            let revision = engine.dispatch("main", Request::Summary).unwrap().revision;
+            engine
+                .dispatch(
+                    "main",
+                    Request::Apply {
+                        expected_revision: revision,
+                        command,
+                    },
+                )
+                .unwrap();
+        };
+        let builds = || engine.state.lock().unwrap().scene_builds;
+        apply(Command::AddNode {
+            node: Node {
+                id,
+                type_id: "story.scene".into(),
+                inputs: vec![],
+                outputs: vec![],
+                properties: Properties::new(),
+            },
+            rect: Rect::default(),
+        });
+        assert_eq!(builds(), 2);
+        apply(Command::SetDocumentExtension {
+            key: "body-store".into(),
+            value: Some(serde_json::json!({id.to_string():{"text":"雨".repeat(100_000)}})),
+        });
+        apply(Command::SetNestedDocumentExtension {
+            extension: "body-store".into(),
+            pointer: format!("/{id}/text"),
+            value: serde_json::json!("新しい本文😀"),
+        });
+        apply(Command::SetProperty {
+            id,
+            key: "canonical".into(),
+            value: Some(serde_json::json!({"documentRef":id})),
+        });
+        assert_eq!(builds(), 2);
+        for redo in [false, true] {
+            let revision = engine.dispatch("main", Request::Summary).unwrap().revision;
+            engine
+                .dispatch(
+                    "main",
+                    if redo {
+                        Request::Redo {
+                            expected_revision: revision,
+                        }
+                    } else {
+                        Request::Undo {
+                            expected_revision: revision,
+                        }
+                    },
+                )
+                .unwrap();
+            assert_eq!(builds(), 2);
+        }
+        apply(Command::SetProperty {
+            id,
+            key: "title".into(),
+            value: Some(serde_json::json!("変更した見出し")),
+        });
+        assert_eq!(builds(), 3);
+        let revision = engine.dispatch("main", Request::Summary).unwrap().revision;
+        engine
+            .dispatch(
+                "main",
+                Request::Undo {
+                    expected_revision: revision,
+                },
+            )
+            .unwrap();
+        assert_eq!(builds(), 4);
+        let revision = engine.dispatch("main", Request::Summary).unwrap().revision;
+        engine
+            .dispatch(
+                "main",
+                Request::Redo {
+                    expected_revision: revision,
+                },
+            )
+            .unwrap();
+        assert_eq!(builds(), 5);
     }
 }

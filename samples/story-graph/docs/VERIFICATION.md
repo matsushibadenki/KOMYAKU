@@ -697,3 +697,18 @@ Checkpoint v3: all 137 native test cases (including ignored hardware/manual fixt
 - 正本から選択シーンだけをWebViewへ投影。検索、Path、AI、書き出し、履歴差分、三方向マージ、checkpoint、差分ジャーナルで旧形式と新形式を扱う。
 - 全Rust workspaceテスト成功。アプリ143件中129成功・14 opt-in除外。参照切れ、シーン削除のUndo、ジャーナル再読込、不変版保存、TXT出力を追加検証。
 - 専用native QA profileで `central Document QA` の編集とUndo／Redo、`中央Document QA` シーン追加とUnicode本文保存、`Central Document native QA` の版保存、旧版との追加20字の差分、再起動後の両本文復元を確認。実ユーザーの原稿・認証情報は使用していない。
+
+### 複数段落の範囲編集・ネイティブ Undo（2026-10-08）
+
+- 隔離した QA 文書で、横書きの本文→役者名／セリフ→本文をドラッグ／Shift クリックで選択し、絵文字を含む文字列に置換。未選択の末尾は保持され、セリフの表を含む選択部分が一括で置換されて保存された。
+- macOS の Cmd+Z が再生成済み textarea のローカル履歴を参照する問題を修正。ネイティブ Edit メニューの Undo／Redo をフォーカス中の投影に配送し、本文編集は Rust の履歴で戻す。ドラッグ置換後、一回の Cmd+Z で前の段落・高橋・こんにちは。・後ろの段落です。を復元。通常入力も Cmd+Z／Cmd+Shift+Z で復元した。
+- JS：47 tests / 796 assertions pass。Rust：143 tests（129 pass / 14 ignored）。localhost コールバック試験はサンドボックスで socket bind が拒否されたため、外部通信を行わない昇格実行で再検証した。
+- 縦書きで下ドックにより本文の高さが変わると検索位置が画面外にずれる問題を修正。本文領域の ResizeObserver は小さな文書でも有効にし、列幅を再測定。24k文字の検証本文で「選択の開始ABC」検索後に選択位置が可視領域へ復帰することを確認。
+- 長文分割境界のドラッグ、セル端点、実IME変換時の範囲置換は追加QA中。全項目完了とはしていない。
+
+### 本文更新と描画キャッシュ（2026-10-08）
+
+- UNGE の SceneIndex が読む属性に基づき、本文／Document Extension の更新とその Undo／Redo で描画インデックスを再利用。Add／Remove／Move／Connect／Disconnect／Group と title／role／kind／portrait／mutual は再生成する。ジェスチャーの preview invalidation は全 revision で維持。
+- 隣接する履歴コマンドは Rust Editor から借用して判断し、本文や履歴全体をクローンしない。10万文字のストア変更・本文参照変更・Undo／Redo では再生成回数が増えず、見出し編集とその Undo／Redo では増える回帰テストが通過。
+- canonical validation は借用文字列の列を検証し、JSON のサイズは上限付き Writer で数える。テキスト取得が必要な出力だけ最終 String を作る。中央ストアの本文は domain validator 内で一回検証する。
+- 全 Rust workspace tests pass（アプリ 129 pass / 14 ignored、描画キャッシュの追加回帰テスト 1 pass）。全文 checksum は維持しており、残る走査の最適化は未完了。
