@@ -1,17 +1,33 @@
 mod ai;
+mod archive;
 mod autosave;
+mod character_groups;
 mod chatgpt;
 mod domain;
 mod export;
+mod graph_export;
 mod graph_tools;
 mod history;
 mod history_diff;
+mod history_graph;
+mod history_merge;
 mod history_structure;
 mod input;
 mod journal;
+mod layout;
 mod library;
+mod narrative;
+mod paths;
 mod persistence;
+mod portrait_tools;
 mod preferences;
+mod scene_operations;
+mod search;
+mod shared_archive;
+mod shared_history;
+mod shared_workspace;
+mod state_rules;
+mod workspace_storage;
 const ICON_RAIL_WIDTH: f64 = 48.0;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -31,14 +47,48 @@ struct Host {
     gate: Arc<Mutex<()>>,
     saves: Arc<Mutex<journal::Store>>,
 }
-#[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Serialize)]
 struct SavedWorkspace {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     generation: Option<String>,
     format: String,
     version: u32,
     document: Document,
+}
+impl<'de> Deserialize<'de> for SavedWorkspace {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Envelope {
+            #[serde(default)]
+            generation: Option<String>,
+            format: String,
+            version: u32,
+            #[serde(default)]
+            document: Option<Document>,
+            #[serde(default)]
+            workspace: Option<Value>,
+        }
+        let envelope = Envelope::deserialize(deserializer)?;
+        let document = match (envelope.version, envelope.document, envelope.workspace) {
+            (1 | 2, Some(document), None) => document,
+            (3, None, Some(workspace)) => {
+                shared_workspace::decode(workspace).map_err(serde::de::Error::custom)?
+            }
+            _ => return Err(serde::de::Error::custom("unsupported_workspace")),
+        };
+        Ok(Self {
+            generation: envelope.generation,
+            format: envelope.format,
+            version: envelope.version,
+            document,
+        })
+    }
+}
+fn workspace_version(document: &Document) -> u32 {
+    if document.extensions.is_empty() { 1 } else { 2 }
 }
 fn save(path: &std::path::Path, document: &Document) -> std::result::Result<(), String> {
     journal::save_workspace(path, document)
@@ -50,7 +100,7 @@ fn load(path: &std::path::Path) -> std::result::Result<Document, String> {
     }
     let saved: SavedWorkspace =
         serde_json::from_slice(&journal::read_workspace(path)?).map_err(|e| e.to_string())?;
-    if saved.format != "komyaku-story-workspace" || saved.version != 1 {
+    if saved.format != "komyaku-story-workspace" || ![1, 2, 3].contains(&saved.version) {
         return Err("unsupported_workspace".into());
     }
     saved.document.validate().map_err(|e| e.to_string())?;
@@ -144,14 +194,6 @@ fn allowed(window: &tauri::WebviewWindow) -> std::result::Result<(), String> {
     }
 }
 fn projection(engine: &Engine) -> std::result::Result<Value, String> {
-    let (document, summary) = engine.snapshot_with_summary().map_err(|e| e.code)?;
-    let nodes:Vec<_>=document.graph().nodes().values().map(|node|json!({"id":node.id,"type":node.type_id,"title":node.properties["title"],"order":node.properties.get("order"),"path":node.properties.get("path"),"kind":node.properties.get("kind"),"mutual":node.properties.get("mutual"),"parent":node.properties.get("parent"),"outlineOrder":node.properties.get("outlineOrder"),"role":node.properties.get("role"),"portraitKey":node.properties.get("portrait").and_then(Value::as_str).filter(|value|!value.is_empty()).map(|value|format!("{:x}",unge_render::portrait_key(value)))})).collect();
-    let edges: Vec<_> = document
-        .graph()
-        .edges()
-        .values()
-        .map(|e| json!({"id":e.id,"from":e.from.node,"to":e.to.node,"port":e.to.port}))
-        .collect();
     let selected = engine
         .view_state("controls")
         .map_err(|e| e.code)?
@@ -159,8 +201,41 @@ fn projection(engine: &Engine) -> std::result::Result<Value, String> {
         .iter()
         .next()
         .copied();
+    engine
+        .read_document(|document, summary| projection_document(document, summary, selected))
+        .map_err(|e| e.code)?
+}
+fn projection_document(
+    document: &Document,
+    summary: &unge_tauri::Summary,
+    selected: Option<Id>,
+) -> std::result::Result<Value, String> {
+    let path_definitions = paths::definitions(document)?;
+    let routes: std::collections::BTreeMap<Id, std::collections::BTreeMap<String, usize>> =
+        path_definitions
+            .iter()
+            .flat_map(|p| {
+                p.scenes
+                    .iter()
+                    .enumerate()
+                    .map(move |(index, id)| (*id, p.key(), index))
+            })
+            .fold(
+                std::collections::BTreeMap::new(),
+                |mut map, (id, key, index)| {
+                    map.entry(id).or_default().insert(key, index);
+                    map
+                },
+            );
+    let nodes:Vec<_>=document.graph().nodes().values().map(|node|json!({"id":node.id,"routes":routes.get(&node.id).cloned().unwrap_or_default(),"type":node.type_id,"title":node.properties["title"],"order":node.properties.get("order"),"path":node.properties.get("path"),"kind":node.properties.get("kind"),"mutual":node.properties.get("mutual"),"parent":node.properties.get("parent"),"outlineOrder":node.properties.get("outlineOrder"),"role":node.properties.get("role"),"portraitKey":node.properties.get("portrait").and_then(Value::as_str).filter(|value|!value.is_empty()).map(|value|format!("{:x}",unge_render::portrait_key(value)))})).collect();
+    let edges: Vec<_> = document
+        .graph()
+        .edges()
+        .values()
+        .map(|e| json!({"id":e.id,"from":e.from.node,"to":e.to.node,"port":e.to.port}))
+        .collect();
     Ok(
-        json!({"projectTitle":document.title,"revision":summary.revision,"selected":selected,"nodes":nodes,"edges":edges,"untitled":std::env::var_os("STORY_GRAPH_NEW_WORKSPACE").is_some_and(|value|value=="1")}),
+        json!({"paths":path_definitions.iter().map(|p|json!({"id":p.id,"key":p.key(),"name":p.name,"scenes":p.scenes,"legacy":p.legacy})).collect::<Vec<_>>(),"projectTitle":document.title,"revision":summary.revision,"selected":selected,"nodes":nodes,"edges":edges,"untitled":std::env::var_os("STORY_GRAPH_NEW_WORKSPACE").is_some_and(|value|value=="1")}),
     )
 }
 #[tauri::command]
@@ -221,6 +296,31 @@ fn locale(
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum Action {
+    Narrative {
+        declarations: narrative::Declarations,
+    },
+    CharacterGroup {
+        id: Option<Id>,
+        label: String,
+        nodes: Vec<Id>,
+        #[serde(default)]
+        remove: bool,
+    },
+    SplitScene {
+        id: Id,
+        block: usize,
+        offset: Option<usize>,
+        title: String,
+    },
+    MergeScene {
+        first: Id,
+        second: Id,
+    },
+    Paths {
+        paths: Vec<paths::PathDefinition>,
+        #[serde(default)]
+        outline_path: Option<Id>,
+    },
     ProjectTitle {
         title: String,
     },
@@ -429,12 +529,101 @@ fn hierarchy_move(
     }
     Ok(Command::Batch { commands })
 }
+fn paragraph_command(
+    document: &Document,
+    id: Id,
+    changes: Vec<ParagraphChange>,
+) -> std::result::Result<Command, String> {
+    if changes.is_empty() || changes.len() > 20000 {
+        return Err("invalid_document".into());
+    }
+    let node = document.graph().nodes().get(&id).ok_or("missing_node")?;
+    if node.type_id != domain::SCENE {
+        return Err("invalid_document".into());
+    }
+    let canonical = &node.properties["canonical"];
+    let mut pointers = std::collections::BTreeMap::new();
+    for (i, block) in canonical["content"]
+        .as_array()
+        .ok_or("invalid_document")?
+        .iter()
+        .enumerate()
+    {
+        if block["type"] == "paragraph" {
+            pointers.insert(
+                block["id"].as_str().ok_or("invalid_document")?,
+                format!("/content/{i}"),
+            );
+        } else if block["type"] == "table" {
+            for (j, cell) in block["content"][0]["content"]
+                .as_array()
+                .ok_or("invalid_document")?
+                .iter()
+                .enumerate()
+            {
+                pointers.insert(
+                    cell["content"][0]["id"]
+                        .as_str()
+                        .ok_or("invalid_document")?,
+                    format!("/content/{i}/content/0/content/{j}/content/0"),
+                );
+            }
+        }
+    }
+    let mut touched = std::collections::BTreeMap::<Id, Value>::new();
+    let mut commands = Vec::with_capacity(changes.len());
+    for change in changes {
+        if change.text.len() > domain::MAX_SCENE_TEXT_BYTES {
+            return Err("limit_exceeded".into());
+        }
+        let paragraph_pointer = pointers
+            .get(change.paragraph.to_string().as_str())
+            .ok_or("missing_node")?;
+        let paragraph = touched.entry(change.paragraph).or_insert_with(|| {
+            canonical
+                .pointer(paragraph_pointer)
+                .expect("canonical paragraph pointer")
+                .clone()
+        });
+        replace_paragraph_text(paragraph, &change)?;
+        commands.push(Command::SetNestedProperty {
+            id,
+            key: "canonical".into(),
+            pointer: format!("{paragraph_pointer}/content"),
+            value: paragraph["content"].clone(),
+        });
+    }
+    // Engine validates the complete final document and rolls back the whole batch.
+    Ok(Command::Batch { commands })
+}
 fn build_command(
     host: &Host,
     action: Action,
     revision: u64,
 ) -> std::result::Result<Request, String> {
+    host.engine
+        .read_document(|document, _| build_command_from_document(host, document, action, revision))
+        .map_err(|e| e.code)?
+}
+fn build_command_from_document(
+    host: &Host,
+    document: &Document,
+    action: Action,
+    revision: u64,
+) -> std::result::Result<Request, String> {
     let command = match action {
+        Action::Narrative { declarations } => narrative::command(document, declarations)?,
+        Action::SplitScene {
+            id,
+            block,
+            offset,
+            title,
+        } => scene_operations::split(document, id, block, offset, title)?,
+        Action::MergeScene { first, second } => scene_operations::merge(document, first, second)?,
+        Action::Paths {
+            paths,
+            outline_path,
+        } => paths::combined_command(document, paths, outline_path)?,
         Action::ProjectTitle { title } => {
             if title.chars().count() > 200 || title.contains(['\n', '\r']) {
                 return Err("invalid_properties".into());
@@ -446,9 +635,15 @@ fn build_command(
             target,
             position,
         } => {
-            let doc = host.engine.snapshot().map_err(|e| e.code)?;
-            hierarchy_move(&doc, id, target, &position)?
+            let doc = document;
+            hierarchy_move(doc, id, target, &position)?
         }
+        Action::CharacterGroup {
+            id,
+            label,
+            nodes,
+            remove,
+        } => character_groups::command(document, id, label, nodes, remove)?,
         Action::AddCharacter { title } => {
             let mut node = host
                 .registry
@@ -456,10 +651,7 @@ fn build_command(
                 .unwrap()
                 .instantiate();
             node.properties.insert("title".into(), json!(title));
-            let count = host
-                .engine
-                .snapshot()
-                .map_err(|e| e.code)?
+            let count = document
                 .graph()
                 .nodes()
                 .values()
@@ -485,7 +677,7 @@ fn build_command(
                 "sequence" => domain::SEQUENCE,
                 _ => return Err("invalid_parent".into()),
             };
-            let document = host.engine.snapshot().map_err(|e| e.code)?;
+
             if type_id == domain::SEQUENCE
                 && parent.is_none_or(|id| {
                     document
@@ -533,12 +725,9 @@ fn build_command(
             path,
             parent,
         } => {
-            if !["main", "alternative"].contains(&path.as_str()) {
-                return Err("invalid_path".into());
-            }
             let parent = parent.ok_or("invalid_parent")?;
-            let document = host.engine.snapshot().map_err(|e| e.code)?;
-            let compiled = domain::compile(&document, &path)?;
+
+            let compiled = domain::compile(document, &path)?;
             let mut node = host
                 .registry
                 .definition(domain::SCENE)
@@ -549,7 +738,14 @@ fn build_command(
                 domain::canonical("", Id::new_v4(), Id::new_v4()),
             );
             node.properties.insert("title".into(), json!(title));
-            node.properties.insert("path".into(), json!(path));
+            node.properties.insert(
+                "path".into(),
+                json!(if ["main", "alternative"].contains(&path.as_str()) {
+                    path.as_str()
+                } else {
+                    "both"
+                }),
+            );
             {
                 if document
                     .graph()
@@ -608,6 +804,22 @@ fn build_command(
                     },
                 });
             }
+            if document.extensions.contains_key(paths::EXTENSION) {
+                let mut definitions = paths::definitions(document)?;
+                let selected = definitions
+                    .iter_mut()
+                    .find(|p| p.key() == path || p.id.to_string() == path)
+                    .ok_or("invalid_path")?;
+                selected.scenes.push(id);
+                let mut temporary =
+                    Editor::new(document.clone(), 1).map_err(|_| "invalid_document")?;
+                temporary
+                    .execute(Command::Batch {
+                        commands: commands.clone(),
+                    })
+                    .map_err(|_| "invalid_document")?;
+                commands.push(paths::command(temporary.document(), definitions)?);
+            }
             Command::Batch { commands }
         }
         Action::AddRelationship {
@@ -620,7 +832,7 @@ fn build_command(
             if from == to {
                 return Err("invalid_relationship".into());
             }
-            let document = host.engine.snapshot().map_err(|e| e.code)?;
+
             for id in [from, to] {
                 if document
                     .graph()
@@ -660,7 +872,7 @@ fn build_command(
             {
                 return Err("invalid_property".into());
             }
-            let doc = host.engine.snapshot().map_err(|e| e.code)?;
+            let doc = document;
             let node = doc.graph().nodes().get(&id).ok_or("missing_node")?;
             if key == "portrait"
                 && (node.type_id != domain::CHARACTER
@@ -680,89 +892,29 @@ fn build_command(
                 value: Some(value),
             }
         }
-        Action::Paragraphs { id, changes } => {
-            if changes.is_empty() || changes.len() > 20000 {
-                return Err("invalid_document".into());
-            }
-            let node = host.engine.inspect("controls", id).map_err(|e| e.code)?;
-            if node.type_id != domain::SCENE {
-                return Err("invalid_document".into());
-            }
-            let mut document = node.properties["canonical"].clone();
-            let mut commands = Vec::new();
-            for change in changes {
-                if change.text.len() > domain::MAX_SCENE_TEXT_BYTES {
-                    return Err("limit_exceeded".into());
-                }
-                let mut found = false;
-                for (i, block) in document["content"]
-                    .as_array_mut()
-                    .ok_or("invalid_document")?
-                    .iter_mut()
-                    .enumerate()
-                {
-                    if block["type"] == "paragraph" && block["id"] == change.paragraph.to_string() {
-                        replace_paragraph_text(block, &change)?;
-                        commands.push(Command::SetNestedProperty {
-                            id,
-                            key: "canonical".into(),
-                            pointer: format!("/content/{i}/content"),
-                            value: block["content"].clone(),
-                        });
-                        found = true;
-                        break;
-                    }
-                    if block["type"] == "table" {
-                        for (j, cell) in block["content"][0]["content"]
-                            .as_array_mut()
-                            .ok_or("invalid_document")?
-                            .iter_mut()
-                            .enumerate()
-                        {
-                            if cell["content"][0]["id"] == change.paragraph.to_string() {
-                                replace_paragraph_text(&mut cell["content"][0], &change)?;
-                                commands.push(Command::SetNestedProperty {
-                                    id,
-                                    key: "canonical".into(),
-                                    pointer: format!(
-                                        "/content/{i}/content/0/content/{j}/content/0/content"
-                                    ),
-                                    value: cell["content"][0]["content"].clone(),
-                                });
-                                found = true;
-                                break;
-                            }
-                        }
-                    }
-                    if found {
-                        break;
-                    }
-                }
-                if !found {
-                    return Err("missing_node".into());
-                }
-            }
-            domain::text(&document)?;
-            Command::Batch { commands }
-        }
-        Action::Canonical { id, document } => {
-            let node = host.engine.inspect("controls", id).map_err(|e| e.code)?;
-            if node.type_id != domain::SCENE || document["id"] != node.properties["canonical"]["id"]
+        Action::Paragraphs { id, changes } => paragraph_command(document, id, changes)?,
+        Action::Canonical {
+            id,
+            document: canonical,
+        } => {
+            let node = document.graph().nodes().get(&id).ok_or("missing_node")?;
+            if node.type_id != domain::SCENE
+                || canonical["id"] != node.properties["canonical"]["id"]
             {
                 return Err("invalid_document".into());
             }
-            domain::text(&document)?;
+            domain::text(&canonical)?;
             Command::SetProperty {
                 id,
                 key: "canonical".into(),
-                value: Some(document),
+                value: Some(canonical),
             }
         }
         Action::Text { id, text } => {
             if text.len() > domain::MAX_SCENE_TEXT_BYTES {
                 return Err("limit_exceeded".into());
             }
-            let node = host.engine.inspect("controls", id).map_err(|e| e.code)?;
+            let node = document.graph().nodes().get(&id).ok_or("missing_node")?;
             if node.type_id != domain::SCENE {
                 return Err("invalid_document".into());
             }
@@ -786,7 +938,6 @@ fn build_command(
             }
         }
         Action::Remove { id } => {
-            let document = host.engine.snapshot().map_err(|e| e.code)?;
             if document.graph().nodes().values().any(|node| {
                 node.properties.get("parent").and_then(Value::as_str)
                     == Some(id.to_string().as_str())
@@ -800,52 +951,57 @@ fn build_command(
                 .get(&id)
                 .is_some_and(|n| n.type_id == domain::SCENE)
             {
-                let mut orders = std::collections::BTreeMap::new();
-                let mut links = std::collections::BTreeSet::new();
-                for path in ["main", "alternative"] {
-                    let route = domain::compile(&document, path)?
-                        .into_iter()
-                        .filter(|n| n.0 != id)
-                        .collect::<Vec<_>>();
-                    for (order, node) in route.iter().enumerate() {
-                        if orders
-                            .insert(node.0, order)
-                            .is_some_and(|other| other != order)
-                        {
-                            return Err("incompatible_paths".into());
-                        }
-                        if order > 0 {
-                            links.insert((route[order - 1].0, node.0));
+                if document.extensions.contains_key(paths::EXTENSION) {
+                    let mut definitions = paths::definitions(document)?;
+                    for path in &mut definitions {
+                        path.scenes.retain(|scene| *scene != id);
+                    }
+                    commands.push(paths::command(document, definitions)?);
+                } else {
+                    let mut orders = std::collections::BTreeMap::new();
+                    let mut links = std::collections::BTreeSet::new();
+                    for path in ["main", "alternative"] {
+                        let route = domain::compile(document, path)?
+                            .into_iter()
+                            .filter(|n| n.0 != id)
+                            .collect::<Vec<_>>();
+                        for (order, node) in route.iter().enumerate() {
+                            if orders
+                                .insert(node.0, order)
+                                .is_some_and(|other| other != order)
+                            {
+                                return Err("incompatible_paths".into());
+                            }
+                            if order > 0 {
+                                links.insert((route[order - 1].0, node.0));
+                            }
                         }
                     }
-                }
-                for (node, order) in orders {
-                    commands.push(Command::SetProperty {
-                        id: node,
-                        key: "order".into(),
-                        value: Some(json!(order)),
-                    });
-                }
-                for (from, to) in links {
-                    if !document
-                        .graph()
-                        .edges()
-                        .values()
-                        .any(|e| e.from.node == from && e.to.node == to && e.from.port == "next")
-                    {
-                        commands.push(Command::Connect {
-                            edge: Edge {
-                                id: Id::new_v4(),
-                                from: Endpoint {
-                                    node: from,
-                                    port: "next".into(),
-                                },
-                                to: Endpoint {
-                                    node: to,
-                                    port: "previous".into(),
-                                },
-                            },
+                    for (node, order) in orders {
+                        commands.push(Command::SetProperty {
+                            id: node,
+                            key: "order".into(),
+                            value: Some(json!(order)),
                         });
+                    }
+                    for (from, to) in links {
+                        if !document.graph().edges().values().any(|e| {
+                            e.from.node == from && e.to.node == to && e.from.port == "next"
+                        }) {
+                            commands.push(Command::Connect {
+                                edge: Edge {
+                                    id: Id::new_v4(),
+                                    from: Endpoint {
+                                        node: from,
+                                        port: "next".into(),
+                                    },
+                                    to: Endpoint {
+                                        node: to,
+                                        port: "previous".into(),
+                                    },
+                                },
+                            });
+                        }
                     }
                 }
             }
@@ -966,12 +1122,30 @@ fn edit_blocking(
     let paragraph_edit = match &action {
         Action::Paragraphs { id, changes } => Some((
             *id,
-            changes.iter().map(|c| c.paragraph).collect::<Vec<_>>(),
             host.engine
-                .inspect("controls", *id)
-                .map_err(|e| e.code)?
-                .properties["canonical"]
-                .clone(),
+                .read_document(|document, _| {
+                    let canonical = &document
+                        .graph()
+                        .nodes()
+                        .get(id)
+                        .ok_or("missing_node")?
+                        .properties["canonical"];
+                    changes
+                                    .iter()
+                                    .map(|change| {
+                                        Ok((
+                                            change.paragraph,
+                                            find_paragraph(canonical, change.paragraph)
+                                                .ok_or("missing_node")?
+                                                .clone(),
+                                        ))
+                                    })
+                                    .collect::<std::result::Result<
+                                        std::collections::BTreeMap<Id, Value>,
+                                        String,
+                                    >>()
+                })
+                .map_err(|e| e.code)??,
         )),
         _ => None,
     };
@@ -980,28 +1154,39 @@ fn edit_blocking(
         .dispatch(window.label(), request)
         .map_err(|e| e.code)?;
     let mut result = projection(&host.engine)?;
-    let snapshot = host.engine.snapshot().map_err(|e| e.code)?;
-    let patches = paragraph_edit.map_or_else(Vec::new, |(id, ids, before)| {
-        let Some(node) = snapshot.graph().nodes().get(&id) else {
-            return Vec::new();
-        };
-        let after = &node.properties["canonical"];
-        ids.into_iter()
-            .collect::<std::collections::BTreeSet<_>>()
-            .into_iter()
-            .filter_map(|id| {
-                Some((
-                    find_paragraph(&before, id)?.clone(),
-                    find_paragraph(after, id)?.clone(),
-                ))
-            })
-            .collect::<Vec<_>>()
-    });
     let saved = host
-        .saves
-        .lock()
-        .map_err(|_| "state_unavailable")?
-        .save_patched(&host.path, &snapshot, &patches);
+        .engine
+        .read_document(|snapshot, actual_revision| {
+            let certified = paragraph_edit.is_some();
+            let patches = paragraph_edit.map_or_else(Vec::new, |(id, before)| {
+                let Some(node) = snapshot.graph().nodes().get(&id) else {
+                    return Vec::new();
+                };
+                let after = &node.properties["canonical"];
+                before
+                    .into_iter()
+                    .filter_map(|(id, paragraph)| {
+                        Some((paragraph, find_paragraph(after, id)?.clone()))
+                    })
+                    .collect::<Vec<_>>()
+            });
+            let mut store = host
+                .saves
+                .lock()
+                .map_err(|_| "state_unavailable".to_string())?;
+            if certified {
+                store.save_paragraph_edit(
+                    &host.path,
+                    snapshot,
+                    &patches,
+                    expected_revision,
+                    actual_revision.revision,
+                )
+            } else {
+                store.save_engine(&host.path, snapshot, actual_revision.revision)
+            }
+        })
+        .map_err(|e| e.code)?;
     result["saved"] = json!(saved.is_ok());
     drop(_lock);
     window
@@ -1012,10 +1197,41 @@ fn edit_blocking(
         .app_handle()
         .emit("unge://changed", json!({"storySaved":saved.is_ok()}))
         .map_err(|_| "event_error")?;
-    if saved.is_err() {
-        return Err("save_failed".into());
-    }
+    // Return the accepted memory revision on persistence failure; never replay patches.
     Ok(result)
+}
+fn save_current(host: &Host) -> std::result::Result<Value, String> {
+    let _gate = host.gate.lock().map_err(|_| "state_unavailable")?;
+    host.engine
+        .read_document(|snapshot, revision| {
+            host.saves
+                .lock()
+                .map_err(|_| "state_unavailable".to_string())?
+                .save_engine(&host.path, snapshot, revision.revision)
+                .map_err(|_| "save_failed".to_string())
+        })
+        .map_err(|e| e.code)??;
+    let mut result = projection(&host.engine)?;
+    result["saved"] = json!(true);
+    Ok(result)
+}
+#[tauri::command]
+async fn save_now(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+) -> std::result::Result<Value, String> {
+    allowed(&window)?;
+    let host = app.state::<Host>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = save_current(&host)?;
+        app.emit("story://changed", &result)
+            .map_err(|_| "event_error")?;
+        app.emit("unge://changed", json!({"storySaved":true}))
+            .map_err(|_| "event_error")?;
+        Ok(result)
+    })
+    .await
+    .map_err(|_| "state_unavailable".to_string())?
 }
 #[tauri::command]
 fn reading(
@@ -1024,8 +1240,34 @@ fn reading(
     path: String,
 ) -> std::result::Result<Value, String> {
     allowed(&window)?;
-    let doc = host.engine.snapshot().map_err(|e| e.code)?;
-    Ok(json!(domain::compile(&doc, &path)?))
+    host.engine
+        .read_document(|doc, _| domain::compile(doc, &path).map(|rows| json!(rows)))
+        .map_err(|e| e.code)?
+}
+#[tauri::command]
+fn reading_data(
+    window: tauri::WebviewWindow,
+    host: tauri::State<Host>,
+    path: String,
+) -> std::result::Result<Value, String> {
+    allowed(&window)?;
+    host.engine
+        .read_document(|doc, summary| reading_projection(doc, &path, summary.revision))
+        .map_err(|e| e.code)?
+}
+fn reading_projection(
+    doc: &Document,
+    key: &str,
+    revision: u64,
+) -> std::result::Result<Value, String> {
+    let definitions = paths::definitions(doc)?;
+    paths::validate(doc, &definitions, true)?;
+    let path = definitions
+        .iter()
+        .find(|p| p.key() == key)
+        .ok_or("invalid_path")?;
+    let scenes=path.scenes.iter().map(|id|{let node=doc.graph().nodes().get(id).ok_or("missing_node")?;Ok(json!({"id":id,"title":node.properties["title"],"canonical":node.properties["canonical"]}))}).collect::<std::result::Result<Vec<Value>,String>>()?;
+    Ok(json!({"revision":revision,"scenes":scenes}))
 }
 #[tauri::command]
 async fn backup(
@@ -1053,6 +1295,8 @@ async fn export_manuscript(
     host: tauri::State<'_, Host>,
     format: String,
     language: String,
+    scope: Option<export::Scope>,
+    settings: Option<export::pdf_settings::Settings>,
 ) -> std::result::Result<Option<String>, String> {
     allowed(&window)?;
     let format = export::Format::parse(&format)?;
@@ -1075,7 +1319,13 @@ async fn export_manuscript(
         else {
             return Ok(None);
         };
-        let bytes = export::bytes(&document, format, &language)?;
+        let bytes = export::bytes_configured(
+            &document,
+            format,
+            &language,
+            &scope.unwrap_or_default(),
+            &settings.unwrap_or_default(),
+        )?;
         export::write(&path, &bytes, format)?;
         Ok(Some(path.to_string_lossy().into_owned()))
     })
@@ -1114,6 +1364,9 @@ fn panel(
             .min_inner_size(320., 480.)
             .build()
             .map_err(|_| "panel_failed")?;
+            if let Some(editor) = app.get_window("editor") {
+                app.state::<layout::Store>().apply(&editor);
+            }
         }
     } else if let Some(editor) = app.get_webview_window("editor") {
         // The close listener saves pending edits before destroying the window.
@@ -1315,6 +1568,36 @@ async fn restore_backup(
     .await
     .map_err(|_| "backup_restore_failed".to_owned())?
 }
+#[tauri::command]
+async fn import_workspace(
+    window: tauri::WebviewWindow,
+    host: tauri::State<'_, Host>,
+    library: tauri::State<'_, library::Library>,
+    store: tauri::State<'_, preferences::Store>,
+) -> std::result::Result<bool, String> {
+    allowed(&window)?;
+    let root = library.root.clone();
+    let registry = host.registry.clone();
+    let mut settings = store.value.lock().map_err(|_| "state_unavailable")?.clone();
+    settings.left_panel_open = true;
+    settings.right_panel_open = false;
+    tauri::async_runtime::spawn_blocking(move || {
+        let title = match settings.language.as_str() {
+            "en" => "Import snapshot / shared Workspace or Archive",
+            "zh-CN" => "导入快照／共享Workspace或Archive",
+            _ => "snapshot／共有Workspace・Archiveを取り込む",
+        };
+        let Some(path) = rfd::FileDialog::new().set_title(title).pick_file() else {
+            return Ok(false);
+        };
+        let library = library::Library { root };
+        let directory = library.import_snapshot(&path, settings, registry)?;
+        launch_workspace(&directory, &library.root, true).map_err(|_| "backup_open_failed")?;
+        Ok(true)
+    })
+    .await
+    .map_err(|_| "backup_restore_failed".to_owned())?
+}
 fn main() {
     tauri::Builder::default()
         .register_uri_scheme_protocol("portrait", |context, request| {
@@ -1344,6 +1627,17 @@ fn main() {
                 .unwrap()
         })
         .invoke_handler(tauri::generate_handler![
+            shared_workspace::export_shared_workspace,
+            shared_archive::export_shared_archive,
+            layout::get_layout,
+            layout::resize_panel,
+            layout::dock_panel,
+            narrative::narrative_report,
+            narrative::narrative_knowledge,
+            state_rules::state_query,
+            state_rules::story_impact,
+            save_now,
+            graph_export::export_graph,
             graph_tools::graph_state,
             graph_tools::graph_action,
             workspace,
@@ -1352,9 +1646,16 @@ fn main() {
             open_workspace,
             saved_backups,
             restore_backup,
+            import_workspace,
+            archive::export_archive,
+            archive::import_archive,
+            search::search_manuscript,
             history::versions,
             history::version_page,
             history::save_version,
+            history_merge::fork_version,
+            history_merge::preview_merge,
+            history_merge::merge_version,
             history::version_detail,
             history::version_text_diff,
             history::version_structure_diff,
@@ -1365,6 +1666,7 @@ fn main() {
             edit,
             import_portrait,
             reading,
+            reading_data,
             backup,
             export_manuscript,
             panel,
@@ -1376,10 +1678,14 @@ fn main() {
             chatgpt::chatgpt_cancel,
             chatgpt::chatgpt_sign_out,
             ai::ai_models,
+            portrait_tools::prepare_portrait,
+            portrait_tools::crop_portrait,
+            portrait_tools::cancel_portrait,
             ai::ai_prepare,
             ai::ai_status,
             ai::ai_generate,
             ai::ai_cancel,
+            ai::ai_compare,
             ai::ai_append
         ])
         .setup(|app| {
@@ -1448,11 +1754,19 @@ fn main() {
                     .dispatch("controls", Request::Select { ids: [id].into() })
                     .map_err(|e| e.message)?;
             }
+            app.manage(
+                layout::Store::load(path.with_file_name("layout.json"))
+                    .map_err(std::io::Error::other)?,
+            );
+            if let Some(controls) = app.get_window("controls") {
+                app.state::<layout::Store>().apply(&controls);
+            }
             let canvas = tauri::WindowBuilder::new(app, "canvas")
                 .title("人物相関図 · KOMYAKU")
                 .visible(false)
                 .inner_size(1100., 800.)
                 .build()?;
+            app.state::<layout::Store>().apply(&canvas);
             let size = canvas.inner_size()?;
             canvas.add_child(
                 tauri::webview::WebviewBuilder::new(
@@ -1476,6 +1790,7 @@ fn main() {
                 )?
                 .hide()?;
             app.manage(graph_tools::Tools::default());
+            app.manage(portrait_tools::Store::default());
             let mut renderer = pollster::block_on(SurfaceRenderer::new(
                 Arc::new(canvas.clone()),
                 [size.width, size.height],
@@ -1503,21 +1818,25 @@ fn main() {
                     .gate
                     .lock()
                     .map_err(|_| "state_unavailable".to_string())?;
-                let (doc, summary) = save_host
+                let (result, revision) = save_host
                     .engine
-                    .snapshot_with_summary()
+                    .read_document(|doc, summary| {
+                        let result = save_host
+                            .saves
+                            .lock()
+                            .map_err(|_| "state_unavailable".to_string())
+                            .and_then(|mut store| {
+                                store.save_engine(&save_host.path, doc, summary.revision)
+                            });
+                        (result, summary.revision)
+                    })
                     .map_err(|e| e.code)?;
-                let result = save_host
-                    .saves
-                    .lock()
-                    .map_err(|_| "state_unavailable")?
-                    .save(&save_host.path, &doc);
                 if result.is_err() {
                     let _ = save_app.emit("story://save-error", "save_failed");
                 }
                 if let Ok(mut projection) = projection(&save_host.engine) {
                     projection["saved"] =
-                        json!(result.is_ok() && projection["revision"] == summary.revision);
+                        json!(result.is_ok() && projection["revision"] == revision);
                     let _ = save_app.emit("story://changed", projection);
                 }
                 result
@@ -1594,6 +1913,15 @@ fn main() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if matches!(
+                event,
+                tauri::WindowEvent::Moved(_)
+                    | tauri::WindowEvent::Resized(_)
+                    | tauri::WindowEvent::CloseRequested { .. }
+            ) && let Some(store) = window.app_handle().try_state::<layout::Store>()
+            {
+                store.remember(window);
+            }
             if window.label() == "controls"
                 && let tauri::WindowEvent::CloseRequested { api, .. } = event
                 && let Some(worker) = window.app_handle().try_state::<autosave::Worker>()
@@ -1643,6 +1971,12 @@ fn main() {
         .expect("Story Graph startup failed; saved workspace was not overwritten")
         .run(|app, event| match event {
             tauri::RunEvent::ExitRequested { api, .. } => {
+                if let Some(store) = app.try_state::<layout::Store>() {
+                    for window in app.windows().values() {
+                        store.remember(window);
+                    }
+                    let _ = store.flush();
+                }
                 if let Some(worker) = app.try_state::<autosave::Worker>()
                     && worker.flush().is_err()
                 {
@@ -1661,6 +1995,144 @@ fn main() {
 #[cfg(test)]
 mod persistence_tests {
     use super::*;
+    #[test]
+    fn paragraph_batch_reuses_touched_paragraphs_and_rejects_invalid_ranges_without_mutation() {
+        let host = test_host();
+        let original = host.engine.snapshot().unwrap();
+        let id = paths::definitions(&original).unwrap()[0].scenes[0];
+        let paragraph: Id =
+            original.graph().nodes()[&id].properties["canonical"]["content"][0]["id"]
+                .as_str()
+                .unwrap()
+                .parse()
+                .unwrap();
+        let changes = vec![
+            ParagraphChange {
+                paragraph,
+                text: "雨🙂駅".into(),
+                start: None,
+                end: None,
+            },
+            ParagraphChange {
+                paragraph,
+                text: "の".into(),
+                start: Some(3),
+                end: Some(3),
+            },
+        ];
+        let request = build_command(&host, Action::Paragraphs { id, changes }, 0).unwrap();
+        host.engine.dispatch("controls", request).unwrap();
+        let current = host.engine.inspect("controls", id).unwrap();
+        assert_eq!(
+            domain::text(&current.properties["canonical"]).unwrap(),
+            "雨🙂の駅"
+        );
+        let invalid = vec![
+            ParagraphChange {
+                paragraph,
+                text: "changed".into(),
+                start: None,
+                end: None,
+            },
+            ParagraphChange {
+                paragraph,
+                text: "x".into(),
+                start: Some(100),
+                end: Some(100),
+            },
+        ];
+        assert!(
+            build_command(
+                &host,
+                Action::Paragraphs {
+                    id,
+                    changes: invalid
+                },
+                1
+            )
+            .is_err()
+        );
+        assert_eq!(host.engine.inspect("controls", id).unwrap(), current);
+        host.engine
+            .dispatch(
+                "controls",
+                Request::Undo {
+                    expected_revision: 1,
+                },
+            )
+            .unwrap();
+        assert_eq!(host.engine.snapshot().unwrap().graph(), original.graph());
+    }
+    fn large_projection_host() -> (Host, Id, String) {
+        let host = test_host();
+        let snapshot = host.engine.snapshot().unwrap();
+        let id = paths::definitions(&snapshot).unwrap()[0].scenes[0];
+        let text = "雨🙂、".repeat(250_000);
+        let canonical = &snapshot.graph().nodes()[&id].properties["canonical"];
+        let document = domain::canonical(
+            &text,
+            canonical["id"].as_str().unwrap().parse().unwrap(),
+            canonical["content"][0]["id"]
+                .as_str()
+                .unwrap()
+                .parse()
+                .unwrap(),
+        );
+        let request = build_command(&host, Action::Canonical { id, document }, 0).unwrap();
+        host.engine.dispatch("controls", request).unwrap();
+        (host, id, text)
+    }
+    #[test]
+    fn lightweight_projection_excludes_large_manuscripts_and_reading_preserves_one_canonical_copy()
+    {
+        let (host, id, text) = large_projection_host();
+        let projected = projection(&host.engine).unwrap();
+        let encoded = serde_json::to_string(&projected).unwrap();
+        assert!(encoded.len() < 20_000);
+        assert!(!encoded.contains("canonical"));
+        assert!(!encoded.contains(&text[..100]));
+        let reading = host
+            .engine
+            .read_document(|doc, summary| reading_projection(doc, "main", summary.revision))
+            .unwrap()
+            .unwrap();
+        assert_eq!(reading["revision"], projected["revision"]);
+        let scene = reading["scenes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["id"] == id.to_string())
+            .unwrap();
+        assert_eq!(domain::text(&scene["canonical"]).unwrap(), text);
+        assert!(scene.get("text").is_none());
+    }
+    #[test]
+    #[ignore = "manual release million-character projection benchmark"]
+    fn benchmark_borrowed_projections() {
+        let (host, _, _) = large_projection_host();
+        let selected = host
+            .engine
+            .view_state("controls")
+            .unwrap()
+            .selection
+            .iter()
+            .next()
+            .copied();
+        let start = std::time::Instant::now();
+        for _ in 0..100 {
+            std::hint::black_box(projection(&host.engine).unwrap());
+        }
+        let borrowed = start.elapsed();
+        let start = std::time::Instant::now();
+        for _ in 0..100 {
+            let (doc, summary) = host.engine.snapshot_with_summary().unwrap();
+            std::hint::black_box(projection_document(&doc, &summary, selected).unwrap());
+        }
+        println!(
+            "100 million-character projections: borrowed={borrowed:?}, snapshot={:?}",
+            start.elapsed()
+        );
+    }
     #[test]
     fn million_character_patch_preserves_ids_history_and_save() {
         for blocks in [100, 1000] {
@@ -2017,6 +2489,33 @@ mod persistence_tests {
             gate: Arc::new(Mutex::new(())),
             saves: Arc::new(Mutex::new(journal::Store::default())),
         }
+    }
+    #[test]
+    fn retry_persistence_does_not_replay_accepted_edits_or_advance_revision() {
+        let mut host = test_host();
+        let dir = tempfile::tempdir().unwrap();
+        let blocker = dir.path().join("blocked");
+        std::fs::write(&blocker, b"block").unwrap();
+        host.path = blocker.join("workspace.json");
+        let command = build_command(
+            &host,
+            Action::ProjectTitle {
+                title: "保存復旧 QA".into(),
+            },
+            0,
+        )
+        .unwrap();
+        host.engine.dispatch("controls", command).unwrap();
+        let before = host.engine.snapshot().unwrap().to_json().unwrap();
+        assert!(save_current(&host).is_err());
+        assert_eq!(host.engine.snapshot().unwrap().to_json().unwrap(), before);
+        std::fs::remove_file(&blocker).unwrap();
+        std::fs::create_dir(&blocker).unwrap();
+        let result = save_current(&host).unwrap();
+        assert_eq!(result["revision"], 1);
+        assert_eq!(result["saved"], true);
+        assert_eq!(load(&host.path).unwrap().to_json().unwrap(), before);
+        assert_eq!(host.engine.snapshot().unwrap().to_json().unwrap(), before);
     }
     #[test]
     fn text_edit_identity_restart_and_stale_window_rejection() {
@@ -2439,7 +2938,7 @@ mod persistence_tests {
         );
         std::fs::write(
             &path,
-            br#"{"format":"komyaku-story-workspace","version":2,"document":{}}"#,
+            br#"{"format":"komyaku-story-workspace","version":3,"document":{}}"#,
         )
         .unwrap();
         assert!(load(&path).is_err());

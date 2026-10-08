@@ -1,21 +1,65 @@
 //! Portrait screenplay layout. Scene frames and prose share the same column flow.
-use super::{Part, normalized, svg_pdf, wrap, xml};
+use super::{Part, normalized, pdf_settings::Settings, svg_pdf, wrap, xml};
 use unicode_segmentation::UnicodeSegmentation;
 #[path = "vertical_glyphs.rs"]
 mod vertical_glyphs;
 
+#[cfg(test)]
 const LEFT: f32 = 36.;
+#[cfg(test)]
 const RIGHT: f32 = 559.;
-const RULE: f32 = 281.;
-const FRAME_TOP: f32 = 239.;
+#[cfg(test)]
 const BOTTOM: f32 = 786.;
+#[cfg(test)]
 const TEXT_TOP: f32 = 307.;
+#[cfg(test)]
 const FONT: f32 = 12.;
+#[cfg(test)]
 const ADVANCE: f32 = 13.;
+#[cfg(test)]
 const PITCH: f32 = 24.;
+#[cfg(test)]
 const FRAME_GAP: f32 = 1.5 * FONT;
+#[cfg(test)]
 const STAGE_INDENT: f32 = 6. * ADVANCE;
 
+struct Layout {
+    left: f32,
+    right: f32,
+    rule: f32,
+    frame_top: f32,
+    bottom: f32,
+    text_top: f32,
+    font: f32,
+    advance: f32,
+    pitch: f32,
+    frame_gap: f32,
+    stage_indent: f32,
+    width: f32,
+    height: f32,
+}
+impl Layout {
+    fn new(s: &Settings) -> Self {
+        let (width, height) = s.dimensions();
+        let font = s.font_size;
+        let rule = (height * s.script_rule).round();
+        Self {
+            left: s.margin(),
+            right: width - s.margin(),
+            rule,
+            frame_top: rule - 3.5 * font,
+            bottom: height - s.margin() - 20.,
+            text_top: rule + 26.,
+            font,
+            advance: font + 1.,
+            pitch: font * 2.,
+            frame_gap: 1.5 * font,
+            stage_indent: s.script_indent * (font + 1.),
+            width,
+            height,
+        }
+    }
+}
 #[derive(Debug)]
 enum Item {
     Scene {
@@ -71,39 +115,43 @@ fn items(parts: &[Part]) -> Vec<Item> {
         })
         .collect()
 }
-fn capacity(top: f32) -> usize {
-    ((BOTTOM - top - FONT) / ADVANCE).floor() as usize + 1
+fn capacity(top: f32, l: &Layout) -> usize {
+    ((l.bottom - top - l.font) / l.advance).floor() as usize + 1
 }
+#[cfg(test)]
 fn layout(parts: &[Part]) -> Vec<Vec<Column>> {
+    layout_configured(parts, &Layout::new(&Settings::default()))
+}
+fn layout_configured(parts: &[Part], l: &Layout) -> Vec<Vec<Column>> {
     let mut pages = vec![Vec::new()];
-    let mut cursor = RIGHT;
+    let mut cursor = l.right;
     for item in items(parts) {
         match item {
             Item::Scene { number, title } => {
-                let titles = wrap(&title, capacity(TEXT_TOP));
-                let width = PITCH * titles.len() as f32 + 12.;
+                let titles = wrap(&title, capacity(l.text_top, l));
+                let width = l.pitch * titles.len() as f32 + l.font;
                 // cursor is half a column beyond the preceding text centre.
                 // Measure both frame gaps from the full-width glyph cell edge.
-                let before = FRAME_GAP - (PITCH - FONT) / 2.;
-                let after = FRAME_GAP + FONT / 2. - PITCH / 2.;
-                if cursor - before - width - after - PITCH < LEFT && cursor < RIGHT {
+                let before = l.frame_gap - (l.pitch - l.font) / 2.;
+                let after = l.frame_gap + l.font / 2. - l.pitch / 2.;
+                if cursor - before - width - after - l.pitch < l.left && cursor < l.right {
                     pages.push(Vec::new());
-                    cursor = RIGHT;
+                    cursor = l.right;
                 }
                 // A pathological long title gets additional bounded frames;
                 // its scene number is kept, and no text is truncated.
                 let max_title_columns =
-                    ((RIGHT - LEFT - PITCH - 12. - after) / PITCH).floor() as usize;
+                    ((l.right - l.left - l.pitch - l.font - after) / l.pitch).floor() as usize;
                 for chunk in titles.chunks(max_title_columns.max(1)) {
-                    let width = PITCH * chunk.len() as f32 + 12.;
+                    let width = l.pitch * chunk.len() as f32 + l.font;
                     let before = match pages.last().unwrap().last() {
                         None => 0.,
-                        Some(Column::Frame { .. }) => FRAME_GAP - after,
+                        Some(Column::Frame { .. }) => l.frame_gap - after,
                         Some(Column::Body { .. }) => before,
                     };
-                    if cursor - before - width - after - PITCH < LEFT {
+                    if cursor - before - width - after - l.pitch < l.left {
                         pages.push(Vec::new());
-                        cursor = RIGHT;
+                        cursor = l.right;
                     }
                     if !pages.last().unwrap().is_empty() {
                         cursor -= before;
@@ -122,18 +170,19 @@ fn layout(parts: &[Part]) -> Vec<Vec<Column>> {
                 stage,
                 actor_length,
             } => {
-                let top = TEXT_TOP + if stage { STAGE_INDENT } else { 0. };
+                let top = l.text_top + if stage { l.stage_indent } else { 0. };
                 let continuation = if stage {
                     top
                 } else {
                     // Align continuation text with the first spoken character,
                     // after both the actor name and the opening quotation mark.
-                    TEXT_TOP + (actor_length + 1).min(capacity(TEXT_TOP) - 2) as f32 * ADVANCE
+                    l.text_top
+                        + (actor_length + 1).min(capacity(l.text_top, l) - 2) as f32 * l.advance
                 };
                 let mut rows = Vec::new();
                 for line in normalized(&text).replace('\t', "    ").split('\n') {
                     let start = if rows.is_empty() { top } else { continuation };
-                    let first = wrap(line, capacity(start))
+                    let first = wrap(line, capacity(start, l))
                         .into_iter()
                         .next()
                         .unwrap_or_default();
@@ -141,54 +190,206 @@ fn layout(parts: &[Part]) -> Vec<Vec<Column>> {
                     rows.push((start, first));
                     if !remaining.is_empty() {
                         rows.extend(
-                            wrap(remaining, capacity(continuation))
+                            wrap(remaining, capacity(continuation, l))
                                 .into_iter()
                                 .map(|s| (continuation, s)),
                         );
                     }
                 }
                 for (top, text) in rows {
-                    if cursor - PITCH < LEFT {
+                    if cursor - l.pitch < l.left {
                         pages.push(Vec::new());
-                        cursor = RIGHT;
+                        cursor = l.right;
                     }
                     pages.last_mut().unwrap().push(Column::Body {
-                        x: cursor - PITCH / 2.,
+                        x: cursor - l.pitch / 2.,
                         top,
                         text,
                     });
-                    cursor -= PITCH;
+                    cursor -= l.pitch;
                 }
             }
         }
     }
     pages
 }
-fn svgs(parts: &[Part]) -> Result<Vec<String>, String> {
-    let mut glyphs = vertical_glyphs::Renderer::new();
-    let pages = layout(parts);
+fn svgs_configured(parts: &[Part], settings: &Settings) -> Result<Vec<String>, String> {
+    let l = Layout::new(settings);
+    let Layout {
+        left,
+        right,
+        rule,
+        frame_top,
+        bottom,
+        text_top,
+        font,
+        advance: _,
+        pitch,
+        frame_gap: _,
+        stage_indent: _,
+        width,
+        height,
+    } = l;
+    let mut glyphs = vertical_glyphs::Renderer::configured(font, font + 1., &settings.font);
+    let pages = layout_configured(parts, &l);
     pages.iter().enumerate().map(|(index,columns)| -> Result<String, String> {
-        let mut svg=format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"595\" height=\"842\"><g fill=\"#151515\" font-family=\"Hiragino Mincho ProN,Noto Serif CJK JP,Songti SC,DejaVu Serif,serif\" font-size=\"{FONT}\"><path d=\"M {LEFT} {RULE} H {RIGHT}\" fill=\"none\" stroke=\"#555\" stroke-width=\"0.5\"/>");
+        let mut svg=format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width}\" height=\"{height}\"><g fill=\"#151515\" font-family=\"{}\" font-size=\"{font}\"><path d=\"M {left} {rule} H {right}\" fill=\"none\" stroke=\"#555\" stroke-width=\"0.5\"/>",settings.family());
         for column in columns {
             match column {
                 Column::Frame{right,width,number,titles}=>{
-                    svg.push_str(&format!("<path d=\"M {} {BOTTOM} V {FRAME_TOP} H {right} V {BOTTOM}\" fill=\"none\" stroke=\"#222\" stroke-width=\"0.6\"/><text x=\"{}\" y=\"268\" text-anchor=\"middle\">{number}</text>",right-width,right-width/2.));
-                    for (i,title) in titles.iter().enumerate(){svg.push_str(&glyphs.vertical(right-18.-i as f32*PITCH,TEXT_TOP,title)?);}
+                    svg.push_str(&format!("<path d=\"M {} {bottom} V {frame_top} H {right} V {bottom}\" fill=\"none\" stroke=\"#222\" stroke-width=\"0.6\"/><text x=\"{}\" y=\"{}\" text-anchor=\"middle\">{number}</text>",right-width,right-width/2.,rule-font-1.));
+                    for (i,title) in titles.iter().enumerate(){svg.push_str(&glyphs.vertical(right-1.5*font-i as f32*pitch,text_top,title)?);}
                 },
                 Column::Body{x,top,text}=>svg.push_str(&glyphs.vertical(*x,*top,text)?),
             }
         }
-        svg.push_str(&format!("<text x=\"297.5\" y=\"816\" text-anchor=\"middle\" font-size=\"9\" fill=\"#666\">— {} —</text></g></svg>",index+1));Ok(svg)
+        svg.push_str(&format!("<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"9\" fill=\"#666\">— {} —</text></g></svg>",width/2.,height-settings.margin()/2.,index+1));Ok(svg)
     }).collect()
 }
+#[cfg(test)]
 pub(super) fn render(parts: &[Part]) -> Result<Vec<u8>, String> {
-    svg_pdf(&svgs(parts)?)
+    configured(parts, &Settings::default())
+}
+pub(super) fn configured(parts: &[Part], settings: &Settings) -> Result<Vec<u8>, String> {
+    settings.validate_script()?;
+    svg_pdf(&svgs_configured(parts, settings)?)
+}
+pub(super) fn standard(parts: &[Part], settings: &Settings) -> Result<Vec<u8>, String> {
+    settings.validate()?;
+    let l = Layout::new(settings);
+    let top = settings.margin();
+    let count = ((l.bottom - top - l.font) / l.advance).floor() as usize + 1;
+    let mut glyphs = vertical_glyphs::Renderer::configured(l.font, l.advance, &settings.font);
+    let mut pages = vec![Vec::new()];
+    let mut x = l.right - l.font;
+    for part in parts {
+        let text = match part {
+            Part::Heading(_, s) | Part::Paragraph(s) => s.clone(),
+            Part::Dialogue(actor, text) => format!("{actor}「{text}」"),
+        };
+        for column in wrap(&text, count) {
+            if x - l.font / 2. < l.left {
+                pages.push(Vec::new());
+                x = l.right - l.font;
+            }
+            pages.last_mut().unwrap().push((x, column));
+            x -= l.pitch;
+        }
+        x -= l.font;
+    }
+    let svgs=pages.iter().enumerate().map(|(index,columns)|{let mut svg=format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\"><g fill=\"#151515\" font-family=\"{}\" font-size=\"{}\">",l.width,l.height,settings.family(),l.font);for (x,text) in columns{svg.push_str(&glyphs.vertical(*x,top,text)?);}svg.push_str(&format!("<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"9\">— {} —</text></g></svg>",l.width/2.,l.height-settings.margin()/2.,index+1));Ok(svg)}).collect::<Result<Vec<_>,String>>()?;
+    svg_pdf(&svgs)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use unicode_segmentation::UnicodeSegmentation;
+    #[test]
+    fn configurable_pages_keep_frames_and_all_glyph_cells_inside_margins() {
+        for paper in ["a4", "b5", "letter"] {
+            for size in [8., 12., 18.] {
+                let settings = Settings {
+                    paper: paper.into(),
+                    font_size: size,
+                    margin_mm: 16.,
+                    script_indent: 3.,
+                    script_rule: 0.3,
+                    ..Default::default()
+                };
+                settings.validate().unwrap();
+                let l = Layout::new(&settings);
+                for page in layout_configured(
+                    &[
+                        Part::Heading(4, "長い場面タイトル".repeat(80)),
+                        Part::Dialogue("高橋".into(), "台詞、続く。".repeat(300)),
+                        Part::Paragraph("ト書き。".repeat(300)),
+                    ],
+                    &l,
+                ) {
+                    for column in page {
+                        match column {
+                            Column::Frame { right, width, .. } => {
+                                assert!(right <= l.right);
+                                assert!(right - width >= l.left);
+                            }
+                            Column::Body { x, top, text } => {
+                                assert!(x - l.font / 2. >= l.left);
+                                assert!(x + l.font / 2. <= l.right);
+                                assert!(
+                                    top + text.graphemes(true).count().saturating_sub(1) as f32
+                                        * l.advance
+                                        + l.font
+                                        <= l.bottom + 0.01
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    #[test]
+    #[ignore = "writes PDF layout fixtures with system fonts"]
+    fn configured_pdf_fixtures() {
+        let parts = [
+            Part::Heading(1, "雨の駅から".into()),
+            Part::Heading(4, "公園（夏・晴れ）".into()),
+            Part::Paragraph(
+                "浴衣を着ている女性・花子（20）が立っている。誰かを待っているような感じ。"
+                    .repeat(8),
+            ),
+            Part::Dialogue(
+                "太郎".into(),
+                "あ、先輩！……今日の駅は寒いですね。どうなってるんだ？".repeat(10),
+            ),
+        ];
+        for (name, settings, script) in [
+            (
+                "standard-vertical",
+                Settings {
+                    writing_mode: "vertical".into(),
+                    ..Default::default()
+                },
+                false,
+            ),
+            (
+                "script-b5",
+                Settings {
+                    paper: "b5".into(),
+                    font_size: 14.,
+                    font: "sans".into(),
+                    script_indent: 3.,
+                    script_rule: 0.3,
+                    ..Default::default()
+                },
+                true,
+            ),
+            (
+                "standard-letter",
+                Settings {
+                    paper: "letter".into(),
+                    font_size: 16.,
+                    margin_mm: 20.,
+                    font: "sans".into(),
+                    ..Default::default()
+                },
+                false,
+            ),
+        ] {
+            let bytes = if script {
+                configured(&parts, &settings)
+            } else if settings.writing_mode == "vertical" {
+                standard(&parts, &settings)
+            } else {
+                super::super::pdf_configured(&parts, &settings)
+            }
+            .unwrap();
+            let pdf = lopdf::Document::load_mem(&bytes).unwrap();
+            assert!(!pdf.get_pages().is_empty());
+            std::fs::write(format!("/private/tmp/komyaku-{name}.pdf"), bytes).unwrap();
+        }
+    }
     #[test]
     fn frame_gaps_are_equal_and_dialogue_continuations_hang_below_actor() {
         let pages = layout(&[

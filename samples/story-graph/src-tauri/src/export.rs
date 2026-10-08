@@ -8,6 +8,8 @@ use std::{
 };
 use unge_core::{Document, Id, Node};
 use unicode_segmentation::UnicodeSegmentation;
+#[path = "pdf_settings.rs"]
+pub mod pdf_settings;
 #[path = "script_pdf.rs"]
 mod script_pdf;
 
@@ -84,36 +86,145 @@ fn inline(node: &serde_json::Value) -> String {
         .filter_map(|v| v["text"].as_str())
         .collect()
 }
-fn manuscript(document: &Document) -> Result<Vec<Part>, String> {
+#[derive(Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Scope {
+    pub node: Option<Id>,
+    pub path: Option<String>,
+}
+fn append_scene(parts: &mut Vec<Part>, scene: &Node) -> Result<(), String> {
+    parts.push(Part::Heading(4, title(scene)));
+    let canonical = &scene.properties["canonical"];
+    domain::text(canonical)?;
+    for node in canonical["content"].as_array().ok_or("invalid_document")? {
+        if node["type"] == "paragraph" {
+            parts.push(Part::Paragraph(inline(node)));
+        } else {
+            let cells = &node["content"][0]["content"];
+            parts.push(Part::Dialogue(
+                inline(&cells[0]["content"][0]),
+                inline(&cells[1]["content"][0]),
+            ));
+        }
+    }
+    Ok(())
+}
+fn manuscript_scoped(document: &Document, scope: &Scope) -> Result<Vec<Part>, String> {
+    let selected = scope
+        .node
+        .map(|id| document.graph().nodes().get(&id).ok_or("invalid_command"))
+        .transpose()?;
+    if selected.is_some_and(|n| {
+        ![domain::BLOCK, domain::SEQUENCE, domain::SCENE].contains(&n.type_id.as_str())
+    }) {
+        return Err("invalid_command".into());
+    }
+    let route_ids = scope
+        .path
+        .as_deref()
+        .map(|key| {
+            domain::compile(document, key)
+                .map(|route| route.into_iter().map(|n| n.0).collect::<BTreeSet<_>>())
+        })
+        .transpose()?;
+    let mut included = BTreeSet::new();
+    for scene in document
+        .graph()
+        .nodes()
+        .values()
+        .filter(|n| n.type_id == domain::SCENE)
+    {
+        let parent = scene
+            .properties
+            .get("parent")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse::<Id>().ok());
+        let block = parent
+            .and_then(|id| document.graph().nodes().get(&id))
+            .and_then(|n| n.properties.get("parent"))
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse::<Id>().ok());
+        if scope
+            .node
+            .is_none_or(|id| scene.id == id || parent == Some(id) || block == Some(id))
+            && route_ids.as_ref().is_none_or(|ids| ids.contains(&scene.id))
+        {
+            included.insert(scene.id);
+            included.extend(parent);
+            included.extend(block);
+        }
+    }
+    if let Some(node) = selected {
+        included.insert(node.id);
+        if let Some(parent) = node
+            .properties
+            .get("parent")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse::<Id>().ok())
+        {
+            included.insert(parent);
+        }
+    }
+    if scope.node.is_none() && scope.path.is_none() {
+        included.extend(document.graph().nodes().keys().copied());
+    }
+
     let mut parts = vec![Part::Heading(1, document.title.replace(['\r', '\n'], " "))];
+    if let Some(key) = &scope.path {
+        let mut previous = (None, None);
+        for (id, _, _) in domain::compile(document, key)? {
+            if !included.contains(&id) {
+                continue;
+            }
+            let scene = &document.graph().nodes()[&id];
+            let sequence_id = scene.properties["parent"]
+                .as_str()
+                .and_then(|s| s.parse::<Id>().ok())
+                .ok_or("invalid_document")?;
+            let sequence = &document.graph().nodes()[&sequence_id];
+            let block_id = sequence.properties["parent"]
+                .as_str()
+                .and_then(|s| s.parse::<Id>().ok())
+                .ok_or("invalid_document")?;
+            if previous.0 != Some(block_id) {
+                parts.push(Part::Heading(
+                    2,
+                    title(&document.graph().nodes()[&block_id]),
+                ));
+            }
+            if previous != (Some(block_id), Some(sequence_id)) {
+                parts.push(Part::Heading(3, title(sequence)));
+            }
+            append_scene(&mut parts, scene)?;
+            previous = (Some(block_id), Some(sequence_id));
+        }
+        return Ok(parts);
+    }
     let mut visited = BTreeSet::new();
-    for block in children(document, None, domain::BLOCK) {
+    for block in children(document, None, domain::BLOCK)
+        .into_iter()
+        .filter(|n| included.contains(&n.id))
+    {
         visited.insert(block.id);
         parts.push(Part::Heading(2, title(block)));
-        for sequence in children(document, Some(block.id), domain::SEQUENCE) {
+        for sequence in children(document, Some(block.id), domain::SEQUENCE)
+            .into_iter()
+            .filter(|n| included.contains(&n.id))
+        {
             visited.insert(sequence.id);
             parts.push(Part::Heading(3, title(sequence)));
-            for scene in children(document, Some(sequence.id), domain::SCENE) {
+            for scene in children(document, Some(sequence.id), domain::SCENE)
+                .into_iter()
+                .filter(|n| included.contains(&n.id))
+            {
                 visited.insert(scene.id);
-                parts.push(Part::Heading(4, title(scene)));
-                let canonical = &scene.properties["canonical"];
-                domain::text(canonical)?; // Validate supported canonical blocks before export.
-                for node in canonical["content"].as_array().ok_or("invalid_document")? {
-                    if node["type"] == "paragraph" {
-                        parts.push(Part::Paragraph(inline(node)));
-                    } else {
-                        let cells = &node["content"][0]["content"];
-                        parts.push(Part::Dialogue(
-                            inline(&cells[0]["content"][0]),
-                            inline(&cells[1]["content"][0]),
-                        ));
-                    }
-                }
+                append_scene(&mut parts, scene)?;
             }
         }
     }
     if document.graph().nodes().values().any(|node| {
         [domain::BLOCK, domain::SEQUENCE, domain::SCENE].contains(&node.type_id.as_str())
+            && included.contains(&node.id)
             && !visited.contains(&node.id)
     }) {
         return Err("invalid_command".into());
@@ -221,8 +332,34 @@ pub fn write(path: &Path, bytes: &[u8], format: Format) -> Result<(), String> {
     temporary.persist(path).map_err(|_| "export_failed")?;
     Ok(())
 }
+#[cfg(test)]
 pub fn bytes(document: &Document, format: Format, language: &str) -> Result<Vec<u8>, String> {
-    let mut parts = manuscript(document)?;
+    bytes_scoped(document, format, language, &Scope::default())
+}
+#[cfg(test)]
+pub fn bytes_scoped(
+    document: &Document,
+    format: Format,
+    language: &str,
+    scope: &Scope,
+) -> Result<Vec<u8>, String> {
+    bytes_configured(
+        document,
+        format,
+        language,
+        scope,
+        &pdf_settings::Settings::default(),
+    )
+}
+pub fn bytes_configured(
+    document: &Document,
+    format: Format,
+    language: &str,
+    scope: &Scope,
+    settings: &pdf_settings::Settings,
+) -> Result<Vec<u8>, String> {
+    settings.validate()?;
+    let mut parts = manuscript_scoped(document, scope)?;
     if let Some(Part::Heading(_, title)) = parts.first_mut()
         && title.trim().is_empty()
     {
@@ -236,11 +373,17 @@ pub fn bytes(document: &Document, format: Format, language: &str) -> Result<Vec<
     match format {
         Format::Text => Ok(serialize(&parts, false, language).into_bytes()),
         Format::Markdown => Ok(serialize(&parts, true, language).into_bytes()),
-        Format::Pdf => pdf(&parts),
-        Format::Script => script_pdf::render(&parts),
+        Format::Pdf => {
+            if settings.writing_mode == "vertical" {
+                script_pdf::standard(&parts, settings)
+            } else {
+                pdf_configured(&parts, settings)
+            }
+        }
+        Format::Script => script_pdf::configured(&parts, settings),
     }
 }
-fn xml(text: &str) -> String {
+pub(super) fn xml(text: &str) -> String {
     text.chars()
         .filter(|c| *c == '\t' || *c == '\n' || *c == '\r' || *c >= ' ')
         .map(|c| match c {
@@ -291,7 +434,16 @@ fn wrap(text: &str, capacity: usize) -> Vec<String> {
     }
     lines
 }
+#[cfg(test)]
 fn pdf(parts: &[Part]) -> Result<Vec<u8>, String> {
+    pdf_configured(parts, &pdf_settings::Settings::default())
+}
+fn pdf_configured(parts: &[Part], settings: &pdf_settings::Settings) -> Result<Vec<u8>, String> {
+    let (width, height) = settings.dimensions();
+    let margin = settings.margin();
+    let usable = width - 2. * margin;
+    let body_height = height - 2. * margin - 2. * settings.font_size - 20.;
+    let body_font = settings.font_size;
     let mut pages: Vec<Vec<Line>> = vec![Vec::new()];
     let mut used = 0.0;
     for part in parts {
@@ -299,28 +451,28 @@ fn pdf(parts: &[Part]) -> Result<Vec<u8>, String> {
             Part::Heading(level, text) => (
                 text.clone(),
                 match level {
-                    1 => 24.,
-                    2 => 18.,
-                    3 => 15.,
-                    _ => 13.,
+                    1 => body_font * 2.,
+                    2 => body_font * 1.5,
+                    3 => body_font * 1.25,
+                    _ => body_font * 1.0833,
                 },
                 true,
             ),
-            Part::Paragraph(text) => (text.clone(), 12., false),
-            Part::Dialogue(actor, text) => (format!("{actor}    {text}"), 12., false),
+            Part::Paragraph(text) => (text.clone(), body_font, false),
+            Part::Dialogue(actor, text) => (format!("{actor}    {text}"), body_font, false),
         };
         let actor_width = if let Part::Dialogue(actor, _) = part {
             normalized(actor)
                 .split('\n')
-                .map(|row| row.graphemes(true).count() as f32 * 12.)
-                .fold(12., f32::max)
-                .min(120.)
+                .map(|row| row.graphemes(true).count() as f32 * body_font)
+                .fold(body_font, f32::max)
+                .min(usable / 3.)
         } else {
             0.
         };
         let lines: Vec<_> = if let Part::Dialogue(actor, text) = part {
-            let actors = wrap(actor, (actor_width / 12.) as usize);
-            let dialogue = wrap(text, ((475. - actor_width - 12.) / size) as usize);
+            let actors = wrap(actor, (actor_width / body_font) as usize);
+            let dialogue = wrap(text, ((usable - actor_width - body_font) / size) as usize);
             (0..actors.len().max(dialogue.len()))
                 .map(|i| {
                     (
@@ -330,17 +482,17 @@ fn pdf(parts: &[Part]) -> Result<Vec<u8>, String> {
                 })
                 .collect()
         } else {
-            wrap(&text, (475.0 / size) as usize)
+            wrap(&text, (usable / size) as usize)
                 .into_iter()
                 .map(|text| (text, None))
                 .collect()
         };
-        if heading && used + (lines.len() as f32 * size * 1.6) + 40. > 716. && used > 0. {
+        if heading && used + (lines.len() as f32 * size * 1.6) + 40. > body_height && used > 0. {
             pages.push(Vec::new());
             used = 0.;
         }
         for (text, actor) in lines {
-            if used + size * 1.6 > 716. {
+            if used + size * 1.6 > body_height {
                 pages.push(Vec::new());
                 used = 0.;
             }
@@ -353,7 +505,7 @@ fn pdf(parts: &[Part]) -> Result<Vec<u8>, String> {
             });
             used += size * 1.6;
         }
-        if used + 10. < 716. {
+        if used + 10. < body_height {
             pages.last_mut().unwrap().push(Line {
                 text: String::new(),
                 size: 6.,
@@ -366,29 +518,30 @@ fn pdf(parts: &[Part]) -> Result<Vec<u8>, String> {
     }
     let mut svgs = Vec::new();
     for (index, lines) in pages.iter().enumerate() {
-        let mut y = 72.;
-        let mut svg = String::from(
-            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"595\" height=\"842\"><g font-family=\"Hiragino Sans,Noto Sans CJK JP,Noto Sans CJK SC,DejaVu Sans,sans-serif\" fill=\"#202631\">",
+        let mut y = margin + body_font * 2.;
+        let mut svg = format!(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width}\" height=\"{height}\"><g font-family=\"{}\" fill=\"#202631\">",
+            settings.family()
         );
         for line in lines {
-            let x = 54.
+            let x = margin
                 + if line.actor_width > 0. {
-                    line.actor_width + 12.
+                    line.actor_width + body_font
                 } else {
                     0.
                 };
             if let Some(actor) = &line.actor {
-                svg.push_str(&format!("<text x=\"{}\" y=\"{y}\" font-size=\"12\" text-anchor=\"end\" xml:space=\"preserve\">{}</text>",54.+line.actor_width,xml(actor)));
+                svg.push_str(&format!("<text x=\"{}\" y=\"{y}\" font-size=\"{body_font}\" text-anchor=\"end\" xml:space=\"preserve\">{}</text>",margin+line.actor_width,xml(actor)));
             }
             svg.push_str(&format!("<text x=\"{x}\" y=\"{y}\" font-size=\"{}\" font-weight=\"{}\" xml:space=\"preserve\">{}</text>",line.size,if line.heading{"bold"}else{"normal"},xml(&line.text)));
             y += line.size * 1.6;
         }
-        svg.push_str(&format!("<text x=\"297.5\" y=\"813\" text-anchor=\"middle\" font-size=\"9\" fill=\"#687180\">{} / {}</text></g></svg>",index+1,pages.len()));
+        svg.push_str(&format!("<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"9\" fill=\"#687180\">{} / {}</text></g></svg>",width/2.,height-margin/2.,index+1,pages.len()));
         svgs.push(svg);
     }
     svg_pdf(&svgs)
 }
-fn svg_pdf(pages: &[String]) -> Result<Vec<u8>, String> {
+pub(super) fn svg_pdf(pages: &[String]) -> Result<Vec<u8>, String> {
     let mut options = svg2pdf::usvg::Options::default();
     options.fontdb_mut().load_system_fonts();
     if options.fontdb.faces().next().is_none() {
@@ -418,7 +571,7 @@ fn svg_pdf(pages: &[String]) -> Result<Vec<u8>, String> {
         page_ids.push(page_id);
         let mut page = pdf.page(page_id);
         page.parent(tree_id)
-            .media_box(Rect::new(0., 0., 595., 842.))
+            .media_box(Rect::new(0., 0., tree.size().width(), tree.size().height()))
             .contents(stream);
         page.resources()
             .x_objects()
@@ -426,7 +579,7 @@ fn svg_pdf(pages: &[String]) -> Result<Vec<u8>, String> {
         page.finish();
         let mut content = Content::new();
         content
-            .transform([595., 0., 0., 842., 0., 0.])
+            .transform([tree.size().width(), 0., 0., tree.size().height(), 0., 0.])
             .x_object(Name(b"Manuscript"));
         pdf.stream(stream, &content.finish());
         pdf.extend(&chunk);
@@ -440,6 +593,90 @@ fn svg_pdf(pages: &[String]) -> Result<Vec<u8>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn scoped_exports_keep_structure_and_exclude_other_scenes() {
+        let registry = domain::registry();
+        let doc = domain::initial_document(&registry);
+        let scene = doc
+            .graph()
+            .nodes()
+            .values()
+            .find(|n| n.type_id == domain::SCENE)
+            .unwrap();
+        let parts = manuscript_scoped(
+            &doc,
+            &Scope {
+                node: Some(scene.id),
+                path: None,
+            },
+        )
+        .unwrap();
+        let titles: Vec<_> = parts
+            .iter()
+            .filter_map(|p| {
+                if let Part::Heading(4, title) = p {
+                    Some(title)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(titles, vec![&title(scene)]);
+        let route = manuscript_scoped(
+            &doc,
+            &Scope {
+                node: None,
+                path: Some("main".into()),
+            },
+        )
+        .unwrap();
+        let titles: Vec<_> = route
+            .iter()
+            .filter_map(|p| {
+                if let Part::Heading(4, title) = p {
+                    Some(title.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        for scene in doc
+            .graph()
+            .nodes()
+            .values()
+            .filter(|n| n.type_id == domain::SCENE)
+        {
+            let path = scene
+                .properties
+                .get("path")
+                .and_then(|v| v.as_str())
+                .unwrap_or("main");
+            assert_eq!(
+                titles.contains(&title(scene)),
+                path == "main" || path == "both"
+            );
+        }
+        assert!(
+            manuscript_scoped(
+                &doc,
+                &Scope {
+                    node: Some(Id::new_v4()),
+                    path: None
+                }
+            )
+            .is_err()
+        );
+        assert!(
+            manuscript_scoped(
+                &doc,
+                &Scope {
+                    node: None,
+                    path: Some("unknown".into())
+                }
+            )
+            .is_err()
+        );
+    }
     #[test]
     fn formats_preserve_unicode_dialogue_and_literal_markdown() {
         let parts = vec![

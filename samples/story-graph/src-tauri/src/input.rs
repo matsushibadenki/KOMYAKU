@@ -156,6 +156,11 @@ impl Plugin<EventLoopMessage> for Input {
                     if let Ok(summary) = self.engine.dispatch("controls", Request::Summary) {
                         self.revision = summary.revision;
                     }
+                    if *button == MouseButton::Left
+                        && super::graph_tools::minimap_click(&self.app, &self.engine, position)
+                    {
+                        return false;
+                    }
                     if *button == MouseButton::Left && super::graph_tools::connecting(&self.app) {
                         super::graph_tools::click(&self.app, &self.engine, position);
                         return false;

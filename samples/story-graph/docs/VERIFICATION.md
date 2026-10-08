@@ -572,3 +572,88 @@ AXのpage identity・意味のあるアプリ表示・overlay／blankなし、�
 - 差分外プロパティ・作品名の変更、古い差分、重複差分の拒否と全文fallback、構造更新後の正本一致を既存の段落保存回帰へ追加。journal回帰12件成功、アプリ全体79件成功（fixture6件は通常実行から除外）。
 - 100万字・1,000段落・10回の実ファイル保存／検証再読込：debug単一試行の中央値は全文serializer82.937ms、段落serializer29.960ms。既存の段落serializerとの同条件比較、RSS、release、実電源断は未検証。
 - 変更後のjournal回帰再実行とClippy（all-targets、-D warnings）、macOS debug package成功。今回の保存変更は実ファイルテストで検証し、新しい実WebView操作・電源断検証は未実施。
+
+## 未着手項目の実装・第1工程 — 2026-10-08
+
+- 外部snapshot取り込み、隠しディレクトリからの完成作品公開、全形式の範囲／読み順指定、Rustのページ付き全文検索を追加。本文・セリフ・役者名・メモ・シーン名を検索し、最大2,000件・40件ページ・短い抜粋とUTF-16位置に転送を限定。日本語／英語／简体中文を追加。
+- Rust82件成功（fixture6件は通常実行から除外）、JavaScript24件・625assertions成功、Clippy all-targets -D warningsとmacOS debug package成功。外部取り込みの空プロファイル復元・元ファイル不変・破損拒否、範囲に他シーンが入らないこと、巨大な一致件数の上限とUnicode位置を検証。
+- 隔離した実TauriアプリでCmd+F→「手紙」の検索→6件の抜粋→「承・手紙を開く」の本文への移動と一致文字の選択を確認。書き出し→範囲選択→「選択中の項目と配下」→標準保存ダイアログ表示を確認。保存先入力のネイティブ補助シートを自動操作できず、ファイル保存完了と取り込み選択→別ウインドウはPending。認証・本文の実データを使わない一時プロファイルの検証プロセスだけを終了。
+- 全ROADMAPの完了ではない。共有Workspace移行、Branch／Merge／Archive、任意Path、パネルドッキング、AI範囲送信、Graph追加機能、本文仮想化・IME／DPI QA、本番同期は残る。
+
+### グラフFocus — 2026-10-08
+
+- 選択ノードと1 hopの接続先、選択線の両端をRustで収集し、左48pxのツールバーと開いている右300pxの編集欄を避けて中央へ配置。データ・Undo履歴は変更しない。
+- 自動テスト：表示可能領域の中央、左右余白、Viewport妥当性、直接接続だけの収集、線の両端、空選択を検証。Graph toolsの4テスト成功。
+- macOSの隔離アプリ（`/private/tmp/KOMYAKU Roadmap QA.app`）、1100×800、`tauri://localhost/graph-rail.html`から、人物「灯」をクリック→Focus、接続線をクリック→Focusを操作。右編集欄の人物／線情報とGPU画面の移動、対象の可視性を確認。通常終了も成功。
+- Browser pluginは提供されていない。対象はwgpuのネイティブウインドウなのでCUAで操作し、ブラウザーによるGPU画面の代替検証は行っていない。空画面・エラー画面なし。実行プロセスの標準出力にエラーなし。WebView consoleの直接取得、小さいウインドウ、DPI変更は未検証。
+- 最終チェック：Rust 84テスト成功／6 ignored、JavaScript 24テスト／625 assertions成功、Clippy（警告をエラー化）成功、macOS debug bundle成功、git diff --check成功。
+
+ROADMAP全体の完了には至っていない。未実装の基盤移行・分岐／統合・完全Archive・全パネルドッキング・Minimap等は従来の未完了表示を維持する。
+
+## Archive・Branch・2親Merge — 2026-10-08
+
+- `.komyaku-story` Archive：空プロファイルへ作業原稿／人物画像／Graph／全履歴／環境設定を復元し、取り込み後の版追加を確認。旧版のsnapshot bytes／hash／IDを完全保持。破損・切断・余分な末尾・未来形式を拒否し、公開workspaceを残さない。失敗した書き出しで旧ファイルとsourceを保持。実ファイル3テスト成功。
+- Lineage：分岐、順序付き2親、再起動・Archive保持、独立した変更の統合、競合の明示選択、Unicode保持、削除／編集・同一ID追加の競合、未知の選択／重複親／自己親／存在しない親の拒否、criss-cross共通祖先の曖昧性拒否、stale revisionをテスト。
+- native環境：隔離したmacOS debug app、1040×820、`tauri://localhost`、合成プロフィール `/private/tmp/komyaku-lineage-qa-5c304cc8-6772-4370-90a6-f60d81a9a211`。初稿Aと本編A2→Aから「別案QA」へ分岐し別プロセス起動→作品名を「別案編集QA」へ変更→本編A2との統合preview→タイトル競合で「選択した版」を採用→統合作品を別プロセスで起動。画面のタイトルが「本編QA」、履歴5件と分岐を確認。ディスク上で元作品2版／分岐作品3版／統合作品5版、統合版2親と全snapshot SHA-256一致を確認。親・分岐・統合アプリを通常終了。
+- Browser pluginは提供されていない。ネイティブCUAでmeaningful screen、blank／overlayなし、競合selectとfork／merge buttonsの状態変化を確認。WebView console直接取得は未実施。標準ファイルダイアログを最後まで操作するArchive export/importのnative QAは既存のサブダイアログ制約によりPending。Rustによる実ファイル処理は検証済み。
+- macOS debug bundleとJavaScript 24 tests／625 assertions成功。共有Canonical Archive契約との互換性、別プロファイル間の分岐取り込み、同一ウインドウでのBranch切り替えはこの実装範囲に含まれない。
+
+## 2026-10-08 Named paths and scene restructuring
+
+- [Done] Rust tests: ordered path persistence, exact Undo, invalid references, cross-path cycle rejection; Unicode split, block IDs, route expansion, merge, atomic Undo, invalid boundaries and nonadjacent merge.
+- [Done] Native isolated profile `/private/tmp/komyaku-paths-qa-20261008`: add Route QA with a scene reference, save, right-click scene → split at UTF-16 position 10 → Split QA; merge with the next scene; one Undo restores Split QA. Clicking it shows the exact continuation body. Native observation exposed a localized-name fallback bug, which was corrected.
+- [Done] Rust workspace tests after the named-path change pass, including the local callback listener when run with localhost permission. JavaScript: 24 tests / 625 assertions pass.
+- [Pending] Additional native drag reorder, three-language and archive picker QA for the new paths; completion is not implied by the Rust checks.
+
+## 2026-10-08 AI selection and reviewed adoption
+
+- [Done] Rust tests prove selected context excludes private prefix/suffix, replacement preserves document/paragraph IDs, invalid surrogate/grapheme boundaries fail, and changed source refuses stale adoption. Existing completion/failure/size tests remain green.
+- [Done] AI candidates remain Rust-owned ephemeral review state. Only explicit Send initiates requests; preparing/comparing/adopting is local. Replacement is a normal validated, undoable canonical command. Save as Version is explicit after adoption.
+- [Pending] Native authenticated generation QA needs a connected eligible account. No credentials or synthetic generation results were introduced into production flows.
+- Reference: https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations (checked 2026-10-08): stateless HTTP Responses with store false and stream true.
+
+## 2026-10-08 GPU minimap and operation checksums
+
+- [Done] Minimap mapping tests cover zoom 0.02 / 1 / 16, negative coordinates, frame hit testing and small-window suppression. Existing renderer tests pass.
+- [Done] Native isolated app: graph’s lower-left minimap is visible; clicking it pans the graph, zooming changes cards while the map remains 180×120 logical pixels. It renders in wgpu with Rust geometry and uses shared Rust viewport commands.
+- [Done] Journal operation checksums cover sequence, offsets, deletion size, inserted bytes and before/after hashes. Altered fields are refused; legacy v1 records still replay. Cached saving now publishes SavedWorkspace v2 when document extensions exist, with a regression test through actual journal files.
+
+## 2026-10-08 — graph assets and configurable PDF
+
+- Full Rust workspace checks passed after graph/portrait/PDF work (application: 105 passed, 8 manual fixtures ignored).
+- Actual Metal offscreen `native_export_fixture` passed. PNG and PDF include Japanese relationship labels, bilateral arrows, a group background and a work title; no prose or minimap.
+- `configured_pdf_fixtures` generated standard vertical A4, B5 screenplay in sans serif, and standard Letter PDF. Poppler rasterizations of vertical A4 and B5 screenplay were visually inspected. Frame gaps, punctuation placement, margins, hanging dialogue and footer are intact.
+- Nine A4/B5/Letter × 8/12/18pt screenplay layouts assert every frame and glyph cell remains inside the selected margins, including long titles and multi-page dialogue.
+- Portrait crop tests cover EXIF-normalized bounded output, distinct crop positions, invalid crop geometry and metadata-free PNG persistence.
+- Native file-picker adoption/save completion remains separately pending; fixture success does not claim that UI workflow.
+
+### Native follow-up
+
+The isolated `KOMYAKU Roadmap QA.app` profile completed standard PDF save to `/private/tmp/komyaku-native-settings-qa.pdf`, portrait file selection, drag of crop position to 0.14 and zoom to 2.4, adoption and thumbnail display. The graph tool created `家族 QA`, then reopened it with exactly Akari and Mio checked and its background visible. File → graph PDF completed to `/private/tmp/komyaku-native-graph-qa.pdf`, with the completion status shown. Native picker navigation used its Go to Folder sheet and AX `setValue`. The settings dialog's numeric labels were crowded in the first screenshot; dedicated grid styles fix that layout and require a fresh visual check. QA app was quit normally afterward.
+
+### Roadmap continuation: shared state and save recovery (2026-10-08)
+
+- Native legacy snapshot picker imported into a new work/window; outline and prose displayed. Shared Workspace and native Archive picker flows were also exercised.
+- Native narrative declarations survived restart; tab changes and Save and check retained the main scene tab and selected manuscript.
+- General Entity initial state and scene effects saved through the native dialog; impact tracing displayed subsequent scenes and reasons. JSON null/absence, precondition-before-effect ordering, set/list behavior, alternate paths, invalid-reference rejection and Undo are covered by Rust tests. Rust exported fixture passed independent shared JavaScript engine evaluation. Native general state query/assertion controls still require additional interaction QA.
+- Save failure induced only in an isolated /private/tmp test profile by removing its write permission. The editor retained text, showed a persistence error, refused window closure, and recovered with Cmd-S after restoring permission. Accepted patches were not replayed. Persistence retry test verifies unchanged revision and exact roundtrip after failure.
+- No real user data or credentials were submitted. Actual IME composition, hardware DPI transitions and real power-loss tests remain distinct from committed-text input and filesystem failure simulation.
+
+- Shared Archive v1 native picker now accepts `.komyaku` without relying on macOS dynamic type filtering. Import published a separate window with restored outline and text.
+- PDF screenplay settings displayed clearly with no overlapping labels or controls.
+- Native floating manuscript: edit and save in the detached window, return to main, detached window destroyed, shared text retained. CUA needed Cmd-` to focus the surviving main window after its former focused window closed. This verifies docking lifecycle, not arbitrary drag docking or simultaneous IME conflicts.
+- Save-recovery profile restarted and displayed exactly one appended QA marker with saved status.
+
+### Rust-owned panel layout and typed state follow-up
+
+The isolated native profile restored navigator width 308. Keyboard Right changed it to 316 and then 324; quitting immediately persisted 324 and physical/logical geometry for controls/canvas. Restart restored 324. This verifies width persistence and geometry capture, not multi-monitor/DPI migration or arbitrary panel docking.
+
+The native state dialog accepted unquoted text 東京「鍵」 for Ren/location at the memory scene. Save/check succeeded. Querying the scene's after-state returned the same JSON string. An assertion at that scene with the matching expected value reported Pass. Pure value parsing tests cover finite numbers, booleans, null and structured JSON.
+
+Normal save, autosave, retry, version recording and comparison now borrow the current Rust document. Persistence and history regressions passed, including the million-character save/reload test and explicit stale revision refusal. In the native isolated profile, appending 借用保存 QA, saving and restarting retained the text exactly once with saved status; navigator width remained 324.
+
+### Shared history v2 and reading layout follow-up
+
+The shared history fixture passed the independent Archive core verifier. Native File import opened a separate Working QA work with Base, Main, Alternative and Merge, four original versions and both branches. Rust tests reject invalid calendar timestamps, unknown fields, invalid heads, self-parent cycles, changed native labels and snapshot corruption; empty history roundtrips. Full Rust workspace tests passed outside the sandbox's loopback restriction; the sandbox run failed only binding the authentication cancellation listener.
+
+Reading resize now captures the visible chunk anchor and reflows without replacing the whole app UI. Unit tests cover both scroll axes and retained offsets. IME replacement preparation lazily creates changed fragment strings only; 1,000 fragments use two reads for the active fragment and none for unchanged peers. Actual IME composition remains a native QA item.

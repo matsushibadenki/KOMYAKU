@@ -13,3 +13,9 @@ pub use gpu::*;
 pub use scene::*;
 pub use surface::*;
 pub use wgpu;
+
+mod minimap;
+pub use minimap::*;
+
+mod export_image;
+pub use export_image::*;

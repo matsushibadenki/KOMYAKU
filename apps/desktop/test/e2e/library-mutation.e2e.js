@@ -1,9 +1,10 @@
+import { failDraftWrites, verifyBlockedThenRetry } from './persistence-failure-helpers.js';
 import { expect, test } from '@playwright/test';
 
-async function openLibrary(page) {
+async function openLibrary(page, documentId = '00000000-0000-4000-8000-000000000001') {
   await page.route('**/src/services/local-document-library.js', route => route.fulfill({
     contentType: 'text/javascript', body: `
-      const document = { documentId: '00000000-0000-4000-8000-000000000001',
+      const document = { documentId: '${documentId}',
         title: 'QA document', defaultLanguage: 'ja', localRevision: 1, archivedAt: null };
       window.libraryMutations = [];
       export const listLocalDocuments = async () => {
@@ -108,3 +109,10 @@ for (const failed of [false, true]) {
     await expect(page.getByRole('button', { name: '名前を変更', exact: true })).toBeFocused();
   });
 }
+
+test('N0 failed persistence blocks library open until explicit retry', async ({ page }) => {
+  await openLibrary(page, '00000000-0000-4000-8000-000000000002');
+  const { before, editor } = await failDraftWrites(page);
+  await page.locator('.document-library-list li button').first().click();
+  await verifyBlockedThenRetry(page, before, editor);
+});

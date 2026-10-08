@@ -25,6 +25,18 @@ pub fn portrait_key(encoded: &str) -> u64 {
 }
 /// Import PNG/JPEG/WebP, center crop, discard metadata, and store a portable PNG.
 pub fn normalize_portrait(bytes: &[u8]) -> Result<String, String> {
+    normalize_portrait_at(bytes, 0.5, 0.5, 1.)
+}
+pub fn normalize_portrait_at(bytes: &[u8], x: f32, y: f32, zoom: f32) -> Result<String, String> {
+    if !x.is_finite()
+        || !y.is_finite()
+        || !zoom.is_finite()
+        || !(0.0..=1.0).contains(&x)
+        || !(0.0..=1.0).contains(&y)
+        || !(1.0..=8.0).contains(&zoom)
+    {
+        return Err("portrait_invalid".into());
+    }
     if bytes.is_empty() || bytes.len() > 8 * 1024 * 1024 {
         return Err("portrait_invalid".into());
     }
@@ -51,7 +63,11 @@ pub fn normalize_portrait(bytes: &[u8]) -> Result<String, String> {
         .unwrap_or(image::metadata::Orientation::NoTransforms);
     let mut image = image::DynamicImage::from_decoder(decoder).map_err(|_| "portrait_invalid")?;
     image.apply_orientation(orientation);
+    let side = ((image.width().min(image.height()) as f32 / zoom).round() as u32).max(1);
+    let left = ((image.width() - side) as f32 * x).round() as u32;
+    let top = ((image.height() - side) as f32 * y).round() as u32;
     let image = image
+        .crop_imm(left, top, side, side)
         .resize_to_fill(
             PORTRAIT_SIZE,
             PORTRAIT_SIZE,
@@ -101,6 +117,31 @@ pub fn decode_portrait(encoded: &str) -> Option<Arc<Portrait>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn crop_positions_choose_original_regions_and_reject_invalid_geometry() {
+        let image = image::RgbImage::from_fn(256, 128, |x, _| {
+            image::Rgb(if x < 128 { [255, 0, 0] } else { [0, 0, 255] })
+        });
+        let mut bytes = Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgb8(image)
+            .write_to(&mut bytes, image::ImageFormat::Png)
+            .unwrap();
+        let left =
+            decode_portrait(&normalize_portrait_at(bytes.get_ref(), 0., 0.5, 1.).unwrap()).unwrap();
+        let right =
+            decode_portrait(&normalize_portrait_at(bytes.get_ref(), 1., 0.5, 1.).unwrap()).unwrap();
+        let pixel = (64 * 128 + 64) * 4;
+        assert!(left.rgba[pixel] > 250 && left.rgba[pixel + 2] < 5);
+        assert!(right.rgba[pixel + 2] > 250 && right.rgba[pixel] < 5);
+        for (x, y, zoom) in [
+            (f32::NAN, 0., 1.),
+            (0., -1., 1.),
+            (0., 0., 0.5),
+            (0., 0., 9.),
+        ] {
+            assert!(normalize_portrait_at(bytes.get_ref(), x, y, zoom).is_err());
+        }
+    }
     #[test]
     fn normalized_images_are_portable_bounded_and_cached() {
         let mut bytes = Cursor::new(Vec::new());

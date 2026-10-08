@@ -16,7 +16,8 @@
     "benchmark:startup:macos": "swift scripts/benchmark-packaged-startup.swift 'src-tauri/target/debug/bundle/macos/KOMYAKU Editing QA.app'",
     "tauri": "tauri",
     "test:integration-retry:package": "tauri build --debug --bundles app --config src-tauri/tauri.integration-retry-qa.conf.json",
-    "test:integration-ui:package": "tauri build --debug --bundles app --config src-tauri/tauri.integration-ui-qa.conf.json"
+    "test:integration-ui:package": "tauri build --debug --bundles app --config src-tauri/tauri.integration-ui-qa.conf.json",
+    "test:editing:gate": "bun scripts/editing-qa-save-gate.mjs"
   },
   "dependencies": {
     "@komyaku/archive-core": "workspace:*",

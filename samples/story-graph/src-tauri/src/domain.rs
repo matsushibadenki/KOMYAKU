@@ -456,6 +456,39 @@ pub struct Validator(pub Arc<Registry>);
 impl DocumentValidator for Validator {
     fn validate(&self, document: &Document) -> unge_core::Result<()> {
         self.0.validate_edit(document.graph())?;
+        if document.extensions.keys().any(|key| {
+            key != super::paths::EXTENSION
+                && key != super::scene_operations::EXTENSION
+                && key != super::narrative::EXTENSION
+        }) {
+            return Err(Error::Invalid("unsupported_extension".into()));
+        }
+        if document.graph().groups().len() > 32
+            || document.graph().groups().values().any(|g| {
+                g.label.trim().is_empty()
+                    || g.label.chars().count() > 80
+                    || g.label.chars().any(char::is_control)
+                    || g.nodes.iter().any(|id| {
+                        document
+                            .graph()
+                            .nodes()
+                            .get(id)
+                            .is_none_or(|n| n.type_id != CHARACTER)
+                    })
+            })
+        {
+            return Err(Error::Invalid("invalid_character_group".into()));
+        }
+        super::scene_operations::validate(document).map_err(Error::Invalid)?;
+        super::narrative::validate(
+            document,
+            &super::narrative::declarations(document).map_err(Error::Invalid)?,
+        )
+        .map_err(Error::Invalid)?;
+        if document.extensions.contains_key(super::paths::EXTENSION) {
+            let paths = super::paths::definitions(document).map_err(Error::Invalid)?;
+            super::paths::validate(document, &paths, true).map_err(Error::Invalid)?;
+        }
         if document.graph().nodes().len() > 256 || document.graph().edges().len() > 1024 {
             return Err(Error::Invalid("limit_exceeded".into()));
         }
@@ -689,6 +722,15 @@ pub fn initial_document(registry: &Registry) -> Document {
 }
 /// Explicit route order; reject gaps, ambiguous order and disconnected paths.
 pub fn compile(
+    document: &Document,
+    path: &str,
+) -> std::result::Result<Vec<(Id, String, String)>, String> {
+    if document.extensions.contains_key(super::paths::EXTENSION) {
+        return super::paths::route(document, path);
+    }
+    legacy_compile(document, path)
+}
+pub fn legacy_compile(
     document: &Document,
     path: &str,
 ) -> std::result::Result<Vec<(Id, String, String)>, String> {

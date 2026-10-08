@@ -1067,3 +1067,90 @@ fn instance_titles_override_type_titles_and_are_bounded() {
     assert!(scene.labels[0].text.starts_with("灯 "));
     assert_eq!(scene.labels[0].text.chars().count(), 200);
 }
+
+#[test]
+#[ignore = "manual release graph rendering benchmark; reports timings, not a timing assertion"]
+fn benchmark_large_story_graphs() {
+    use std::time::Instant;
+    for count in [1_000, 5_000, 10_000] {
+        let mut value = serde_json::to_value(Document::default()).unwrap();
+        let mut nodes = serde_json::Map::new();
+        let mut placement = serde_json::Map::new();
+        let mut edges = serde_json::Map::new();
+        let mut previous = None;
+        for i in 0..count {
+            let id = Id::new_v4();
+            let port = |name: &str| Port {
+                name: name.into(),
+                data_type: DataType::Float,
+                cardinality: Cardinality::Single,
+                required: false,
+            };
+            let node = Node {
+                id,
+                type_id: "story.scene".into(),
+                inputs: vec![port("previous")],
+                outputs: vec![port("next")],
+                properties: Properties::from([(
+                    "title".into(),
+                    serde_json::json!(format!("Scene {i} / 場面 / 场景")),
+                )]),
+            };
+            nodes.insert(id.to_string(), serde_json::to_value(node).unwrap());
+            placement.insert(id.to_string(),serde_json::json!({"x":(i%50) as f32*260.,"y":(i/50) as f32*160.,"width":220.,"height":110.}));
+            if let Some(from) = previous {
+                let edge = Edge {
+                    id: Id::new_v4(),
+                    from: Endpoint {
+                        node: from,
+                        port: "next".into(),
+                    },
+                    to: Endpoint {
+                        node: id,
+                        port: "previous".into(),
+                    },
+                };
+                edges.insert(edge.id.to_string(), serde_json::to_value(edge).unwrap());
+            }
+            previous = Some(id);
+        }
+        value["graph"]["nodes"] = serde_json::Value::Object(nodes);
+        value["graph"]["edges"] = serde_json::Value::Object(edges);
+        value["placement"] = serde_json::Value::Object(placement);
+        let bytes = serde_json::to_vec(&value).unwrap();
+        let document = Document::from_json(&bytes).unwrap();
+        let start = Instant::now();
+        let index = SceneIndex::new(&document);
+        let indexing = start.elapsed();
+        for zoom in [1., 0.1] {
+            let mut samples = Vec::new();
+            let mut instances = 0;
+            let mut visible = 0;
+            for frame in 0..100 {
+                let start = Instant::now();
+                let scene = index
+                    .scene(
+                        Viewport {
+                            origin: [(frame % 10) as f32 * 100., (frame / 10) as f32 * 100.],
+                            zoom,
+                            size: [1100., 800.],
+                        },
+                        &BTreeSet::new(),
+                    )
+                    .unwrap();
+                samples.push(start.elapsed().as_secs_f64() * 1000.);
+                instances = instances.max(scene.quads.len());
+                visible = visible.max(scene.visible_nodes);
+            }
+            samples.sort_by(f64::total_cmp);
+            println!(
+                "GRAPH_BENCH nodes={count} edges={} snapshot_bytes={} index_ms={:.3} zoom={zoom} scene_p50_ms={:.3} scene_p95_ms={:.3} max_quads={instances} max_visible={visible}",
+                count - 1,
+                bytes.len(),
+                indexing.as_secs_f64() * 1000.,
+                samples[50],
+                samples[95]
+            );
+        }
+    }
+}

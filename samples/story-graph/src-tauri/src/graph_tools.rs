@@ -231,14 +231,20 @@ pub fn graph_state(
     {
         return Ok(json!({"hidden":true}));
     }
-    let mut value = projection(&host.engine)?;
-    let doc = host.engine.snapshot().map_err(|e| e.code)?;
+    let view = host.engine.view_state("controls").map_err(|e| e.code)?;
+    let (mut value,node_ids,edge_ids)=host.engine.read_document(|doc,summary|->std::result::Result<_,String>{
+    let mut value=projection_document(doc,summary,view.selection.iter().next().copied())?;
+    value["groups"] = json!(doc.graph().groups().values().collect::<Vec<_>>());
     value["ports"]=json!(doc.graph().nodes().values().map(|n|(n.id.to_string(),json!({"inputs":n.inputs.iter().map(|p|&p.name).collect::<Vec<_>>(),"outputs":n.outputs.iter().map(|p|&p.name).collect::<Vec<_>>()}))).collect::<std::collections::BTreeMap<_,_>>());
     value["edges"]=json!(doc.graph().edges().values().map(|e|json!({"id":e.id,"from":e.from.node,"to":e.to.node,"port":e.to.port,"fromPort":e.from.port})).collect::<Vec<_>>());
+    if let Some(id)=value["selected"].as_str().and_then(|s|s.parse::<Id>().ok()){
+        value["details"]=doc.graph().nodes().get(&id).map(|node|json!({"id":node.id,"title":node.properties.get("title"),"role":node.properties.get("role"),"notes":node.properties.get("notes"),"kind":node.properties.get("kind"),"mutual":node.properties.get("mutual")})).unwrap_or(Value::Null);
+    }
+    Ok((value,doc.graph().nodes().keys().copied().collect::<std::collections::BTreeSet<_>>(),doc.graph().edges().keys().copied().collect::<std::collections::BTreeSet<_>>()))
+    }).map_err(|e|e.code)??;
     let mut state = tools.state.lock().map_err(|_| "state_unavailable")?;
-    state.edge = state.edge.filter(|id| doc.graph().edges().contains_key(id));
-    state.from = state.from.filter(|id| doc.graph().nodes().contains_key(id));
-    let view = host.engine.view_state("controls").map_err(|e| e.code)?;
+    state.edge = state.edge.filter(|id| edge_ids.contains(id));
+    state.from = state.from.filter(|id| node_ids.contains(id));
     value["language"] = json!(match view.locale {
         Locale::Ja => "ja",
         Locale::ZhCn => "zh-CN",
@@ -255,15 +261,58 @@ pub fn graph_state(
     value["pendingFrom"] = json!(state.from);
     value["selectedEdge"] = json!(state.edge);
     value["open"] = json!(state.open);
-    if let Some(id) = value["selected"]
-        .as_str()
-        .and_then(|s| s.parse::<Id>().ok())
-    {
-        let node = doc.graph().nodes().get(&id).ok_or("missing_node")?;
-        value["details"] = json!({"id":node.id,"title":node.properties.get("title"),"role":node.properties.get("role"),"notes":node.properties.get("notes"),"kind":node.properties.get("kind"),"mutual":node.properties.get("mutual")});
-    }
     Ok(value)
 }
+// Fit into the canvas area that is not covered by the rail or inspector.
+fn frame_rects(viewport: &mut Viewport, rects: &[Rect], inspector_open: bool) {
+    if rects.is_empty() {
+        return;
+    }
+    let left = rects.iter().map(|r| r.x).fold(f32::INFINITY, f32::min);
+    let top = rects.iter().map(|r| r.y).fold(f32::INFINITY, f32::min);
+    let right = rects
+        .iter()
+        .map(|r| r.x + r.width)
+        .fold(f32::NEG_INFINITY, f32::max);
+    let bottom = rects
+        .iter()
+        .map(|r| r.y + r.height)
+        .fold(f32::NEG_INFINITY, f32::max);
+    let rail = ICON_RAIL_WIDTH as f32;
+    let panel = if inspector_open { 300. } else { 0. };
+    let width = (viewport.size[0] - rail - panel).max(1.);
+    let height = viewport.size[1];
+    viewport.zoom = (width / (right - left + 80.))
+        .min(height / (bottom - top + 80.))
+        .clamp(0.02, 2.);
+    viewport.origin = [
+        (left + right) * 0.5 - (rail + width * 0.5) / viewport.zoom,
+        (top + bottom) * 0.5 - height * 0.5 / viewport.zoom,
+    ];
+}
+
+fn focus_rects(
+    doc: &Document,
+    selected: &std::collections::BTreeSet<Id>,
+    edge: Option<Id>,
+) -> Vec<Rect> {
+    let mut ids = selected.clone();
+    if let Some(edge) = edge.and_then(|id| doc.graph().edges().get(&id)) {
+        ids = [edge.from.node, edge.to.node].into();
+    } else {
+        // One hop only: include immediate connections without expanding the whole graph.
+        for edge in doc.graph().edges().values() {
+            if selected.contains(&edge.from.node) || selected.contains(&edge.to.node) {
+                ids.insert(edge.from.node);
+                ids.insert(edge.to.node);
+            }
+        }
+    }
+    ids.iter()
+        .filter_map(|id| doc.placement().get(id).copied())
+        .collect()
+}
+
 #[tauri::command]
 pub async fn graph_action(
     webview: tauri::Webview,
@@ -290,14 +339,14 @@ pub async fn graph_action(
         "form" => {
             let form = action["form"]
                 .as_str()
-                .filter(|s| ["character", "scene", "relationship"].contains(s))
+                .filter(|s| ["character", "scene", "relationship", "groups"].contains(s))
                 .ok_or("invalid_command")?;
             tools.state.lock().map_err(|_| "state_unavailable")?.form = Some(form.into());
             show(&app, true);
         }
         "close" => show(&app, false),
         "inspector" => show(&app, true),
-        "zoom" | "fit" => {
+        "zoom" | "fit" | "focus" => {
             let view = host.engine.view_state("controls").map_err(|e| e.code)?;
             let mut viewport = view.viewport;
             if kind == "zoom" {
@@ -311,23 +360,17 @@ pub async fn graph_action(
                 );
             } else {
                 let doc = host.engine.snapshot().map_err(|e| e.code)?;
-                let rects: Vec<_> = doc.placement().values().collect();
-                if !rects.is_empty() {
-                    let left = rects.iter().map(|r| r.x).fold(f32::INFINITY, f32::min);
-                    let top = rects.iter().map(|r| r.y).fold(f32::INFINITY, f32::min);
-                    let right = rects
-                        .iter()
-                        .map(|r| r.x + r.width)
-                        .fold(f32::NEG_INFINITY, f32::max);
-                    let bottom = rects
-                        .iter()
-                        .map(|r| r.y + r.height)
-                        .fold(f32::NEG_INFINITY, f32::max);
-                    viewport.zoom = ((viewport.size[0] - 400.).max(100.) / (right - left + 80.))
-                        .min((viewport.size[1] - 80.).max(100.) / (bottom - top + 80.))
-                        .clamp(0.1, 2.);
-                    viewport.origin = [left - 80. / viewport.zoom, top - 40. / viewport.zoom];
-                }
+                let state = tools.state.lock().map_err(|_| "state_unavailable")?;
+                let rects = if kind == "focus" {
+                    let rects = focus_rects(&doc, &view.selection, state.edge);
+                    if rects.is_empty() {
+                        return Err("missing_selection".into());
+                    }
+                    rects
+                } else {
+                    doc.placement().values().copied().collect()
+                };
+                frame_rects(&mut viewport, &rects, state.open);
             }
             host.engine
                 .dispatch("controls", Request::SetViewport { viewport })
@@ -457,7 +500,8 @@ pub async fn graph_action(
             let action: Action = serde_json::from_value(action).map_err(|_| "invalid_command")?;
             if !matches!(
                 action,
-                Action::Property { .. }
+                Action::CharacterGroup { .. }
+                    | Action::Property { .. }
                     | Action::Remove { .. }
                     | Action::AddCharacter { .. }
                     | Action::AddScene { .. }
@@ -510,9 +554,93 @@ pub async fn graph_action(
     Ok(())
 }
 
+/// Clicking the Rust-rendered minimap moves only the shared graph viewport.
+pub fn minimap_click(app: &tauri::AppHandle, engine: &Engine, position: [f32; 2]) -> bool {
+    let Ok(view) = engine.view_state("controls") else {
+        return false;
+    };
+    let Ok(doc) = engine.snapshot() else {
+        return false;
+    };
+    let Some(bounds) = unge_render::minimap_bounds(doc.placement().values().copied()) else {
+        return false;
+    };
+    let Some(point) =
+        unge_render::Minimap::new(bounds, view.viewport).and_then(|m| m.navigate(position))
+    else {
+        return false;
+    };
+    let mut viewport = view.viewport;
+    viewport.origin = [
+        point[0] - viewport.size[0] / viewport.zoom / 2.,
+        point[1] - viewport.size[1] / viewport.zoom / 2.,
+    ];
+    if engine
+        .dispatch("controls", Request::SetViewport { viewport })
+        .is_ok()
+    {
+        super::redraw(app);
+        let _ = app.emit("graph://changed", ());
+    }
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn framing_centers_content_in_unobscured_canvas() {
+        let rects = [Rect {
+            x: -120.,
+            y: 80.,
+            width: 600.,
+            height: 240.,
+        }];
+        for inspector in [false, true] {
+            let mut view = Viewport {
+                origin: [0., 0.],
+                zoom: 1.,
+                size: [1100., 800.],
+            };
+            frame_rects(&mut view, &rects, inspector);
+            view.validate().unwrap();
+            let center = [
+                (180. - view.origin[0]) * view.zoom,
+                (200. - view.origin[1]) * view.zoom,
+            ];
+            let expected =
+                (ICON_RAIL_WIDTH as f32 + 1100. - if inspector { 300. } else { 0. }) * 0.5;
+            assert!((center[0] - expected).abs() < 0.001);
+            assert!((center[1] - 400.).abs() < 0.001);
+            assert!((-120. - view.origin[0]) * view.zoom > ICON_RAIL_WIDTH as f32);
+            assert!(
+                (480. - view.origin[0]) * view.zoom < 1100. - if inspector { 300. } else { 0. }
+            );
+        }
+    }
+
+    #[test]
+    fn focus_includes_only_immediate_neighbors_or_cable_endpoints() {
+        let registry = domain::registry();
+        let doc = domain::initial_document(&registry);
+        let edge = doc.graph().edges().values().next().unwrap();
+        let selection = [edge.from.node].into();
+        let rects = focus_rects(&doc, &selection, None);
+        assert!(rects.contains(&doc.placement()[&edge.from.node]));
+        assert!(rects.contains(&doc.placement()[&edge.to.node]));
+        let expected: std::collections::BTreeSet<_> = doc
+            .graph()
+            .edges()
+            .values()
+            .filter(|e| e.from.node == edge.from.node || e.to.node == edge.from.node)
+            .flat_map(|e| [e.from.node, e.to.node])
+            .chain([edge.from.node])
+            .collect();
+        assert_eq!(rects.len(), expected.len());
+        assert_eq!(focus_rects(&doc, &selection, Some(edge.id)).len(), 2);
+        assert!(focus_rects(&doc, &Default::default(), None).is_empty());
+    }
+
     #[test]
     fn cable_picking_tracks_curves_and_uses_screen_space_tolerance() {
         let registry = domain::registry();

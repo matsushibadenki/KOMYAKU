@@ -17,10 +17,11 @@ export function fragmentSelection(part,selection) {
 export function replaceSelectionFragments(parts,active,selection,insert) {
   const {start,end}=selectionRange(selection),delta=insert.length-(end-start);
   return parts.map((part,index)=>{
-    const limit=part.start+part.text.length;
+    const limit=part.start+(part.length??part.text.length);
+    const unchanged=start=>Object.assign(Object.defineProperties({},Object.getOwnPropertyDescriptors(part)),{start,active:false,unchanged:true});
     if(index===active)return {start:Math.min(part.start,start),text:part.text.slice(0,Math.max(0,start-part.start))+insert+part.text.slice(Math.max(0,end-part.start)),active:true};
-    if(limit<=start)return {...part,active:false};
-    if(part.start>=end)return {...part,start:part.start+delta,active:false};
+    if(limit<=start)return unchanged(part.start);
+    if(part.start>=end)return unchanged(part.start+delta);
     if(part.start<start)return {start:part.start,text:part.text.slice(0,start-part.start),active:false};
     if(limit>end)return {start:start+insert.length,text:part.text.slice(end-part.start),active:false};
     return null;

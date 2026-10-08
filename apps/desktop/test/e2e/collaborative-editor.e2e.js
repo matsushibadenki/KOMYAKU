@@ -1,3 +1,4 @@
+import { failDraftWrites, verifyBlockedThenRetry } from './persistence-failure-helpers.js';
 import { expect, test } from "@playwright/test";
 import { inspectConversationExport } from "../../src/services/conversation-import-preview.js";
 import { createKomyakuArchive, createKomyakuHistoryArchive } from "@komyaku/archive-core";
@@ -676,4 +677,14 @@ test("inserts a Cloud image only after decoder-backed inspection acceptance", as
   ]);
   await expect(page.locator(".image-preview-frame")).toHaveCount(2);
   expect(uploadedNodeId).toMatch(/^[0-9a-f-]{36}$/u);
+});
+
+test('N0 failed persistence blocks Archive import before materialization', async ({ page }) => {
+  const bytes = await createKomyakuArchive({ document: createEmptyDocument({ metadata: { title: 'Must not import' } }), assets: [], createdAt: '2026-10-08T00:00:00.000Z' });
+  await page.goto('/');
+  await expect(page.locator('.app-footer .persistence-status')).toHaveAttribute('data-state', 'saved');
+  const { before, editor } = await failDraftWrites(page);
+  await page.locator('input[type="file"][accept^=".komyaku"]').setInputFiles({ name: 'blocked.komyaku', mimeType: 'application/vnd.komyaku.archive+zip', buffer: Buffer.from(bytes) });
+  await expect(page.getByText('Must not import', { exact: true })).toHaveCount(0);
+  await verifyBlockedThenRetry(page, before, editor);
 });

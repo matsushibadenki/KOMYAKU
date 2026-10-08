@@ -143,11 +143,88 @@ impl Library {
         let document = checked_snapshot(&path, registry)?;
         self.restore_document(document, title, settings)
     }
+    pub fn import_snapshot(
+        &self,
+        path: &Path,
+        settings: super::preferences::Preferences,
+        registry: Arc<unge_executor::Registry>,
+    ) -> Result<PathBuf, String> {
+        let meta = std::fs::symlink_metadata(path).map_err(|_| "backup_invalid")?;
+        if !meta.file_type().is_file() || meta.len() > 128 * 1024 * 1024 {
+            return Err("backup_invalid".into());
+        }
+        #[derive(serde::Deserialize)]
+        struct Probe {
+            #[serde(rename = "schemaId")]
+            schema_id: Option<String>,
+        }
+        // Ignore native body values while identifying the envelope; do not retain
+        // a second raw JSON tree for ordinary snapshot imports.
+        let mut shared_history = None;
+        let document = if path.extension().and_then(|s| s.to_str()) == Some("komyaku") {
+            if meta.len() > 32 * 1024 * 1024 {
+                return Err("limit_exceeded".into());
+            }
+            let bytes = std::fs::read(path).map_err(|_| "backup_invalid")?;
+            match super::shared_history::decode(&bytes) {
+                Ok(package) => {
+                    let document = package.document.clone();
+                    shared_history = Some(package);
+                    document
+                }
+                Err(_) => super::shared_archive::decode(&bytes)?,
+            }
+        } else {
+            let probe: Probe = serde_json::from_reader(std::io::BufReader::new(
+                File::open(path).map_err(|_| "backup_invalid")?,
+            ))
+            .map_err(|_| "backup_invalid")?;
+            if probe.schema_id.as_deref()
+                == Some("https://komyaku.example/schemas/story-workspace/v1")
+            {
+                if meta.len() > 24 * 1024 * 1024 {
+                    return Err("limit_exceeded".into());
+                }
+                let value = serde_json::from_reader(std::io::BufReader::new(
+                    File::open(path).map_err(|_| "backup_invalid")?,
+                ))
+                .map_err(|_| "backup_invalid")?;
+                super::shared_workspace::decode(value)?
+            } else {
+                checked_snapshot(path, registry)?
+            }
+        };
+        let title = if document.title.trim().is_empty() {
+            match settings.language.as_str() {
+                "en" => "Imported work",
+                "zh-CN" => "导入的作品",
+                _ => "取り込んだ作品",
+            }
+            .into()
+        } else {
+            document.title.chars().take(200).collect()
+        };
+        self.restore_package(document, title, settings, |root| {
+            if let Some(package) = shared_history {
+                super::shared_history::publish(&package, root)?;
+            }
+            Ok(())
+        })
+    }
     pub fn restore_document(
+        &self,
+        document: Document,
+        title: String,
+        settings: super::preferences::Preferences,
+    ) -> Result<PathBuf, String> {
+        self.restore_package(document, title, settings, |_| Ok(()))
+    }
+    pub(super) fn restore_package(
         &self,
         mut document: Document,
         title: String,
         settings: super::preferences::Preferences,
+        prepare: impl FnOnce(&Path) -> Result<(), String>,
     ) -> Result<PathBuf, String> {
         if title.trim().is_empty() || title.chars().count() > 200 {
             return Err("backup_title_invalid".into());
@@ -155,12 +232,28 @@ impl Library {
         document.title = title.trim().into();
         let parent = self.root.join("workspaces");
         std::fs::create_dir_all(&parent).map_err(|_| "backup_restore_failed")?;
-        let directory = parent.join(Id::new_v4().to_string());
-        std::fs::create_dir(&directory).map_err(|_| "backup_restore_failed")?;
-        super::preferences::Store::load(directory.join("preferences.json"))?.save(settings)?;
-        super::save(&directory.join("workspace.story.json"), &document)
-            .map_err(|_| "backup_restore_failed")?;
-        Ok(directory)
+        let id = Id::new_v4().to_string();
+        let directory = parent.join(&id);
+        let staging = parent.join(format!(".{id}"));
+        std::fs::create_dir(&staging).map_err(|_| "backup_restore_failed")?;
+        let result = (|| {
+            super::preferences::Store::load(staging.join("preferences.json"))?.save(settings)?;
+            super::save(&staging.join("workspace.story.json"), &document)
+                .map_err(|_| "backup_restore_failed")?;
+            prepare(&staging)?;
+            std::fs::File::open(&staging)
+                .and_then(|f| f.sync_all())
+                .map_err(|_| "backup_restore_failed")?;
+            std::fs::rename(&staging, &directory).map_err(|_| "backup_restore_failed")?;
+            std::fs::File::open(&parent)
+                .and_then(|f| f.sync_all())
+                .map_err(|_| "backup_restore_failed")?;
+            Ok(directory)
+        })();
+        if result.is_err() {
+            let _ = std::fs::remove_dir_all(staging);
+        }
+        result
     }
     pub fn directory(&self, id: &str) -> Result<PathBuf, String> {
         if id == "default" {
@@ -281,6 +374,50 @@ impl Library {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn external_snapshot_import_is_validated_and_preserves_the_source() {
+        let dir = tempfile::tempdir().unwrap();
+        let library = Library {
+            root: dir.path().join("empty-profile"),
+        };
+        let registry = super::super::domain::registry();
+        let doc = super::super::domain::initial_document(&registry);
+        let source = dir.path().join("external.story.json");
+        super::super::save(&source, &doc).unwrap();
+        let bytes = std::fs::read(&source).unwrap();
+        let imported = library
+            .import_snapshot(
+                &source,
+                super::super::preferences::Preferences::default(),
+                registry.clone(),
+            )
+            .unwrap();
+        let restored = super::super::load(&imported.join("workspace.story.json")).unwrap();
+        assert_eq!(restored.graph(), doc.graph());
+        assert_eq!(restored.placement(), doc.placement());
+        assert_eq!(std::fs::read(&source).unwrap(), bytes);
+        assert!(imported.join("preferences.json").is_file());
+        let before = std::fs::read_dir(library.root.join("workspaces"))
+            .unwrap()
+            .count();
+        std::fs::write(&source, b"corrupt").unwrap();
+        assert!(
+            library
+                .import_snapshot(
+                    &source,
+                    super::super::preferences::Preferences::default(),
+                    registry
+                )
+                .is_err()
+        );
+        assert_eq!(
+            std::fs::read_dir(library.root.join("workspaces"))
+                .unwrap()
+                .count(),
+            before
+        );
+        assert_eq!(std::fs::read(&source).unwrap(), b"corrupt");
+    }
     #[test]
     fn restored_copy_preserves_graph_ids_without_touching_originals() {
         let root = std::env::temp_dir().join(format!("story-restore-{}", Id::new_v4()));

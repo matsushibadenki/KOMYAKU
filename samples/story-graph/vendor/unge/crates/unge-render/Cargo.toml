@@ -13,3 +13,4 @@ image = { version = "=0.25.10", default-features = false, features = ["png", "jp
 base64 = "0.22"
 [dev-dependencies]
 pollster = "0.4"
+serde_json = "1"

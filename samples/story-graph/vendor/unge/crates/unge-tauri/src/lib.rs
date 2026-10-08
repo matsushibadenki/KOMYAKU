@@ -448,6 +448,15 @@ impl Engine {
     }
     /// Rust-only persistence/execution snapshot; never send the full graph per frame.
     /// Host-only consistent document/revision pair, captured under one lock.
+    /// Host-only bounded read. The callback must not call back into this engine.
+    /// Keep document ownership in Rust while projecting only requested data.
+    pub fn read_document<R>(&self, read: impl FnOnce(&Document, &Summary) -> R) -> ApiResult<R> {
+        let state = self
+            .state
+            .lock()
+            .map_err(|e| ApiError::new("state_unavailable", e))?;
+        Ok(read(state.editor.document(), &summary(&state)))
+    }
     pub fn snapshot_with_summary(&self) -> ApiResult<(Document, Summary)> {
         let state = self
             .state

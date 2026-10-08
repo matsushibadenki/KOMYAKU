@@ -477,3 +477,37 @@ fn locale_is_per_view_and_does_not_change_document_or_revision() {
         "unknown_view"
     );
 }
+
+#[test]
+fn borrowed_reads_are_consistent_and_preserve_state() {
+    let engine = engine();
+    engine
+        .dispatch(
+            "main",
+            Request::Apply {
+                expected_revision: 0,
+                command: command(),
+            },
+        )
+        .unwrap();
+    let before = engine.snapshot().unwrap();
+    let (count, revision) = engine
+        .read_document(|doc, summary| (doc.graph().nodes().len(), summary.revision))
+        .unwrap();
+    assert_eq!((count, revision), (1, 1));
+    assert_eq!(engine.snapshot().unwrap(), before);
+    engine
+        .dispatch(
+            "second",
+            Request::Undo {
+                expected_revision: revision,
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        engine
+            .read_document(|doc, s| (doc.graph().nodes().len(), s.revision))
+            .unwrap(),
+        (0, 2)
+    );
+}

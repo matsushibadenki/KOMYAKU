@@ -5,6 +5,10 @@ use std::{collections::VecDeque, sync::Arc};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Command {
+    SetDocumentExtension {
+        key: String,
+        value: Option<serde_json::Value>,
+    },
     SetNestedProperty {
         id: Id,
         key: String,
@@ -48,6 +52,17 @@ impl Command {
     /// Apply without whole-graph cloning; return the inverse for rollback/history.
     fn apply(self, doc: &mut Document) -> Result<Command> {
         Ok(match self {
+            Self::SetDocumentExtension { key, value } => {
+                let previous = if let Some(value) = value {
+                    doc.extensions.insert(key.clone(), value)
+                } else {
+                    doc.extensions.remove(&key)
+                };
+                Self::SetDocumentExtension {
+                    key,
+                    value: previous,
+                }
+            }
             Self::SetNestedProperty {
                 id,
                 key,

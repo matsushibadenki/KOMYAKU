@@ -14,6 +14,34 @@ struct Delta {
     offset: usize,
     removed: usize,
     inserted: Vec<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    checksum: Option<String>,
+}
+impl Delta {
+    fn operation_checksum(&self) -> String {
+        let mut digest = ring::digest::Context::new(&SHA256);
+        digest.update(b"komyaku-journal-operation-v2\0");
+        for number in [
+            u64::from(self.version),
+            self.sequence,
+            self.offset as u64,
+            self.removed as u64,
+            self.inserted.len() as u64,
+        ] {
+            digest.update(&number.to_le_bytes());
+        }
+        for value in [&self.before, &self.after] {
+            digest.update(&(value.len() as u64).to_le_bytes());
+            digest.update(value.as_bytes());
+        }
+        digest.update(&self.inserted);
+        digest
+            .finish()
+            .as_ref()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
+    }
 }
 fn hash(bytes: &[u8]) -> String {
     digest(&SHA256, bytes)
@@ -87,15 +115,17 @@ impl Journal {
             .take_while(|(a, b)| a == b)
             .count();
         let after = hash(next);
-        let record = Delta {
-            version: 1,
+        let mut record = Delta {
+            version: 2,
             sequence: self.sequence + 1,
             before: self.current_hash.clone(),
             after: after.clone(),
             offset,
             removed: self.current.len() - offset - suffix,
             inserted: next[offset..next.len() - suffix].to_vec(),
+            checksum: None,
         };
+        record.checksum = Some(record.operation_checksum());
         let mut bytes = serde_json::to_vec(&record).map_err(|_| "journal_invalid")?;
         if bytes.len() > LIMIT {
             return Err("limit_exceeded".into());
@@ -109,7 +139,10 @@ impl Journal {
         }
         let delta: Delta =
             serde_json::from_slice(&record[..record.len() - 1]).map_err(|_| "journal_invalid")?;
-        if delta.version != 1
+        if ![1, 2].contains(&delta.version)
+            || (delta.version == 2
+                && delta.checksum.as_deref() != Some(delta.operation_checksum().as_str()))
+            || (delta.version == 1 && delta.checksum.is_some())
             || delta.sequence != self.sequence + 1
             || delta.before != self.current_hash
         {
@@ -213,10 +246,99 @@ fn stamp(path: &std::path::Path) -> Option<Stamp> {
         inode: meta.ino(),
     })
 }
-// Cache only verified structure; paragraph updates replace small values in place.
+// A structural fingerprint retains identities/order and exact paragraph digests,
+// rather than a second full copy of every paragraph string.
+#[derive(Debug, Clone, PartialEq)]
+enum Shape {
+    Paragraph(String, [u8; 32]),
+    Atom([u8; 32]),
+    Object(std::collections::BTreeMap<String, Shape>),
+    Array(Vec<Shape>),
+}
+fn value_digest(value: &serde_json::Value) -> [u8; 32] {
+    fn feed(context: &mut ring::digest::Context, value: &serde_json::Value) {
+        use serde_json::Value;
+        match value {
+            Value::Null => context.update(b"n"),
+            Value::Bool(b) => context.update(if *b { b"t" } else { b"f" }),
+            Value::Number(n) => {
+                context.update(b"d");
+                context.update(n.to_string().as_bytes());
+                context.update(b";");
+            }
+            Value::String(s) => {
+                context.update(b"s");
+                context.update(&(s.len() as u64).to_le_bytes());
+                context.update(s.as_bytes());
+            }
+            Value::Array(items) => {
+                context.update(b"a");
+                context.update(&(items.len() as u64).to_le_bytes());
+                for v in items {
+                    feed(context, v);
+                }
+            }
+            Value::Object(map) => {
+                context.update(b"o");
+                context.update(&(map.len() as u64).to_le_bytes());
+                let mut keys = map.keys().collect::<Vec<_>>();
+                keys.sort_unstable();
+                for key in keys {
+                    context.update(&(key.len() as u64).to_le_bytes());
+                    context.update(key.as_bytes());
+                    feed(context, &map[key]);
+                }
+            }
+        }
+    }
+    let mut context = ring::digest::Context::new(&ring::digest::SHA256);
+    context.update(b"komyaku-structure-v1");
+    feed(&mut context, value);
+    context.finish().as_ref().try_into().expect("SHA256 length")
+}
+impl Shape {
+    fn new(value: &serde_json::Value) -> Self {
+        use serde_json::Value;
+        if value["type"] == "paragraph"
+            && let Some(id) = value["id"].as_str()
+        {
+            return Self::Paragraph(id.into(), value_digest(value));
+        }
+        match value {
+            Value::Object(map) => {
+                Self::Object(map.iter().map(|(k, v)| (k.clone(), Self::new(v))).collect())
+            }
+            Value::Array(items) => Self::Array(items.iter().map(Self::new).collect()),
+            _ => Self::Atom(value_digest(value)),
+        }
+    }
+}
+#[derive(Debug, Clone, PartialEq)]
+struct NodeShape {
+    node: unge_core::Node,
+    properties: std::collections::BTreeMap<String, Shape>,
+}
+impl NodeShape {
+    fn new(node: &unge_core::Node) -> Self {
+        Self {
+            node: unge_core::Node {
+                id: node.id,
+                type_id: node.type_id.clone(),
+                inputs: node.inputs.clone(),
+                outputs: node.outputs.clone(),
+                properties: Default::default(),
+            },
+            properties: node
+                .properties
+                .iter()
+                .map(|(k, v)| (k.clone(), Shape::new(v)))
+                .collect(),
+        }
+    }
+}
 struct Structure {
     envelope: String,
-    nodes: std::collections::BTreeMap<unge_core::Id, unge_core::Node>,
+    nodes: std::collections::BTreeMap<unge_core::Id, NodeShape>,
 }
 fn envelope(doc: &unge_core::Document) -> String {
     serde_json::to_string(&(
@@ -229,6 +351,7 @@ fn envelope(doc: &unge_core::Document) -> String {
         doc.graph().edges(),
         doc.graph().groups(),
         doc.placement(),
+        &doc.extensions,
     ))
     .expect("validated document metadata")
 }
@@ -236,7 +359,12 @@ impl Structure {
     fn new(doc: &unge_core::Document) -> Self {
         Self {
             envelope: envelope(doc),
-            nodes: doc.graph().nodes().clone(),
+            nodes: doc
+                .graph()
+                .nodes()
+                .iter()
+                .map(|(id, node)| (*id, NodeShape::new(node)))
+                .collect(),
         }
     }
     fn matches(
@@ -244,7 +372,6 @@ impl Structure {
         doc: &unge_core::Document,
         patches: &[(serde_json::Value, serde_json::Value)],
     ) -> bool {
-        use serde_json::Value;
         if self.envelope != envelope(doc) || self.nodes.len() != doc.graph().nodes().len() {
             return false;
         }
@@ -256,48 +383,53 @@ impl Structure {
             let Some(id) = old["id"].as_str() else {
                 return false;
             };
-            if lookup.insert(id, (index, old, new)).is_some() {
+            if lookup
+                .insert(id, (index, value_digest(old), value_digest(new)))
+                .is_some()
+            {
                 return false;
             }
         }
         let mut seen = vec![0; patches.len()];
         fn equal(
-            a: &Value,
-            b: &Value,
-            lookup: &std::collections::BTreeMap<&str, (usize, &Value, &Value)>,
+            a: &Shape,
+            b: &serde_json::Value,
+            lookup: &std::collections::BTreeMap<&str, (usize, [u8; 32], [u8; 32])>,
             seen: &mut [usize],
         ) -> bool {
-            if a["type"] == "paragraph" {
-                if let Some((index, old, new)) = a["id"].as_str().and_then(|id| lookup.get(id)) {
-                    seen[*index] += 1;
-                    return a == *old && b == *new;
+            if let Shape::Paragraph(id, hash) = a {
+                if b["type"] != "paragraph" || b["id"].as_str() != Some(id.as_str()) {
+                    return false;
                 }
-                return a == b;
-            }
-            if a == b {
-                return true;
+                let actual = value_digest(b);
+                if let Some((index, old, new)) = lookup.get(id.as_str()) {
+                    seen[*index] += 1;
+                    return hash == old && actual == *new;
+                }
+                return *hash == actual;
             }
             match (a, b) {
-                (Value::Object(a), Value::Object(b)) => {
+                (Shape::Object(a), serde_json::Value::Object(b)) => {
                     a.len() == b.len()
                         && a.iter()
                             .all(|(k, v)| b.get(k).is_some_and(|w| equal(v, w, lookup, seen)))
                 }
-                (Value::Array(a), Value::Array(b)) => {
+                (Shape::Array(a), serde_json::Value::Array(b)) => {
                     a.len() == b.len() && a.iter().zip(b).all(|(v, w)| equal(v, w, lookup, seen))
                 }
+                (Shape::Atom(hash), value) => *hash == value_digest(value),
                 _ => false,
             }
         }
         self.nodes.iter().all(|(id, a)| {
-            doc.graph().nodes().get(id).is_some_and(|b| {
-                a.id == b.id
-                    && a.type_id == b.type_id
-                    && a.inputs == b.inputs
-                    && a.outputs == b.outputs
-                    && a.properties.len() == b.properties.len()
+            doc.graph().nodes().get(id).is_some_and(|node| {
+                a.node.id == node.id
+                    && a.node.type_id == node.type_id
+                    && a.node.inputs == node.inputs
+                    && a.node.outputs == node.outputs
+                    && a.properties.len() == node.properties.len()
                     && a.properties.iter().all(|(k, v)| {
-                        b.properties
+                        node.properties
                             .get(k)
                             .is_some_and(|w| equal(v, w, &lookup, &mut seen))
                     })
@@ -305,33 +437,40 @@ impl Structure {
         }) && seen.iter().all(|count| *count == 1)
     }
     fn advance(&mut self, patches: &[(serde_json::Value, serde_json::Value)]) {
+        let lookup = patches
+            .iter()
+            .filter_map(|(old, new)| {
+                Some((old["id"].as_str()?, (value_digest(old), value_digest(new))))
+            })
+            .collect::<std::collections::BTreeMap<_, _>>();
         fn replace(
-            value: &mut serde_json::Value,
-            patches: &[(serde_json::Value, serde_json::Value)],
+            shape: &mut Shape,
+            lookup: &std::collections::BTreeMap<&str, ([u8; 32], [u8; 32])>,
         ) {
-            if value["type"] == "paragraph" {
-                if let Some((_, new)) = patches.iter().find(|(old, _)| old == value) {
-                    *value = new.clone();
+            match shape {
+                Shape::Paragraph(id, hash) => {
+                    if let Some((old, new)) = lookup.get(id.as_str())
+                        && hash == old
+                    {
+                        *hash = *new;
+                    }
                 }
-                return;
-            }
-            match value {
-                serde_json::Value::Object(map) => {
+                Shape::Object(map) => {
                     for v in map.values_mut() {
-                        replace(v, patches);
+                        replace(v, lookup);
                     }
                 }
-                serde_json::Value::Array(items) => {
+                Shape::Array(items) => {
                     for v in items {
-                        replace(v, patches);
+                        replace(v, lookup);
                     }
                 }
-                _ => {}
+                Shape::Atom(_) => {}
             }
         }
         for node in self.nodes.values_mut() {
             for value in node.properties.values_mut() {
-                replace(value, patches);
+                replace(value, &lookup);
             }
         }
     }
@@ -346,11 +485,21 @@ struct Cache {
     structure: Structure,
 }
 // Transform only supplied paragraph objects; accept only an exact canonical result.
+#[cfg(test)]
 fn patched_bytes(
     current: &[u8],
     document: &unge_core::Document,
     patches: &[(serde_json::Value, serde_json::Value)],
     structure: Option<&Structure>,
+) -> Option<Vec<u8>> {
+    patched_bytes_verified(current, document, patches, structure, false)
+}
+fn patched_bytes_verified(
+    current: &[u8],
+    document: &unge_core::Document,
+    patches: &[(serde_json::Value, serde_json::Value)],
+    structure: Option<&Structure>,
+    engine_verified: bool,
 ) -> Option<Vec<u8>> {
     if patches.is_empty() || patches.len() > 64 {
         return None;
@@ -390,7 +539,10 @@ fn patched_bytes(
     if next.len() > LIMIT {
         return None;
     }
-    if let Some(structure) = structure {
+    if engine_verified {
+        // The Rust host proved an uninterrupted single Paragraphs command since
+        // this exact saved Engine revision. External file changes disable this path.
+    } else if let Some(structure) = structure {
         if !structure.matches(document, patches) {
             return None;
         }
@@ -405,6 +557,8 @@ fn patched_bytes(
 #[derive(Default)]
 pub struct Store {
     cache: Option<Cache>,
+    engine_revision: Option<u64>,
+    engine_verified: bool,
 }
 pub fn save_workspace(
     path: &std::path::Path,
@@ -426,6 +580,32 @@ fn sync_workspace(path: &std::path::Path, journal: &std::path::Path) -> Result<(
         .map_err(|e| e.to_string())
 }
 impl Store {
+    pub(super) fn save_engine(
+        &mut self,
+        path: &std::path::Path,
+        document: &unge_core::Document,
+        revision: u64,
+    ) -> Result<(), String> {
+        let result = self.save(path, document);
+        self.engine_revision = result.is_ok().then_some(revision);
+        result
+    }
+    // Only edit_blocking may certify the Rust-created Paragraphs command.
+    pub(super) fn save_paragraph_edit(
+        &mut self,
+        path: &std::path::Path,
+        document: &unge_core::Document,
+        patches: &[(serde_json::Value, serde_json::Value)],
+        before: u64,
+        after: u64,
+    ) -> Result<(), String> {
+        self.engine_verified =
+            self.engine_revision == Some(before) && before.checked_add(1) == Some(after);
+        let result = self.save_patched(path, document, patches);
+        self.engine_verified = false;
+        self.engine_revision = result.is_ok().then_some(after);
+        result
+    }
     pub fn save(
         &mut self,
         path: &std::path::Path,
@@ -439,7 +619,9 @@ impl Store {
         document: &unge_core::Document,
         patches: &[(serde_json::Value, serde_json::Value)],
     ) -> Result<(), String> {
-        self.save_with_sync(path, document, patches, sync_workspace)
+        let result = self.save_with_sync(path, document, patches, sync_workspace);
+        self.engine_revision = None;
+        result
     }
     fn save_with_sync(
         &mut self,
@@ -454,12 +636,14 @@ impl Store {
             self.cache = None;
             return crate::persistence::save(path, document).map(|_| ());
         }
+        let mut reused = false;
         let mut cache = match self.cache.take() {
             Some(cache)
                 if cache.path == path
                     && cache.checkpoint_stamp == stamp(path)
                     && cache.journal_stamp == stamp(&cache.journal_path) =>
             {
+                reused = true;
                 cache
             }
             _ => {
@@ -486,35 +670,19 @@ impl Store {
             }
         };
         let recovery = &mut cache.recovery;
-        #[derive(Serialize)]
-        struct Snapshot<'a> {
-            #[serde(skip_serializing_if = "Option::is_none")]
-            generation: &'a Option<String>,
-            format: &'static str,
-            version: u32,
-            document: &'a unge_core::Document,
-        }
-        let partial = patched_bytes(
+        let partial = patched_bytes_verified(
             recovery.journal.bytes(),
             document,
             patches,
             Some(&cache.structure),
+            self.engine_verified && reused,
         );
         let used_partial = partial.is_some();
         let next = if let Some(bytes) = partial {
             bytes
         } else {
             let mut next = Vec::with_capacity(recovery.journal.bytes().len().saturating_add(1024));
-            serde_json::to_writer(
-                &mut next,
-                &Snapshot {
-                    generation: &cache.generation,
-                    format: "komyaku-story-workspace",
-                    version: 1,
-                    document,
-                },
-            )
-            .map_err(|e| e.to_string())?;
+            crate::workspace_storage::write(&mut next, document, cache.generation.clone())?;
             next
         };
         if next.len() > LIMIT {
@@ -582,6 +750,101 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn compact_structure_retains_digests_and_detects_simultaneous_extension_edits() {
+        let registry = crate::domain::registry();
+        let before = crate::domain::initial_document(&registry);
+        let id = before
+            .graph()
+            .nodes()
+            .values()
+            .find(|n| n.type_id == crate::domain::SCENE)
+            .unwrap()
+            .id;
+        let mut value = serde_json::to_value(&before).unwrap();
+        let canonical = &mut value["graph"]["nodes"][id.to_string()]["properties"]["canonical"];
+        canonical["content"][0]["content"][0]["text"] = serde_json::json!("雨".repeat(1_000_000));
+        let document: unge_core::Document = serde_json::from_value(value.clone()).unwrap();
+        let structure = Structure::new(&document);
+        assert!(
+            structure
+                .nodes
+                .values()
+                .all(|n| n.node.properties.is_empty())
+        );
+        let old = value["graph"]["nodes"][id.to_string()]["properties"]["canonical"]["content"][0]
+            .clone();
+        value["graph"]["nodes"][id.to_string()]["properties"]["canonical"]["content"][0]["content"]
+            [0]["text"] = serde_json::json!("変更");
+        let new = value["graph"]["nodes"][id.to_string()]["properties"]["canonical"]["content"][0]
+            .clone();
+        let mut changed: unge_core::Document = serde_json::from_value(value).unwrap();
+        let patches = vec![(old, new)];
+        assert!(structure.matches(&changed, &patches));
+        changed
+            .extensions
+            .insert("test-cache".into(), serde_json::json!({"revision":1}));
+        assert!(!structure.matches(&changed, &patches));
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("workspace.story.json");
+        let mut store = Store::default();
+        store.save(&path, &document).unwrap();
+        store.save_patched(&path, &changed, &patches).unwrap();
+        assert_eq!(crate::load(&path).unwrap(), changed);
+        let bytes = read_workspace(&path).unwrap();
+        let wrapper: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(wrapper["version"], 2);
+    }
+    #[test]
+    fn operation_checksum_covers_payload_and_metadata_and_reads_legacy_records() {
+        let journal = Journal::new(b"original".to_vec()).unwrap();
+        let bytes = journal.prepare(b"changed").unwrap();
+        let mut value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(value["version"], 2);
+        for key in ["sequence", "offset", "removed", "inserted", "after"] {
+            let mut changed = value.clone();
+            changed[key] = match key {
+                "inserted" => serde_json::json!([42]),
+                "after" => serde_json::json!("0".repeat(64)),
+                _ => serde_json::json!(999),
+            };
+            let mut wire = serde_json::to_vec(&changed).unwrap();
+            wire.push(b'\n');
+            assert!(
+                Journal::new(b"original".to_vec())
+                    .unwrap()
+                    .commit(&wire)
+                    .is_err()
+            );
+        }
+        value["version"] = serde_json::json!(1);
+        value.as_object_mut().unwrap().remove("checksum");
+        let mut legacy = serde_json::to_vec(&value).unwrap();
+        legacy.push(b'\n');
+        let mut restored = Journal::new(b"original".to_vec()).unwrap();
+        restored.commit(&legacy).unwrap();
+        assert_eq!(restored.bytes(), b"changed");
+    }
+    #[test]
+    fn extensions_advance_snapshot_version_and_survive_cached_journaling() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("workspace.story.json");
+        let mut doc = unge_core::Document::default();
+        let mut store = Store::default();
+        store.save(&path, &doc).unwrap();
+        doc.extensions
+            .insert("komyaku.story.paths".into(), serde_json::json!([]));
+        store.save(&path, &doc).unwrap();
+        let bytes = read_workspace(&path).unwrap();
+        let saved: crate::SavedWorkspace = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(saved.version, 2);
+        assert_eq!(crate::load(&path).unwrap(), doc);
+        doc.title = "continued".into();
+        store.save(&path, &doc).unwrap();
+        let saved: crate::SavedWorkspace =
+            serde_json::from_slice(&read_workspace(&path).unwrap()).unwrap();
+        assert_eq!(saved.version, 2);
+    }
     #[test]
     fn retry_after_sync_failure_requires_sync_even_when_bytes_match() {
         let dir = tempfile::tempdir().unwrap();
@@ -663,13 +926,17 @@ mod tests {
             paragraph["content"] = serde_json::json!([{"type":"text","text":"雨".repeat(1000),"marks":[],"metadata":{},"extensions":{}}]);
             paragraph
         }).collect::<Vec<_>>());
-        for mode in ["full_serializer", "paragraph_serializer"] {
+        for mode in [
+            "full_serializer",
+            "paragraph_serializer",
+            "engine_paragraph_serializer",
+        ] {
             let dir = tempfile::tempdir().unwrap();
             let path = dir.path().join("workspace.story.json");
             let mut current = value.clone();
             let doc: unge_core::Document = serde_json::from_value(current.clone()).unwrap();
             let mut store = Store::default();
-            store.save(&path, &doc).unwrap();
+            store.save_engine(&path, &doc, 0).unwrap();
             let mut times = vec![];
             for i in 0..10 {
                 let old = current["graph"]["nodes"][&id]["properties"]["canonical"]["content"][50]
@@ -688,6 +955,10 @@ mod tests {
                 let start = std::time::Instant::now();
                 if mode == "full_serializer" {
                     store.save(&path, &doc).unwrap();
+                } else if mode == "engine_paragraph_serializer" {
+                    store
+                        .save_paragraph_edit(&path, &doc, &[(old, new)], i, i + 1)
+                        .unwrap();
                 } else {
                     store.save_patched(&path, &doc, &[(old, new)]).unwrap();
                 }
@@ -697,6 +968,32 @@ mod tests {
             times.sort_by(f64::total_cmp);
             println!("{mode}: median_ms={:.3}", (times[4] + times[5]) / 2.);
         }
+    }
+    #[test]
+    fn engine_revision_certification_is_reset_by_regular_saves_and_external_changes() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("workspace.story.json");
+        let mut document = crate::domain::initial_document(&crate::domain::registry());
+        let mut store = Store::default();
+        store.save_engine(&path, &document, 10).unwrap();
+        store.save_engine(&path, &document, 10).unwrap();
+        assert_eq!(store.engine_revision, Some(10));
+        document.title = "External save".into();
+        crate::persistence::save(&path, &document).unwrap();
+        store
+            .save_paragraph_edit(&path, &document, &[], 10, 11)
+            .unwrap();
+        assert_eq!(crate::load(&path).unwrap(), document);
+        assert_eq!(store.engine_revision, Some(11));
+        assert!(!store.engine_verified);
+        store.save(&path, &document).unwrap();
+        assert_eq!(store.engine_revision, None);
+        let impossible = directory
+            .path()
+            .join("missing")
+            .join("workspace.story.json");
+        assert!(store.save_engine(&impossible, &document, 12).is_err());
+        assert_eq!(store.engine_revision, None);
     }
     #[test]
     fn paragraph_only_serialization_matches_canonical_document_and_falls_back_safely() {
@@ -737,7 +1034,7 @@ mod tests {
         assert!(patched_bytes(&bytes, &hidden_change, &patches, Some(&structure)).is_none());
         assert!(!structure.matches(&next, &[patches[0].clone(), patches[0].clone()]));
         structure.advance(&patches);
-        assert_eq!(structure.nodes, *next.graph().nodes());
+        assert_eq!(structure.nodes, Structure::new(&next).nodes);
         assert!(structure.matches(&next, &[]));
 
         assert!(

@@ -1,7 +1,9 @@
 //! Shape vertical glyphs before outlining: SVG's writing-mode alone does not
 //! enable OpenType vert/vrt2 in usvg. Keep original text in an invisible PDF
 //! text layer so the shaped outlines remain searchable/selectable.
-use super::{ADVANCE, FONT, xml};
+#[cfg(test)]
+use super::FONT;
+use super::xml;
 use rustybuzz::{
     Direction, UnicodeBuffer,
     ttf_parser::{GlyphId, OutlineBuilder},
@@ -52,26 +54,45 @@ pub(super) fn verify_glyph_cells() {
 }
 pub(super) struct Renderer {
     fonts: Database,
+    font: f32,
+    advance: f32,
+    family: String,
     cache: HashMap<String, String>,
 }
 impl Renderer {
+    #[cfg(test)]
     pub(super) fn new() -> Self {
+        Self::configured(12., 13., "serif")
+    }
+    pub(super) fn configured(font: f32, advance: f32, family: &str) -> Self {
         let mut fonts = Database::new();
         fonts.load_system_fonts();
         Self {
             fonts,
+            font,
+            advance,
+            family: family.into(),
             cache: HashMap::new(),
         }
     }
     fn glyph(&mut self, grapheme: &str) -> Result<&str, String> {
         if !self.cache.contains_key(grapheme) {
-            let preferred = self.fonts.query(&Query {
-                families: &[
+            let families = match self.family.as_str() {
+                "sans" => vec![
+                    Family::Name("Hiragino Sans"),
+                    Family::Name("Noto Sans CJK JP"),
+                    Family::SansSerif,
+                ],
+                "mono" => vec![Family::Name("Noto Sans Mono CJK JP"), Family::Monospace],
+                _ => vec![
                     Family::Name("Hiragino Mincho ProN"),
                     Family::Name("Noto Serif CJK JP"),
                     Family::Name("Songti SC"),
                     Family::Serif,
                 ],
+            };
+            let preferred = self.fonts.query(&Query {
+                families: &families,
                 ..Default::default()
             });
             let mut candidates = preferred.into_iter().collect::<Vec<_>>();
@@ -119,7 +140,7 @@ impl Renderer {
                             if shaped.glyph_infos().iter().any(|g| g.glyph_id == 0) {
                                 return None;
                             }
-                            let scale = FONT / face.units_per_em() as f32;
+                            let scale = self.font / face.units_per_em() as f32;
                             let mut out = String::new();
                             let mut dx = 0.;
                             let mut dy = 0.;
@@ -149,7 +170,7 @@ impl Renderer {
                                     "translate({} {}) rotate(90) scale({scale} {})",
                                     -(face.ascender() as f32 + face.descender() as f32) * scale
                                         / 2.,
-                                    (FONT - dx * scale) / 2.,
+                                    (self.font - dx * scale) / 2.,
                                     -scale
                                 )
                             } else {
@@ -171,12 +192,13 @@ impl Renderer {
             "<text x=\"{x}\" y=\"{top}\" writing-mode=\"tb\" letter-spacing=\"1\" fill=\"white\" xml:space=\"preserve\">{}</text>",
             xml(text)
         );
+        let advance = self.advance;
         for (i, grapheme) in text.graphemes(true).enumerate() {
             let glyph = self.glyph(grapheme)?;
             let _ = write!(
                 out,
                 "<g transform=\"translate({x} {})\">{glyph}</g>",
-                top + i as f32 * ADVANCE
+                top + i as f32 * advance
             );
         }
         Ok(out)

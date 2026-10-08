@@ -64,12 +64,15 @@
       const edges = [];
       this.filtered.forEach((commit) => {
         const from = positions.get(commit.id);
-        (commit.parents || []).forEach((parentId) => {
+        (commit.parents || []).forEach((parentId, parentIndex) => {
           const to = positions.get(parentId);
           if (!to) return;
           const bend = Math.min(24, Math.abs(to.y - from.y) / 3);
-          const d = from.x === to.x ? `M${from.x} ${from.y} V${to.y}` :
-            `M${from.x} ${from.y} V${to.y - bend * 2} C${from.x} ${to.y - bend},${to.x} ${to.y - bend},${to.x} ${to.y}`;
+          const channel = graphWidth - 12;
+          const d = parentIndex > 0
+            ? `M${from.x} ${from.y} C${from.x} ${from.y + bend},${channel} ${from.y},${channel} ${from.y + bend} V${to.y - bend} C${channel} ${to.y},${to.x} ${to.y - bend},${to.x} ${to.y}`
+            : from.x === to.x ? `M${from.x} ${from.y} V${to.y}` :
+              `M${from.x} ${from.y} V${to.y - bend * 2} C${from.x} ${to.y - bend},${to.x} ${to.y - bend},${to.x} ${to.y}`;
           edges.push(`<path class="parts-git-client__edge ${this.laneClass(commit.lane)}" d="${d}"/>`);
         });
       });

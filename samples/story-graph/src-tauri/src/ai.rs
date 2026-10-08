@@ -1,6 +1,6 @@
 //! Opt-in, stateless scene assistance. Rust owns review snapshots, requests and results.
 use futures::FutureExt;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     collections::HashMap,
@@ -21,6 +21,7 @@ struct Job {
     id: String,
     scene: Id,
     source: Value,
+    selection: Option<Selection>,
     cancelled: AtomicBool,
     wake: tokio::sync::Notify,
     state: Mutex<State>,
@@ -31,11 +32,87 @@ pub struct State {
     id: String,
     title: String,
     source_text: String,
+    selection: Option<Selection>,
     phase: String,
     text: String,
     error: Option<String>,
     request_id: Option<String>,
     account_id: Option<String>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Selection {
+    paragraph: Id,
+    start: usize,
+    end: usize,
+}
+fn selection_text(source: &Value, selection: &Selection) -> Result<String> {
+    let paragraph =
+        super::find_paragraph(source, selection.paragraph).ok_or("ai_invalid_selection")?;
+    let text = paragraph["content"]
+        .as_array()
+        .ok_or("invalid_document")?
+        .iter()
+        .map(|n| n["text"].as_str().ok_or("invalid_document"))
+        .collect::<std::result::Result<Vec<_>, _>>()?
+        .concat();
+    use unicode_segmentation::UnicodeSegmentation;
+    let mut boundaries = std::collections::BTreeMap::from([(0, 0)]);
+    let mut units = 0;
+    for (byte, grapheme) in text.grapheme_indices(true) {
+        units += grapheme.encode_utf16().count();
+        boundaries.insert(units, byte + grapheme.len());
+    }
+    if selection.start >= selection.end {
+        return Err("ai_invalid_selection".into());
+    }
+    let start = *boundaries
+        .get(&selection.start)
+        .ok_or("ai_invalid_selection")?;
+    let end = *boundaries
+        .get(&selection.end)
+        .ok_or("ai_invalid_selection")?;
+    Ok(text[start..end].into())
+}
+fn replace_result(
+    source: &Value,
+    current: &Value,
+    selection: Option<&Selection>,
+    text: &str,
+) -> Result<Value> {
+    if source != current {
+        return Err("ai_source_changed".into());
+    }
+    let selection = selection.ok_or("ai_invalid_selection")?;
+    selection_text(source, selection)?;
+    let mut result = current.clone();
+    fn replace(value: &mut Value, selection: &Selection, text: &str) -> Result<bool> {
+        if value["type"] == "paragraph" && value["id"] == selection.paragraph.to_string() {
+            super::replace_paragraph_text(
+                value,
+                &super::ParagraphChange {
+                    paragraph: selection.paragraph,
+                    text: text.into(),
+                    start: Some(selection.start),
+                    end: Some(selection.end),
+                },
+            )?;
+            return Ok(true);
+        }
+        if let Some(children) = value.get_mut("content").and_then(Value::as_array_mut) {
+            for child in children {
+                if replace(child, selection, text)? {
+                    return Ok(true);
+                }
+            }
+        }
+        Ok(false)
+    }
+    if !replace(&mut result, selection, text)? {
+        return Err("ai_invalid_selection".into());
+    }
+    super::domain::text(&result)?;
+    Ok(result)
 }
 impl Store {
     fn job(&self, window: &str, id: &str) -> Result<Arc<Job>> {
@@ -132,6 +209,7 @@ pub fn ai_prepare(
     app: tauri::AppHandle,
     scene_id: Id,
     expected_revision: u64,
+    selection: Option<Selection>,
 ) -> Result<State> {
     super::allowed(&window)?;
     let host = app.state::<super::Host>();
@@ -147,7 +225,10 @@ pub fn ai_prepare(
         .filter(|n| n.type_id == super::domain::SCENE)
         .ok_or("missing_node")?;
     let source = scene.properties["canonical"].clone();
-    let text = super::domain::text(&source)?;
+    let text = match &selection {
+        Some(range) => selection_text(&source, range)?,
+        None => super::domain::text(&source)?,
+    };
     if text.len() > MAX_CONTEXT {
         return Err("ai_context_limit".into());
     }
@@ -164,6 +245,7 @@ pub fn ai_prepare(
         id: id.clone(),
         title: scene.properties["title"].as_str().unwrap_or("").into(),
         source_text: text,
+        selection: selection.clone(),
         phase: "ready".into(),
         text: String::new(),
         error: None,
@@ -176,6 +258,7 @@ pub fn ai_prepare(
             id,
             scene: scene_id,
             source,
+            selection,
             cancelled: AtomicBool::new(false),
             wake: tokio::sync::Notify::new(),
             state: Mutex::new(state.clone()),
@@ -486,6 +569,7 @@ pub async fn ai_append(
     window: tauri::WebviewWindow,
     app: tauri::AppHandle,
     id: String,
+    replace_selection: Option<bool>,
 ) -> Result<Value> {
     super::allowed(&window)?;
     let job = app.state::<Store>().job(window.label(), &id)?;
@@ -507,7 +591,16 @@ pub async fn ai_append(
                 .get(&job.scene)
                 .ok_or("missing_node")?;
             (
-                append_result(&job.source, &scene.properties["canonical"], &text)?,
+                if replace_selection.unwrap_or(false) {
+                    replace_result(
+                        &job.source,
+                        &scene.properties["canonical"],
+                        job.selection.as_ref(),
+                        &text,
+                    )?
+                } else {
+                    append_result(&job.source, &scene.properties["canonical"], &text)?
+                },
                 summary.revision,
             )
         };
@@ -525,6 +618,23 @@ pub async fn ai_append(
     })
     .await
     .map_err(|_| "state_unavailable".to_owned())?
+}
+#[tauri::command]
+pub fn ai_compare(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    id: String,
+) -> Result<super::history_diff::Diff> {
+    super::allowed(&window)?;
+    let job = app.state::<Store>().job(window.label(), &id)?;
+    let state = job.state.lock().map_err(|_| "state_unavailable")?;
+    if state.phase != "completed" {
+        return Err("ai_missing_request".into());
+    }
+    Ok(super::history_diff::compare(
+        &state.source_text,
+        &state.text,
+    ))
 }
 #[cfg(test)]
 mod tests {
@@ -616,6 +726,40 @@ mod tests {
             m.iter().map(|m| m.slug.as_str()).collect::<Vec<_>>(),
             vec!["b", "a"]
         );
+    }
+    #[test]
+    fn selected_context_excludes_unselected_text_and_replacement_preserves_ids() {
+        let doc = super::super::domain::canonical(
+            "秘密の前文。雨😀と風。秘密の後文",
+            Id::new_v4(),
+            Id::new_v4(),
+        );
+        let paragraph = doc["content"][0]["id"].as_str().unwrap().parse().unwrap();
+        let selection = Selection {
+            paragraph,
+            start: 6,
+            end: 9,
+        };
+        assert_eq!(selection_text(&doc, &selection).unwrap(), "雨😀");
+        let result = replace_result(&doc, &doc, Some(&selection), "雪").unwrap();
+        assert_eq!(
+            super::super::domain::text(&result).unwrap(),
+            "秘密の前文。雪と風。秘密の後文"
+        );
+        assert_eq!(result["content"][0]["id"], doc["content"][0]["id"]);
+        assert_eq!(result["id"], doc["id"]);
+        assert!(
+            selection_text(
+                &doc,
+                &Selection {
+                    paragraph,
+                    start: 7,
+                    end: 8
+                }
+            )
+            .is_err()
+        );
+        assert!(replace_result(&doc, &result, Some(&selection), "changed").is_err());
     }
     #[test]
     fn append_preserves_ids_and_refuses_changed_manuscript() {

@@ -5,20 +5,34 @@ use std::{io::Write, path::Path};
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Version {
-    id: String,
+    pub(super) id: String,
     message: String,
     date: u64,
-    sequence: u64,
-    parents: Vec<String>,
+    pub(super) sequence: u64,
+    pub(super) parents: Vec<String>,
+    #[serde(default = "main_branch")]
+    pub(super) branch: String,
     title: String,
     nodes: usize,
     scenes: usize,
-    hash: String,
+    pub(super) hash: String,
 }
-fn root(host: &Host) -> PathBuf {
+fn main_branch() -> String {
+    "main".into()
+}
+fn validate_branch(branch: &str) -> std::result::Result<(), String> {
+    if branch.trim().is_empty()
+        || branch.chars().count() > 80
+        || branch.chars().any(char::is_control)
+    {
+        return Err("branch_invalid".into());
+    }
+    Ok(())
+}
+pub(super) fn root(host: &Host) -> PathBuf {
     host.path.parent().unwrap().join("versions")
 }
-fn hash(bytes: &[u8]) -> String {
+pub(super) fn hash(bytes: &[u8]) -> String {
     ring::digest::digest(&ring::digest::SHA256, bytes)
         .as_ref()
         .iter()
@@ -43,14 +57,14 @@ fn directory(root: &Path, id: &str) -> std::result::Result<PathBuf, String> {
     }
     Ok(path)
 }
-fn read_file(path: &Path, limit: u64) -> std::result::Result<Vec<u8>, String> {
+pub(super) fn read_file(path: &Path, limit: u64) -> std::result::Result<Vec<u8>, String> {
     let meta = std::fs::symlink_metadata(path).map_err(|_| "version_invalid")?;
     if !meta.file_type().is_file() || meta.len() > limit {
         return Err("version_invalid".into());
     }
     std::fs::read(path).map_err(|_| "version_invalid".into())
 }
-fn entries(root: &Path) -> std::result::Result<Vec<Version>, String> {
+pub(super) fn entries(root: &Path) -> std::result::Result<Vec<Version>, String> {
     if !root.exists() {
         return Ok(vec![]);
     }
@@ -72,7 +86,7 @@ fn entries(root: &Path) -> std::result::Result<Vec<Version>, String> {
         let version: Version =
             serde_json::from_slice(&read_file(&dir.join("version.json"), 16384)?)
                 .map_err(|_| "version_invalid")?;
-        if version.id != id || version.parents.len() > 1 {
+        if version.id != id || version.parents.len() > 2 {
             return Err("version_invalid".into());
         }
         result.push(version);
@@ -81,17 +95,31 @@ fn entries(root: &Path) -> std::result::Result<Vec<Version>, String> {
         }
     }
     result.sort_by_key(|version| std::cmp::Reverse(version.sequence));
-    for (index, version) in result.iter().enumerate() {
-        let parent = result.get(index + 1);
-        if version.parents != parent.map(|v| vec![v.id.clone()]).unwrap_or_default()
-            || parent.is_some_and(|p| p.sequence >= version.sequence)
+    let mut sequences = std::collections::BTreeSet::new();
+    let by_id: std::collections::BTreeMap<_, _> =
+        result.iter().map(|v| (v.id.as_str(), v)).collect();
+    for version in &result {
+        validate_branch(&version.branch)?;
+        if version.sequence == 0
+            || !sequences.insert(version.sequence)
+            || version
+                .parents
+                .iter()
+                .collect::<std::collections::BTreeSet<_>>()
+                .len()
+                != version.parents.len()
+            || version.parents.iter().any(|id| {
+                by_id
+                    .get(id.as_str())
+                    .is_none_or(|p| p.sequence >= version.sequence)
+            })
         {
             return Err("version_invalid".into());
         }
     }
     Ok(result)
 }
-fn snapshot(root: &Path, id: &str) -> std::result::Result<Document, String> {
+pub(super) fn snapshot(root: &Path, id: &str) -> std::result::Result<Document, String> {
     let version = entries(root)?
         .into_iter()
         .find(|v| v.id == id)
@@ -103,13 +131,13 @@ fn snapshot(root: &Path, id: &str) -> std::result::Result<Document, String> {
     }
     // Deserialize the bytes just verified, without reopening the file.
     let saved: SavedWorkspace = serde_json::from_slice(&bytes).map_err(|_| "version_invalid")?;
-    if saved.format != "komyaku-story-workspace" || saved.version != 1 {
+    if saved.format != "komyaku-story-workspace" || ![1, 2, 3].contains(&saved.version) {
         return Err("version_invalid".into());
     }
     saved.document.validate().map_err(|_| "version_invalid")?;
     Ok(saved.document)
 }
-fn record(
+pub(super) fn record(
     root: &Path,
     document: &Document,
     message: String,
@@ -119,6 +147,42 @@ fn record(
         return Err("version_name_invalid".into());
     }
     let previous = entries(root)?;
+    let parents = previous
+        .first()
+        .map(|v| vec![v.id.clone()])
+        .unwrap_or_default();
+    let branch = previous
+        .first()
+        .map(|v| v.branch.clone())
+        .unwrap_or_else(main_branch);
+    record_lineage(root, document, message, parents, branch)
+}
+
+pub(super) fn record_lineage(
+    root: &Path,
+    document: &Document,
+    message: String,
+    parents: Vec<String>,
+    branch: String,
+) -> std::result::Result<Version, String> {
+    let message = message.trim().to_owned();
+    validate_branch(&branch)?;
+    if message.is_empty() || message.chars().count() > 200 {
+        return Err("version_name_invalid".into());
+    }
+    let previous = entries(root)?;
+    if parents.len() > 2
+        || parents
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len()
+            != parents.len()
+        || parents
+            .iter()
+            .any(|id| !previous.iter().any(|v| &v.id == id))
+    {
+        return Err("version_invalid".into());
+    }
     if previous.len() >= 512 {
         return Err("limit_exceeded".into());
     }
@@ -137,11 +201,11 @@ fn record(
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_err(|_| "history_failed")?
                 .as_secs(),
-            sequence: previous.first().map_or(1, |v| v.sequence + 1),
-            parents: previous
+            sequence: previous
                 .first()
-                .map(|v| vec![v.id.clone()])
-                .unwrap_or_default(),
+                .map_or(Ok(1), |v| v.sequence.checked_add(1).ok_or("limit_exceeded"))?,
+            parents,
+            branch,
             title: document.title.clone(),
             nodes: document.graph().nodes().len(),
             scenes: document
@@ -240,11 +304,14 @@ pub async fn save_version(
     let host = host.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let _gate = host.gate.lock().map_err(|_| "state_unavailable")?;
-        let (document, summary) = host.engine.snapshot_with_summary().map_err(|e| e.code)?;
-        if summary.revision != expected_revision {
-            return Err("revision_conflict".into());
-        }
-        record(&root(&host), &document, message)
+        host.engine
+            .read_document(|document, summary| {
+                if summary.revision != expected_revision {
+                    return Err("revision_conflict".into());
+                }
+                record(&root(&host), document, message)
+            })
+            .map_err(|e| e.code)?
     })
     .await
     .map_err(|_| "history_failed".to_owned())?
@@ -262,21 +329,24 @@ pub async fn version_detail(
         let _gate=host.gate.lock().map_err(|_| "state_unavailable")?;
         let doc = snapshot(&root(&host), &id)?;
         domain::Validator(host.registry.clone()).validate(&doc).map_err(|_| "version_invalid")?;
-        let (current, revision) = if let Some(id)=compare_id {(snapshot(&root(&host),&id)?,0)}else{let (document,summary)=host.engine.snapshot_with_summary().map_err(|e|e.code)?;(document,summary.revision)};
-        domain::Validator(host.registry.clone()).validate(&current).map_err(|_| "version_invalid")?;
+        let compare = |current: &Document, revision| -> std::result::Result<Value, String> {
+        domain::Validator(host.registry.clone()).validate(current).map_err(|_| "version_invalid")?;
         let mut changes = vec![];
         for (id,node) in current.graph().nodes() {
             let old = doc.graph().nodes().get(id);
             if old != Some(node) {
-                changes.push(json!({"id":id,"title":node.properties.get("title"),"kind":if old.is_some(){"changed"}else{"added"},"textAvailable":node.type_id==domain::SCENE,"structureAvailable":node.type_id==domain::SCENE,"location":location_change(&doc,&current,*id)}));
+                changes.push(json!({"id":id,"title":node.properties.get("title"),"kind":if old.is_some(){"changed"}else{"added"},"textAvailable":node.type_id==domain::SCENE,"structureAvailable":node.type_id==domain::SCENE,"location":location_change(&doc,current,*id)}));
             }
         }
         for (id,node) in doc.graph().nodes() {
             if !current.graph().nodes().contains_key(id) { changes.push(json!({"id":id,"title":node.properties.get("title"),"kind":"deleted","textAvailable":node.type_id==domain::SCENE,"structureAvailable":node.type_id==domain::SCENE})); }
         }
         let structure_changed = doc.graph().edges()!=current.graph().edges()
-            || doc.graph().groups()!=current.graph().groups() || doc.placement()!=current.placement();
-        Ok(json!({"changes":changes,"titleChanged":doc.title!=current.title,"structureChanged":structure_changed,"revision":revision}))
+            || doc.graph().groups()!=current.graph().groups() || doc.placement()!=current.placement() || doc.extensions!=current.extensions;
+        Ok(json!({"changes":changes,"titleChanged":doc.title!=current.title,"structureChanged":structure_changed,"graphDiff":super::history_graph::compare(&doc,current)?,"revision":revision}))
+        };
+        if let Some(id) = compare_id { compare(&snapshot(&root(&host), &id)?, 0) }
+        else { host.engine.read_document(|current, summary| compare(current, summary.revision)).map_err(|e| e.code)? }
     }).await.map_err(|_| "history_failed".to_owned())?
 }
 fn location_change(before: &Document, after: &Document, id: Id) -> Value {
@@ -309,6 +379,29 @@ fn location_change(before: &Document, after: &Document, id: Id) -> Value {
     }
     json!({"parentChanged":parent_changed,"orderChanged":order_changed,"beforeParent":parent_title(before,old),"afterParent":parent_title(after,new),"beforeOrder":old.properties.get("outlineOrder"),"afterOrder":new.properties.get("outlineOrder")})
 }
+fn capture_comparison<R>(
+    host: &Host,
+    compare_id: Option<String>,
+    expected_revision: u64,
+    capture: impl FnOnce(&Document) -> std::result::Result<R, String>,
+) -> std::result::Result<R, String> {
+    if let Some(id) = compare_id {
+        let document = snapshot(&root(host), &id)?;
+        domain::Validator(host.registry.clone())
+            .validate(&document)
+            .map_err(|_| "version_invalid")?;
+        capture(&document)
+    } else {
+        host.engine
+            .read_document(|document, summary| {
+                if summary.revision != expected_revision {
+                    return Err("revision_conflict".into());
+                }
+                capture(document)
+            })
+            .map_err(|e| e.code)?
+    }
+}
 #[tauri::command]
 pub async fn version_structure_diff(
     window: tauri::WebviewWindow,
@@ -324,41 +417,31 @@ pub async fn version_structure_diff(
         let (before, after) = {
             let _gate = host.gate.lock().map_err(|_| "state_unavailable")?;
             let before = snapshot(&root(&host), &id)?;
-            let after = if let Some(id) = compare_id {
-                snapshot(&root(&host), &id)?
-            } else {
-                let (doc, summary) = host.engine.snapshot_with_summary().map_err(|e| e.code)?;
-                if summary.revision != expected_revision {
-                    return Err("revision_conflict".into());
-                }
-                doc
-            };
             domain::Validator(host.registry.clone())
                 .validate(&before)
                 .map_err(|_| "version_invalid")?;
-            domain::Validator(host.registry.clone())
-                .validate(&after)
-                .map_err(|_| "version_invalid")?;
-            let node_id = Id::parse_str(&node_id).map_err(|_| "version_invalid")?;
-            fn canonical(doc: &Document, id: Id) -> std::result::Result<Option<Value>, String> {
-                let Some(node) = doc.graph().nodes().get(&id) else {
-                    return Ok(None);
-                };
-                if node.type_id != domain::SCENE {
+            capture_comparison(&host, compare_id, expected_revision, |after| {
+                let node_id = Id::parse_str(&node_id).map_err(|_| "version_invalid")?;
+                fn canonical(doc: &Document, id: Id) -> std::result::Result<Option<Value>, String> {
+                    let Some(node) = doc.graph().nodes().get(&id) else {
+                        return Ok(None);
+                    };
+                    if node.type_id != domain::SCENE {
+                        return Err("version_invalid".into());
+                    }
+                    Ok(Some(
+                        node.properties
+                            .get("canonical")
+                            .ok_or("version_invalid")?
+                            .clone(),
+                    ))
+                }
+                let pair = (canonical(&before, node_id)?, canonical(after, node_id)?);
+                if pair.0.is_none() && pair.1.is_none() {
                     return Err("version_invalid".into());
                 }
-                Ok(Some(
-                    node.properties
-                        .get("canonical")
-                        .ok_or("version_invalid")?
-                        .clone(),
-                ))
-            }
-            let pair = (canonical(&before, node_id)?, canonical(&after, node_id)?);
-            if pair.0.is_none() && pair.1.is_none() {
-                return Err("version_invalid".into());
-            }
-            pair
+                Ok(pair)
+            })?
         };
         Ok(history_structure::compare(before.as_ref(), after.as_ref()))
     })
@@ -389,27 +472,18 @@ pub async fn version_text_diff(
         let (before, after) = {
             let _gate = host.gate.lock().map_err(|_| "state_unavailable")?;
             let before = snapshot(&root(&host), &id)?;
-            let after = if let Some(id) = compare_id {
-                snapshot(&root(&host), &id)?
-            } else {
-                let (draft, summary) = host.engine.snapshot_with_summary().map_err(|e| e.code)?;
-                if summary.revision != expected_revision {
-                    return Err("revision_conflict".into());
-                }
-                draft
-            };
             domain::Validator(host.registry.clone())
                 .validate(&before)
                 .map_err(|_| "version_invalid")?;
-            domain::Validator(host.registry.clone())
-                .validate(&after)
-                .map_err(|_| "version_invalid")?;
-            let id = Id::parse_str(&node_id).map_err(|_| "version_invalid")?;
-            if !before.graph().nodes().contains_key(&id) && !after.graph().nodes().contains_key(&id)
-            {
-                return Err("version_invalid".into());
-            }
-            (scene_text(&before, id)?, scene_text(&after, id)?)
+            capture_comparison(&host, compare_id, expected_revision, |after| {
+                let id = Id::parse_str(&node_id).map_err(|_| "version_invalid")?;
+                if !before.graph().nodes().contains_key(&id)
+                    && !after.graph().nodes().contains_key(&id)
+                {
+                    return Err("version_invalid".into());
+                }
+                Ok((scene_text(&before, id)?, scene_text(after, id)?))
+            })?
         };
         // Comparison is CPU-only after capture; release the editing gate first.
         Ok(history_diff::compare(&before, &after))
@@ -456,6 +530,46 @@ pub async fn restore_version(
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn borrowed_comparison_binds_revision_and_preserves_current_document() {
+        let registry = domain::registry();
+        let editor = Editor::new(domain::initial_document(&registry), 256).unwrap();
+        let engine = Engine::from_editor(editor);
+        engine
+            .register_view(
+                "controls",
+                Viewport {
+                    origin: [0., 0.],
+                    zoom: 1.,
+                    size: [800., 600.],
+                },
+            )
+            .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let host = Host {
+            engine,
+            registry,
+            path: dir.path().join("workspace.story.json"),
+            gate: Arc::new(Mutex::new(())),
+            saves: Arc::new(Mutex::new(journal::Store::default())),
+        };
+        let before = host.engine.snapshot().unwrap();
+        let revision = host
+            .engine
+            .read_document(|_, summary| summary.revision)
+            .unwrap();
+        assert_eq!(
+            capture_comparison(&host, None, revision, |document| Ok(document.title.clone()))
+                .unwrap(),
+            before.title
+        );
+        assert_eq!(
+            capture_comparison(&host, None, revision + 1, |_| Ok(())).unwrap_err(),
+            "revision_conflict"
+        );
+        assert_eq!(host.engine.snapshot().unwrap(), before);
+    }
+
     #[test]
     #[ignore = "manual million-character snapshot and history benchmark"]
     fn benchmark_large_snapshot_history() {
@@ -568,6 +682,7 @@ mod tests {
         let versions: Vec<_> = (1..=512)
             .rev()
             .map(|sequence| Version {
+                branch: main_branch(),
                 id: Id::new_v4().to_string(),
                 message: format!("版{sequence}"),
                 date: 0,
@@ -606,6 +721,7 @@ mod tests {
             let dir = root.join(&id);
             std::fs::create_dir(&dir).unwrap();
             let version = Version {
+                branch: main_branch(),
                 id: id.clone(),
                 message: format!("版{sequence}"),
                 date: 0,

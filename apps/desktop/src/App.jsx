@@ -1,3 +1,4 @@
+import { shouldLoadSessionHistory } from "./services/history-session.js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { createEmptyDocument, DOCUMENT_SCHEMA_ID, parseCanonicalDocument } from "@komyaku/document-schema";
@@ -306,11 +307,11 @@ export function App({ initialDocument = null, integrationSaveOptions } = {}) {
     const documentId = checkpoint?.durable ? checkpoint.document.id : null;
     if (editorWorkspace.mode !== "local") { historyLoadedSession.current = null; return; }
     const session = editSession.current;
-    if (documentId && historyLoadedSession.current !== session) {
+    if (shouldLoadSessionHistory({ checkpoint, session, loadedSession: historyLoadedSession.current, mode: editorWorkspace.mode })) {
       historyLoadedSession.current = session;
       void refreshVersionHistory(documentId);
     }
-  }, [checkpoint?.document?.id, checkpoint?.durable, editorWorkspace.mode, refreshVersionHistory]);
+  }, [replicas, checkpoint?.document?.id, checkpoint?.durable, editorWorkspace.mode, refreshVersionHistory]);
 
   const createCheckpoint = useCallback(async ({ retry = false } = {}) => {
     const sourceReplicas = replicasRef.current;

@@ -5,6 +5,7 @@ import '../src/ai-locales.js';
 import '../src/character-locales.js';
 import '../src/export-locales.js';
 import '../src/history-locales.js';
+import '../src/narrative.js';
 import preview from '../src/preview.json';
 describe('KOMYAKU authoring projections',()=>{
   test('every seeded body is canonical and preserves its Unicode text',()=>{

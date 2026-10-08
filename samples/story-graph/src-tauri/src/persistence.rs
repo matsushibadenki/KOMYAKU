@@ -1,6 +1,5 @@
 //! Stream bounded snapshots to a private temporary file, then atomically publish.
 use ring::digest::{Context, SHA256};
-use serde::Serialize;
 use std::{
     io::{self, BufWriter, Write},
     path::Path,
@@ -63,13 +62,6 @@ pub fn save(path: &Path, document: &Document) -> Result<Receipt, String> {
 }
 fn save_with_limit(path: &Path, document: &Document, limit: u64) -> Result<Receipt, String> {
     document.validate().map_err(|e| e.to_string())?;
-    #[derive(Serialize)]
-    struct Snapshot<'a> {
-        generation: String,
-        format: &'static str,
-        version: u32,
-        document: &'a Document,
-    }
     let parent = path
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
@@ -80,14 +72,10 @@ fn save_with_limit(path: &Path, document: &Document, limit: u64) -> Result<Recei
         .map_err(|e| e.to_string())?;
     let file = temporary.as_file().try_clone().map_err(|e| e.to_string())?;
     let mut writer = BufWriter::with_capacity(64 * 1024, DigestWriter::new(file, limit));
-    let result = serde_json::to_writer(
+    let result = crate::workspace_storage::write(
         &mut writer,
-        &Snapshot {
-            generation: unge_core::Id::new_v4().to_string(),
-            format: "komyaku-story-workspace",
-            version: 1,
-            document,
-        },
+        document,
+        Some(unge_core::Id::new_v4().to_string()),
     );
     if let Err(error) = result {
         return Err(if writer.get_ref().exceeded {
@@ -133,7 +121,7 @@ mod tests {
         let old = crate::SavedWorkspace {
             generation: None,
             format: "komyaku-story-workspace".into(),
-            version: 1,
+            version: crate::workspace_version(&document),
             document: document.clone(),
         };
         std::fs::write(&path, serde_json::to_vec_pretty(&old).unwrap()).unwrap();

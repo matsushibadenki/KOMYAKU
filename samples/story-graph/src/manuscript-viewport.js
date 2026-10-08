@@ -1,13 +1,25 @@
 // Keep lightweight positions in the flow; native text controls exist near the
 // viewport only. Canonical text and editing history belong to the Rust document.
+// Scan Unicode code points without split/spread arrays proportional to manuscript
+// length. CRLF is one explicit line break, including an empty trailing line.
+export function lineMetrics(text,capacity=Infinity) {
+  let lines=0,length=0,longest=0,cr=false;
+  const finish=()=>{lines+=Math.max(1,Math.ceil(length/capacity));longest=Math.max(longest,length);length=0;};
+  for(const character of text){
+    if(character==='\n'&&cr){cr=false;continue;}
+    if(character==='\r'||character==='\n'){finish();cr=character==='\r';}
+    else {length++;cr=false;}
+  }
+  finish();return {lines,longest};
+}
 export function estimatedExtent(text,{vertical,span,fontSize,lineHeight}) {
   const capacity=Math.max(1,Math.floor(span/fontSize));
-  const lines=text.split(/\r\n?|\n/).reduce((sum,line)=>sum+Math.max(1,Math.ceil([...line].length/capacity)),0);
+  const {lines}=lineMetrics(text,capacity);
   return Math.max(fontSize*lineHeight,lines*fontSize*lineHeight+(vertical?0:2));
 }
 export function estimatedDialogueExtent([actor='',dialogue=''],options) {
-  const {vertical,span,fontSize}=options;
-  const natural=Math.max(1,...actor.split(/\r\n?|\n/).map(line=>[...line].length))*fontSize+16;
+  const {span,fontSize}=options;
+  const natural=Math.max(1,lineMetrics(actor).longest)*fontSize+16;
   const actorSpan=Math.max(16,Math.min(options.actorWidth||natural,Math.max(16,span-32)));
   return Math.max(estimatedExtent(actor,{...options,span:actorSpan}),estimatedExtent(dialogue,{...options,span:Math.max(1,span-actorSpan-16)}));
 }
@@ -93,11 +105,13 @@ export class ManuscriptViewport {
     if(input.closest('.dialogue-sheet'))return [{input,block:input.closest('.manuscript-block'),start:0,text}];
     return this.paragraphBlocks(input).map(block=>{
       const start=Number(block.dataset.start),length=Number(block.dataset.length);
-      return {block,input:block.querySelector('textarea'),start,text:text.slice(start,start+length)};
+      return {block,input:block.querySelector('textarea'),start,length,get text(){return text.slice(start,start+length);}};
     });
   }
   updateFragment(block,part) {
-    block.dataset.start=String(part.start);block.dataset.length=String(part.text.length);
+    block.dataset.start=String(part.start);
+    if(part.unchanged)return;
+    block.dataset.length=String(part.text.length);
     const entry=this.entries.get(block);if(!entry)return;
     entry.html=null;entry.values=[part.text.replace(/\r\n?/g,'\n')];
     if(!block.firstElementChild){entry.extent=this.estimate(block,entry.values);this.placeholder(block,entry);}

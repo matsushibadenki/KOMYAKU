@@ -12,7 +12,7 @@ export function canonicalText(input) {
   }).join('\n');
 }
 export function routeNodes(nodes, path) {
-  return nodes.filter(n => n.type === 'story.scene' && [path, 'both'].includes(n.path)).sort((a,b)=>a.order-b.order);
+  return nodes.filter(n => n.type === 'story.scene' && (n.routes ? Object.hasOwn(n.routes,path) : [path, 'both'].includes(n.path))).sort((a,b)=>(a.routes?.[path]??a.order)-(b.routes?.[path]??b.order));
 }
 export function relatedPeople(workspace, relationship) {
   return ['from','to'].map(port => {

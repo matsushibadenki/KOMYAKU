@@ -1,3 +1,4 @@
+import { failDraftWrites, verifyBlockedThenRetry } from './persistence-failure-helpers.js';
 import { expect, test } from '@playwright/test';
 
 // Only the native history boundary is substituted. Editor, edit-session,
@@ -154,6 +155,7 @@ async function openHistory(page, initial = false, paged = false) {
       export const loadLocalVersionAssets = () => { throw new Error('unexpected assets'); };
       export const loadLocalVersionSnapshot = () => { throw new Error('unexpected snapshot'); };
       export const restoreLocalDocumentVersion = async () => {
+        window.restoreCalls = (window.restoreCalls ?? 0) + 1;
         const record = JSON.parse(localStorage.getItem('komyaku:local-draft:00000000-0000-4000-8000-000000000001'));
         return { document: JSON.parse(record.contentJson), localRevision: record.localRevision };
       };
@@ -600,4 +602,12 @@ test('integration diff returns focus to the edited paragraph and clears edits on
   await expect(fields.nth(1)).toHaveValue('第二段落');
   await expect(panel.getByRole('button', { name: '編集結果の差分を確認' })).toBeDisabled();
   await expect(panel.getByRole('button', { name: '確認して統合版を保存' })).toBeEnabled();
+});
+
+test('N0 failed persistence blocks restore before history mutation', async ({ page }) => {
+  await openHistory(page);
+  const { before, editor } = await failDraftWrites(page);
+  await page.getByRole('button', { name: 'この版を復元', exact: true }).click();
+  expect(await page.evaluate(() => window.restoreCalls ?? 0)).toBe(0);
+  await verifyBlockedThenRetry(page, before, editor);
 });

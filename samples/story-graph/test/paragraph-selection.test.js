@@ -40,3 +40,11 @@ test('range copy and replacement include omitted CRLF display separators',()=>{
   for(const part of retained.filter(Boolean))expect(expected.slice(part.start,part.start+part.text.length)).toBe(part.text);
   expect(selectionRange({anchor:18,focus:3})).toEqual(range);
 });
+test('composition range preparation does not read unchanged fragment strings',()=>{
+ let reads=0;
+ const parts=Array.from({length:1000},(_,index)=>({start:index*100,length:100,get text(){reads++;return '雨'.repeat(100);}}));
+ const output=replaceSelectionFragments(parts,500,{anchor:50010,focus:50020},'次');
+ expect(reads).toBe(2);
+ expect(output[0].start).toBe(0);expect(output[999].start).toBe(99891);
+ expect(output[500].text.length).toBe(91);expect(output[999].unchanged).toBe(true);
+});

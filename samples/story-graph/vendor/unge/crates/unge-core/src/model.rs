@@ -294,6 +294,8 @@ impl Default for Rect {
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Document {
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub extensions: BTreeMap<String, serde_json::Value>,
     #[serde(default)]
     pub title: String,
     pub schema_version: u32,
@@ -307,6 +309,7 @@ pub struct Document {
 impl Default for Document {
     fn default() -> Self {
         Self {
+            extensions: BTreeMap::new(),
             title: String::new(),
             schema_version: 1,
             engine_version: env!("CARGO_PKG_VERSION").into(),

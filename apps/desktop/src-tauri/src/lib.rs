@@ -1,3 +1,4 @@
+mod editing_qa_gate;
 #[allow(dead_code)]
 mod story_document_validation;
 
@@ -2336,6 +2337,7 @@ async fn mutate_local_document_atomic(
 
 #[tauri::command]
 async fn save_local_draft_atomic(
+    app: tauri::AppHandle,
     db_instances: State<'_, DbInstances>,
     input: LocalDraftInput,
 ) -> Result<(), String> {
@@ -2346,6 +2348,8 @@ async fn save_local_draft_atomic(
             _ => return Err(LocalDraftSaveError::DatabaseUnavailable.code().to_string()),
         }
     };
+
+    editing_qa_gate::before_save(&app.config().identifier, &input.document_id, input.local_revision).await?;
 
     save_local_draft_transaction(&pool, &input)
         .await
@@ -2482,6 +2486,8 @@ mod tests {
     use super::*;
     use sqlx::sqlite::SqlitePoolOptions;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    include!("history_milestone_tests.rs");
 
     #[tokio::test]
     #[ignore = "explicit 100k-character / 1000-Version / 20-Branch performance fixture"]

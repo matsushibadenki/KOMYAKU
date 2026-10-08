@@ -48,3 +48,9 @@ test('composition updates an unmounted placeholder and invalidates its stale mar
     expect(block.style[vertical?'width':'height']).toBe('60px');
   }
 });
+
+test('extent scan preserves CRLF, lone CR, astral characters and empty trailing lines without text arrays',async()=>{
+ const {lineMetrics}=await import('../src/manuscript-viewport.js');
+ for(const text of ['', '\r\n', 'a\rb\n', '😀😀😀\r\nx', 'a\r\r\nb'])for(const capacity of [1,2,100]){const lines=text.split(/\r\n?|\n/).reduce((sum,line)=>sum+Math.max(1,Math.ceil([...line].length/capacity)),0);expect(lineMetrics(text,capacity).lines).toBe(lines);}
+ expect(lineMetrics('😀'.repeat(500000),100).lines).toBe(5000);
+});

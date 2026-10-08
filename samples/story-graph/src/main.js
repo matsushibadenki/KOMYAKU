@@ -1,8 +1,12 @@
+import {installPanelLayout,applyLayout,renderPanelHandles} from './panel-layout.js';
+import {openNarrative} from './narrative.js';
 import './style.css';
 import {mountHistory} from './history.js';
 let disposeHistory;
 import { fragments, inputPatch, characters, graphemeStep, canonicalPosition } from './text-performance.js';
 import {selectionRange,extendSelection,fragmentSelection,replaceSelectionFragments,pointSelection} from './paragraph-selection.js';
+import {ReadingViewport,boundedReadingBlocks} from './reading-viewport.js';
+let readingLayoutAbort=null;
 import {ManuscriptViewport,estimatedExtent,estimatedDialogueExtent} from './manuscript-viewport.js';
 import { paragraphText, insertDialogue, updateParagraph, setDialogueWidth, paragraphById } from './dialogue.js';
 import { messages, languages } from './locales.js';
@@ -13,16 +17,24 @@ import { installAssistant } from './assistant.js';
 import './ai-locales.js';
 import './character-locales.js';
 import './export-locales.js';
+import {pdfSettings} from './pdf-settings.js';
+import {exportScope,openSearch} from './workflow-dialogs.js';
+import {openPaths} from './path-dialog.js';
+import {restructureScene} from './scene-operations.js';
+import {cropPortrait} from './portrait-crop.js';
 let preferences = {...defaultPreferences};
 let chatgpt = {pending:false,accounts:[],error:null}, authBusy=false;
 let preferenceTimer, pendingPreferences = null;
 let preferencesTab = 'languageSettings', preferencesOpen = false, preferencesError = '', preferencesSaving = false;
 const native = Boolean(window.__TAURI__);
-const invoke = (command,args={}) => window.__TAURI__.core.invoke(command,args);
-const openAssistant=installAssistant({invoke,native,t:key=>t(key),escape:value=>escape(value),getLanguage:()=>language,getScene:()=>detail?.type_id==='story.scene'?{id:detail.id,revision:model.revision}:null,refresh,commit:commitDraft,settings:()=>{preferencesTab='ai';showPreferences();}});
+let diskDirty=false;
+const invoke = async(command,args={}) => {const result=await window.__TAURI__.core.invoke(command,args);if(command==='edit'||command==='save_now'){diskDirty=result.saved===false;if(diskDirty)error='save_failed';}return result;};
+const openAssistant=installAssistant({invoke,native,t:key=>t(key),escape:value=>escape(value),getLanguage:()=>language,getScene:()=>detail?.type_id==='story.scene'?{id:detail.id,revision:model.revision,selection:bodyCaret?.scene===detail.id&&bodyCaret.end>bodyCaret.start?{paragraph:bodyCaret.id,start:bodyCaret.start,end:bodyCaret.end}:null}:null,refresh,commit:commitDraft,settings:()=>{preferencesTab='ai';showPreferences();}});
+const loadPanelLayout=installPanelLayout({invoke,native,t:key=>t(key)});
 const floatingWindow = new URLSearchParams(location.search).get('panel') === 'editor';
 let language = localStorage.getItem('story-language') || 'ja';
 if (!messages[language]) language = 'ja';
+let readingViewport=null;
 let model = null, detail = null, tab = 'scenes', path = 'main', reading = false, floating = false;
 let busy = false, draft = null, status = native ? 'saved' : '', error = '', backupPath = '';
 let latestDetail=null, composing=false, compositionTarget=null, bodyCaret=null, widthDrag=null;
@@ -48,19 +60,21 @@ const isContainer=()=>['story.block','story.sequence'].includes(detail?.type_id)
 const writingScene=()=>detail?.type_id==='story.scene'?detail:groupDetails.find(scene=>scene.id===groupFocus);
 const inputScene=input=>input?.closest('[data-scene]')?.dataset.scene;
 const t = key => messages[language][key] || messages[language].error;
+const pathLabel = route => route.legacy&&route.name===route.legacy?t(route.name):route.name;
 const escape = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icon = (name) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${{leftPanel:'M3 4h18v16H3z M9 4v16',rightPanel:'M3 4h18v16H3z M15 4v16',block:'M3 6h7l2 3h9v12H3z M3 6V3h7l2 3',sequence:'M3 6h7l2 3h9v12H3z M3 6V3h7l2 3 M7 14h10 M7 17h10',scene:'M6 3h12v18H6z M9 8h6 M9 12h6',graph:'M5 6h4v4H5z M15 14h4v4h-4z M9 8h6v8 M5 17h4v4H5z M9 19h6',undo:'M9 5 4 10l5 5 M4 10h9a6 6 0 0 1 6 6',redo:'m15 5 5 5-5 5 M20 10h-9a6 6 0 0 0-6 6',add:'M12 5v14 M5 12h14',float:'M14 3h7v7 M21 3l-9 9 M10 3H3v18h18v-7',book:'M12 5v16 M12 5C8 2 3 3 3 3v16s5-1 9 2c4-3 9-2 9-2V3s-5-1-9 2',person:'M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0 M4 21v-2a8 8 0 0 1 16 0v2',history:'M3 11a9 9 0 1 1 2 7 M3 4v7h7 M12 7v5l3 2',backup:'M12 3v12 m-4-4 4 4 4-4 M4 16v5h16v-5',trash:'M3 6h18 M9 6V3h6v3 M6 6l1 15h10l1-15 M10 10v7 M14 10v7'}[name] || ''}"/></svg>`;
 function button(action,label,ico,disabled=false,kind='') { return `<button class="${kind}" data-action="${action}" ${disabled?'disabled':''}>${ico?icon(ico):''}<span>${escape(t(label))}</span></button>`; }
 function menu(label,items) {return `<details class="app-menu"><summary>${escape(t(label))}</summary><div class="menu-popup">${items.join('')}</div></details>`;}
 function exportMenu() {
   const option=(format,label)=>`<button data-action="export" data-format="${format}" ${!native||busy?'disabled':''}>${escape(t(label))}</button>`;
-  return `<details class="export-submenu"><summary>${escape(t('export'))}<span aria-hidden="true">›</span></summary><div class="export-popup">${option('txt','exportText')}${option('md','exportMarkdown')}<details class="export-submenu pdf-submenu"><summary>${escape(t('exportPdf'))}<span aria-hidden="true">›</span></summary><div class="export-popup">${option('pdf','exportPdfStandard')}${option('script','exportScript')}<small><span>${escape(t('exportPdfLayout'))}</span><span>${escape(t('exportScriptLayout'))}</span></small></div></details><small>${escape(t('exportScope'))}</small></div></details>`;
+  return `<details class="export-submenu"><summary>${escape(t('export'))}<span aria-hidden="true">›</span></summary><div class="export-popup">${option('txt','exportText')}${option('md','exportMarkdown')}<button data-action="exportGraph" data-format="png" ${!native||busy?'disabled':''}>${escape(t('exportGraphPng'))}</button><button data-action="exportGraph" data-format="pdf" ${!native||busy?'disabled':''}>${escape(t('exportGraphPdf'))}</button><details class="export-submenu pdf-submenu"><summary>${escape(t('exportPdf'))}<span aria-hidden="true">›</span></summary><div class="export-popup">${option('pdf','exportPdfStandard')}${option('script','exportScript')}<small><span>${escape(t('exportPdfLayout'))}</span><span>${escape(t('exportScriptLayout'))}</span></small></div></details><small>${escape(t('exportScope'))}</small></div></details>`;
 }
 function closeMenus() { document.querySelectorAll('.app-menu[open],.export-submenu[open]').forEach(menu=>menu.open=false); }
 function field(key,label,value,multiline=false) { return `<label class="field">${escape(t(label))}${multiline?`<textarea data-field="${key}" rows="${key==='text'?16:5}" ${native?'':'readonly'}>${escape(value)}</textarea>`:`<input data-field="${key}" value="${escape(value)}" maxlength="200" ${native?'':'readonly'}>`}</label>`; }
 function draftBase(key) { return key==='canonical'?detail.properties.canonical:key==='projectTitle' ? model.projectTitle??'' : key==='text'?canonicalText(detail.properties.canonical):(detail?.properties[key]??''); }
 function primaryDirty() { return draft && Object.entries(draft).some(([key,value])=>value!==draftBase(key)); }
-function dirty() { return primaryDirty() || groupEdits.size>0 || titleEdits.size>0; }
+function localDirty() { return primaryDirty() || groupEdits.size>0 || titleEdits.size>0; }
+function dirty() { return localDirty() || diskDirty; }
 async function loadDetail(id) {
   detail = id ? (native ? await invoke('selected',{id}) : preview.details[id]) : null;
   draft=null;pendingParagraphs.clear();wholeCanonicalDraft=false;groupEdits.clear();titleEdits.clear();
@@ -69,9 +83,13 @@ async function loadDetail(id) {
 }
 async function refresh() { model = native ? await invoke('workspace') : preview; await loadDetail(model.selected); pendingRemote=null; render(); }
 function render() {
+  readingLayoutAbort?.abort();
+  if(model?.paths?.length&&!model.paths.some(p=>p.key===path))path=model.paths[0].key;
+
   disposeHistory?.();disposeHistory=null;
   clearParagraphSelection();
   closeOutlineMenu();
+  readingViewport?.disconnect();readingViewport=null;
   manuscriptViewport?.disconnect();manuscriptViewport=null;virtualSources.clear();
   const reopenPreferences = preferencesOpen;
   applyPreferences(preferences);
@@ -107,8 +125,8 @@ function render() {
     ${!floatingWindow?`<header class="window-titlebar" data-tauri-drag-region><span class="window-title" data-tauri-drag-region>${escape(projectTitle)}</span><div class="panel-toggles"><button data-action="toggleLeftPanel" title="${escape(t(leftOpen?'hideLeftPanel':'showLeftPanel'))}" aria-label="${escape(t(leftOpen?'hideLeftPanel':'showLeftPanel'))}" aria-pressed="${leftOpen}" aria-controls="left-icon-menu story-navigator">${icon('leftPanel')}</button><button data-action="toggleRightPanel" title="${escape(t(rightOpen?'hideRightPanel':'showRightPanel'))}" aria-label="${escape(t(rightOpen?'hideRightPanel':'showRightPanel'))}" aria-pressed="${rightOpen}" aria-controls="story-relations">${icon('rightPanel')}</button></div></header>`:''}
     <nav class="menubar" aria-label="${escape(t('appMenu'))}">
       <details class="app-menu logo-menu"><summary class="menu-logo" aria-label="KOMYAKU Story Graph">${icon('graph')}</summary><div class="menu-popup">${button('preferences','preferences',null)}</div></details>
-      ${menu('file',[button('newWorkspace','newWorkspace',null,!native||busy),button('openWorkspace','openWorkspace',null,!native||busy),button('save','save',null,!native||busy),exportMenu(),button('backup','backup',null,!native||busy),button('restoreBackup','restoreBackup',null,!native||busy)])}
-      ${menu('edit',[button('undo','undo','undo',!native||busy),button('redo','redo','redo',!native||busy),button('remove','remove',null,!native||busy||!detail)])}
+      ${menu('file',[button('newWorkspace','newWorkspace',null,!native||busy),button('openWorkspace','openWorkspace',null,!native||busy),button('importWorkspace','importWorkspace',null,!native||busy),button('importArchive','importArchive',null,!native||busy),button('exportArchive','exportArchive',null,!native||busy),button('exportSharedWorkspace','exportSharedWorkspace',null,!native||busy),button('exportSharedArchive','exportSharedArchive',null,!native||busy),button('exportSharedHistory','exportSharedHistory',null,!native||busy),button('save','save',null,!native||busy),exportMenu(),button('backup','backup',null,!native||busy),button('restoreBackup','restoreBackup',null,!native||busy)])}
+      ${menu('edit',[button('undo','undo','undo',!native||busy),button('redo','redo','redo',!native||busy),button('remove','remove',null,!native||busy||!detail),button('search','search',null,!native||busy),button('narrative','narrative',null,!native||busy)])}
       ${menu('insert',[button('newBlock','newBlock',null,!native||busy),button('newSequence','newSequence',null,!native||busy||!model.nodes.some(n=>n.type==='story.block')),button('newScene','newScene',null,!native||busy||!model.nodes.some(n=>n.type==='story.sequence')),button('newCharacter','newCharacter',null,!native||busy),button('newRelation','createRelation',null,!native||busy||people.length<2)])}
       ${menu('view',[button('write','editor',null),button('read','reading',null),button('graph','graph',null,!native)])}
       ${menu('window',[button(floatingWindow?'dock':'float',floatingWindow?'dock':'float',null,!native||busy),button('dock','dock',null,!native||busy)])}
@@ -126,11 +144,11 @@ ${escape(latestDetail.properties.notes||'')}</pre><div>${button('applyDraft','ap
       </nav>
     <main>
       <nav class="navigator" id="story-navigator" aria-label="${escape(t('view'))}"><div class="navtabs">${['scenes','characters','relationships','history'].map(key=>`<button data-tab="${key}" aria-pressed="${tab===key}">${escape(t(key))}</button>`).join('')}</div>
-      ${tab==='scenes'?`<label class="route-label">${escape(t('route'))}<select id="path">${['main','alternative'].map(key=>`<option value="${key}" ${path===key?'selected':''}>${escape(t(key))}</option>`).join('')}</select></label>`:`<h2>${escape(t(tab==='history'?'history':'people'))}</h2>`}
+      ${tab==='scenes'?`<label class="route-label">${escape(t('route'))}<select id="path">${(model.paths??['main','alternative'].map(key=>({key,name:key,legacy:key}))).map(route=>`<option value="${escape(route.key)}" ${path===route.key?'selected':''}>${escape(pathLabel(route))}</option>`).join('')}</select>${button('paths','managePaths',null,!native||busy)}</label>`:`<h2>${escape(t(tab==='history'?'history':'people'))}</h2>`}
       <div class="node-list" ${tab==='scenes'?'role="tree"':''}>${tab==='scenes'?`<label class="project-title-field"><span>${escape(t('workTitle'))}</span><input data-field="projectTitle" aria-label="${escape(t('workTitle'))}" value="${escape(draft?.projectTitle??model.projectTitle??'')}" placeholder="${escape(projectTitle)}" maxlength="200" ${native?'':'readonly'}></label>`:''}${list.map((node,i)=>`<div class="outline-row" ${tab==='scenes'?`role="treeitem" aria-level="${(node.depth||0)+1}" ${node.container?`aria-expanded="${!collapsedOutline.has(node.id)}"`:''}`:''}>${node.container?`<button class="outline-toggle" data-collapse="${node.id}" aria-label="${escape(t(collapsedOutline.has(node.id)?'expand':'collapse'))}" aria-expanded="${!collapsedOutline.has(node.id)}">${collapsedOutline.has(node.id)?'▸':'▾'}</button>`:''}<button class="node-row ${tab==='characters'?'character-row ':''}${node.id===selected?'active':''}" data-select="${node.id}" ${tab==='scenes'&&native?'draggable="true"':''} ${busy?'disabled':''}><span class="ordinal">${tab==='scenes'?icon(node.type==='story.block'?'block':node.type==='story.sequence'?'sequence':'scene'):tab==='characters'?characterIcon(node):icon('person')}</span><span><strong>${escape(node.title)}</strong><small>${escape(tab==='scenes'?t(node.type==='story.block'?'block':node.type==='story.sequence'?'sequence':node.path==='both'?'scene':node.path):tab==='characters'?(node.role||t('role')):t(node.kind))}</small></span></button></div>`).join('')||(tab==='history'?`<p class="empty">${escape(t('versionHelp'))}</p>`:`<p class="empty">${escape(t(tab==='scenes'?'noScenes':'noRelations'))}</p>`)}</div>
       <div class="navbottom">${tab==='scenes'?`<div class="structure-actions">${[['newBlock','block'],['newSequence','sequence'],['newScene','scene']].map(([action,ico])=>`<button data-action="${action}" title="${escape(t(action))}" aria-label="${escape(t(action))}" ${!native||busy||(action==='newSequence'&&!model.nodes.some(n=>n.type==='story.block'))||(action==='newScene'&&!model.nodes.some(n=>n.type==='story.sequence'))?'disabled':''}>${icon(ico)}</button>`).join('')}</div>`:tab==='history'?'':button(tab==='characters'?'newCharacter':'newRelation',tab==='characters'?'newCharacter':'createRelation','add',!native||busy||(tab==='relationships'&&people.length<2),'primary')}</div></nav>
       <section class="writing"><div class="editor-toolbar"><div class="viewtabs"><button data-action="write" aria-pressed="${!reading}">${escape(t('editor'))}</button><button data-action="read" aria-pressed="${reading}">${escape(t('reading'))}</button></div><div class="editor-actions"><select data-writing-mode aria-label="${escape(t('writingMode'))}">${['horizontal','vertical'].map(key=>`<option value="${key}" ${preferences.writingMode===key?'selected':''}>${escape(t(key))}</option>`).join('')}</select>${button('dialogue','dialogue',null,!native||busy||reading||!writingScene()||(floating&&!floatingWindow))}${button(floatingWindow?'dock':'float',floatingWindow?'dock':'float','float',!native||busy)}</div></div>
-      <div class="editor-content ${reading?'reading-content ':''}${!reading&&isContainer()&&(!floating||floatingWindow)?'group-writing ':''}${!reading&&detail?.type_id==='story.scene'&&(!floating||floatingWindow)?'scene-writing':''}">${reading?`<div class="reading-viewport"><article class="reading" id="reading"><h2>${escape(t(path))}</h2></article></div>`:floating&&!floatingWindow?`<div class="empty floating-message">${icon('float')}<p>${escape(t('floating'))}</p>${button('dock','dock',null,!native)}</div>`:detail?`
+      <div class="editor-content ${reading?'reading-content ':''}${!reading&&isContainer()&&(!floating||floatingWindow)?'group-writing ':''}${!reading&&detail?.type_id==='story.scene'&&(!floating||floatingWindow)?'scene-writing':''}">${reading?`<div class="reading-viewport"><article class="reading" id="reading"><h2>${escape(model.paths?.find(p=>p.key===path)?pathLabel(model.paths.find(p=>p.key===path)):t(path))}</h2></article></div>`:floating&&!floatingWindow?`<div class="empty floating-message">${icon('float')}<p>${escape(t('floating'))}</p>${button('dock','dock',null,!native)}</div>`:detail?`
       ${isContainer()?'':detail.type_id==='story.scene'?sceneBreadcrumb(values):`<div class="selection-label">${escape(t(detail.type_id==='story.character'?'characters':'relationships'))}</div>${field('title',detail.type_id==='story.character'?'name':'title',values.title)}`}
       ${isContainer()?groupBody():detail.type_id==='story.scene'?sceneBody(values.canonical??props.canonical):detail.type_id==='story.character'?characterBody(values):`<div class="relation-inspector">${relatedPeople(model,detail).map(n=>`<span>${escape(n?.title||'—')}</span>`).join(`<span class="connection">${props.mutual?'↔':'→'}</span>`)}<label class="field">${escape(t('kind'))}<select data-field="kind" ${native?'':'disabled'}>${['family','friend','rival','trust','love'].map(k=>`<option value="${k}" ${values.kind===k?'selected':''}>${escape(t(k))}</option>`).join('')}</select></label><label class="check"><input data-field="mutual" type="checkbox" ${values.mutual?'checked':''} ${native?'':'disabled'}>${escape(t('mutual'))}</label></div>`}
       ${['story.block','story.sequence'].includes(detail.type_id)?'':detail.type_id==='story.scene'?`<details class="scene-notes" data-notes-id="${detail.id}" ${expandedNotes.has(detail.id)?'open':''}><summary>${escape(t('notes'))}</summary><textarea data-field="notes" aria-label="${escape(t('notes'))}" rows="4" ${native?'':'readonly'}>${escape(values.notes)}</textarea></details>`:field('notes','notes',values.notes,true)}${detail.type_id==='story.scene'||isContainer()?'':`<div class="editor-footer">${button('remove','remove','trash',!native||busy,'danger')}</div>`}`:`<p class="empty">${escape(t('select'))}</p>`}</div>
@@ -151,30 +169,50 @@ ${escape(latestDetail.properties.notes||'')}</pre><div>${button('applyDraft','ap
   const sceneViewport=shell.querySelector('.scene-writing .manuscript-pages');if(sceneViewport&&preferences.writingMode==='vertical')sceneViewport.scrollLeft=sceneScroll;
   const groupViewport=shell.querySelector('.group-manuscript');if(groupViewport){groupViewport.scrollLeft=preferences.writingMode==='vertical'?groupScroll.left:0;groupViewport.scrollTop=preferences.writingMode==='horizontal'?groupScroll.top:0;}
   if(reading) renderReading();
+  renderPanelHandles(t,native);
   if(tab==='history'&&!floatingWindow){const panel=shell.querySelector('.writing');panel.classList.add('history-panel');disposeHistory=mountHistory(panel,{native,invoke,t,escape,language,commit:commitDraft,revision:()=>model.revision,title:projectTitle});}
   if(reopenPreferences) showPreferences();
 }
-async function renderReading() {
+async function renderReading(anchor=null) {
+  readingLayoutAbort?.abort();const layoutAbort=new AbortController();readingLayoutAbort=layoutAbort;
   try {
-    const blocks = native ? await invoke('reading',{path}) : routeNodes(preview.nodes,path).map(n=>[n.id,n.title,canonicalText(preview.details[n.id].properties.canonical)]);
     const target=document.getElementById('reading');
-    const documents=await Promise.all(blocks.map(async ([id])=>native?(await invoke('selected',{id})).properties.canonical:preview.details[id].properties.canonical));
+    const requestPath=path;
+    const result=native?await invoke('reading_data',{path:requestPath}):{revision:model.revision,scenes:routeNodes(preview.nodes,requestPath).map(node=>({id:node.id,title:node.title,canonical:preview.details[node.id].properties.canonical}))};
+    if(!target?.isConnected||path!==requestPath||result.revision!==model.revision)return;
+    const blocks=result.scenes.map(scene=>[scene.id,scene.title]);
+    const documents=result.scenes.map(scene=>scene.canonical);
     let previousBlock=null,previousSequence=null;
-    if(target) target.innerHTML=`<h2>${escape(t(path))}</h2>${blocks.map(([id,title],index)=>{
+    const entries=[];
+    blocks.forEach(([id,title],index)=>{
       const scene=model.nodes.find(node=>node.id===id),sequence=model.nodes.find(node=>node.id===scene?.parent),block=model.nodes.find(node=>node.id===sequence?.parent);
-      const heading=`${block&&block.id!==previousBlock?`<h2 class="reading-block-title">${escape(block.title)}</h2>`:''}${sequence&&sequence.id!==previousSequence?`<h2 class="reading-sequence-title">${escape(sequence.title)}</h2>`:''}`;
+      if(block&&block.id!==previousBlock)entries.push({kind:'heading',level:2,style:'reading-block-title',size:preferences.blockSize,text:block.title});
+      if(sequence&&sequence.id!==previousSequence)entries.push({kind:'heading',level:2,style:'reading-sequence-title',size:preferences.sequenceSize,text:sequence.title});
       previousBlock=block?.id;previousSequence=sequence?.id;
-      return `${heading}<section><h3 class="reading-scene-title">${escape(title)}</h3>${documents[index].content.map(node=>node.type==='paragraph'?`<p>${escape(paragraphText(node))}</p>`:`<table class="dialogue-sheet reading-dialogue" data-width="${node.extensions?.['komyaku.dialogue']?.actorWidth??''}"><tbody><tr>${node.content[0].content.map(cell=>`<td>${escape(paragraphText(cell.content[0]))}</td>`).join('')}</tr></tbody></table>`).join('')}</section>`;
-    }).join('')||`<p>${escape(t('emptyReading'))}</p>`}`;
-    resizeDialogueColumns();
-  } catch(e) { const target=document.getElementById('reading');if(target)target.innerHTML=`<p class="error">${escape(t(String(e)))}</p>`; }
+      entries.push({kind:'heading',level:3,style:'reading-scene-title',size:preferences.titleSize,text:title});
+      for(const node of documents[index].content){if(node.type==='paragraph')entries.push({kind:'paragraph',id:node.id,text:paragraphText(node)});else entries.push({kind:'dialogue',texts:node.content[0].content.map(cell=>paragraphText(cell.content[0])),actorWidth:node.extensions?.['komyaku.dialogue']?.actorWidth});}
+    });
+    if(!entries.length){target.insertAdjacentHTML('beforeend',`<p>${escape(t('emptyReading'))}</p>`);return;}
+    const root=target.closest('.reading-viewport'),vertical=preferences.writingMode==='vertical';
+    readingViewport?.disconnect();readingViewport=null;target.querySelectorAll('.reading-chunk').forEach(node=>node.remove());
+    const bounded=await boundedReadingBlocks(entries,{article:target,vertical,span:vertical?root.clientHeight:target.clientWidth,signal:layoutAbort.signal});
+    if(!target.isConnected||layoutAbort.signal.aborted||path!==requestPath)return;
+    readingViewport?.disconnect();readingViewport=new ReadingViewport({root:vertical?root:document.querySelector('.editor-content'),article:target,blocks:bounded,vertical,
+      options:()=>({vertical,span:vertical?root.clientHeight:target.clientWidth,fontSize:preferences.bodySize,lineHeight:preferences.lineHeight}),
+      markup:block=>block.kind==='heading'?`<h${block.level} class="${block.style}">${escape(block.text)}</h${block.level}>`:block.kind==='paragraph'?`<p data-reading-paragraph="${escape(block.id??'')}" data-reading-start="${block.sourceStart??0}">${escape(block.text)}</p>`:`<table class="dialogue-sheet reading-dialogue" data-width="${block.actorWidth??''}"><tbody><tr>${block.texts.map(text=>`<td>${escape(text)}</td>`).join('')}</tr></tbody></table>`,
+      measure:()=>resizeDialogueColumns(),reflow:anchor=>renderReading(anchor)
+    });
+    readingViewport.restore(anchor);
+  } catch(e) { if(layoutAbort.signal.aborted)return;const target=document.getElementById('reading');if(target)target.innerHTML=`<p class="error">${escape(t(String(e)))}</p>`; }
 }
 async function commitDraft() {
   if(commitInFlight){await commitInFlight;if(error)return false;return commitDraft();}
   commitInFlight=(async()=>await saveDraft()&&await saveTitleDrafts()&&await saveGroupDrafts())();
   let saved;
   try{saved=await commitInFlight;}finally{commitInFlight=null;}
-  return saved&&native&&dirty()?commitDraft():saved;
+  if(saved&&native&&localDirty())return commitDraft();
+  if(saved&&native&&diskDirty){try{busy=true;model=await invoke('save_now');error='';status='saved';}catch(e){error=String(e);status='unsaved';saved=false;}finally{busy=false;render();}}
+  return saved;
 }
 async function saveDraft() {
   if(composing || widthDrag || error==='revision_conflict')return false;
@@ -315,7 +353,8 @@ async function importPortrait() {
   const id=detail.id;
   busy=true;error='';render();
   try {
-    const updated=await invoke('import_portrait',{id,expectedRevision:model.revision});
+    const preview=await invoke('prepare_portrait',{id,expectedRevision:model.revision});
+    const updated=preview?await cropPortrait({preview,invoke,t,escape}):null;
     if(updated){model=updated;status='saved';await loadDetail(id);}
   }catch(e){error=String(e);}finally{busy=false;render();}
 }
@@ -611,11 +650,11 @@ document.addEventListener('selectionchange',()=>{
   const local=fragmentSelection({start:Number(input.dataset.start),text:rawFragment(input)},paragraphSelection);
   if(caretPosition(input)!==Number(input.dataset.start)+local.start||caretPosition(input,input.selectionEnd)!==Number(input.dataset.start)+local.end)clearParagraphSelection();
 });
-function captureSelectionReplacement(input) {
+function captureSelectionReplacement(input,retainComposition=false) {
   if(!input.dataset.block||!selectedParagraph(input)||selectionReplacements.has(input))return;
-  selectionReplacements.set(input,{selection:{...paragraphSelection},before:input.value,start:input.selectionStart,end:input.selectionEnd,parts:manuscriptViewport?manuscriptViewport.replacementParts(input,paragraphValue(input)):paragraphInputs(input).map(peer=>({input:peer,block:peer.closest('.manuscript-block'),start:Number(peer.dataset.start),text:rawFragment(peer)}))});
+  selectionReplacements.set(input,{selection:{...paragraphSelection},before:input.value,start:input.selectionStart,end:input.selectionEnd,parts:retainComposition?(manuscriptViewport?manuscriptViewport.replacementParts(input,paragraphValue(input)):paragraphInputs(input).map(peer=>({input:peer,block:peer.closest('.manuscript-block'),start:Number(peer.dataset.start),text:rawFragment(peer)}))):null});
 }
-document.addEventListener('beforeinput',event=>captureSelectionReplacement(event.target));
+document.addEventListener('beforeinput',event=>captureSelectionReplacement(event.target,composing||event.isComposing));
 document.addEventListener('keydown',event=>{
   const input=event.target;if(!native||!input.dataset.block||composing||event.isComposing||event.keyCode===229||input.closest('.dialogue-sheet'))return;
   if((manuscriptViewport?manuscriptViewport.paragraphBlocks(input).length:paragraphInputs(input).length)<2)return;
@@ -662,8 +701,8 @@ document.addEventListener('input',event=>{
       retained.forEach((part,index)=>{
         const {input:peer,block}=replacement.parts[index];
         if(!part){manuscriptViewport?.remove(block);virtualSources.delete(block.dataset.manuscriptBlock);block.remove();return;}
-        const source=virtualSources.get(block.dataset.manuscriptBlock);if(source){source.start=part.start;source.text=part.text;}
-        if(peer){peer.dataset.start=String(part.start);peer.dataset.length=String(part.text.length);if(peer!==input)peer.value=part.text.replace(/\r\n?/g,'\n');}
+        const source=virtualSources.get(block.dataset.manuscriptBlock);if(source){source.start=part.start;if(!part.unchanged)source.text=part.text;}
+        if(peer){peer.dataset.start=String(part.start);if(!part.unchanged){peer.dataset.length=String(part.text.length);if(peer!==input)peer.value=part.text.replace(/\r\n?/g,'\n');}}
         manuscriptViewport?.updateFragment(block,part);
       });
       compositionReflow.add(input);
@@ -688,7 +727,7 @@ document.addEventListener('input',event=>{
   if(event.target.closest('.group-title')&&preferences.writingMode==='horizontal'){event.target.style.height='0px';event.target.style.height=`${event.target.scrollHeight}px`;}
   const notice=document.querySelector('.notice span');if(notice)notice.textContent=t('unsaved');
 });
-document.addEventListener('compositionstart',event=>{captureSelectionReplacement(event.target);composing=true;compositionTarget=event.target;updateEmptyColumnCaret();clearTimeout(autosaveTimer);});
+document.addEventListener('compositionstart',event=>{captureSelectionReplacement(event.target,true);composing=true;compositionTarget=event.target;updateEmptyColumnCaret();clearTimeout(autosaveTimer);});
 document.addEventListener('compositionend',event=>{composing=false;compositionTarget=null;selectionReplacements.delete(event.target);if(event.target.dataset.block&&(compositionReflow.has(event.target)||Number(event.target.dataset.length)>16384)){compositionReflow.delete(event.target);reflowParagraph(event.target,caretPosition(event.target));}manuscriptViewport?.pruneSoon();updateEmptyColumnCaret();clearTimeout(autosaveTimer);autosaveTimer=setTimeout(()=>commitDraft(),900);});
 document.addEventListener('focusin',event=>{const scene=inputScene(event.target);if(scene)groupFocus=scene;});
 document.addEventListener('focusout',event=>{if(reflowing)return;manuscriptViewport?.pruneSoon();if(event.target.dataset.block){bodyCaret={scene:inputScene(event.target)??detail.id,id:event.target.dataset.block,start:caretPosition(event.target),end:caretPosition(event.target,event.target.selectionEnd)};if(!busy&&!composing&&!widthDrag)commitDraft();}if((event.target.dataset.field||event.target.dataset.outlineTitle)&&!busy&&!composing)commitDraft();});
@@ -760,6 +799,16 @@ function openOutlineMenu(event) {
   const id=row.dataset.select;
   outlineMenu=document.createElement('div');outlineMenu.className='outline-context-menu';outlineMenu.setAttribute('role','menu');outlineMenu.setAttribute('aria-label',t('edit'));
   outlineMenu.innerHTML=`<button role="menuitem" data-outline-rename ${!native||busy?'disabled':''}><span>${escape(t('rename'))}</span></button><button role="menuitem" data-outline-delete ${!native||busy?'disabled':''}>${icon('trash')}<span>${escape(t('remove'))}</span></button>`;
+  const sceneNode=model.nodes.find(n=>n.id===id&&n.type==='story.scene');
+  if(sceneNode){
+    const siblings=model.nodes.filter(n=>n.type==='story.scene'&&n.parent===sceneNode.parent).sort((a,b)=>a.outlineOrder-b.outlineOrder||a.id.localeCompare(b.id));
+    const next=siblings[siblings.findIndex(n=>n.id===id)+1];
+    for(const mode of ['split','merge']){
+      const button=document.createElement('button');button.setAttribute('role','menuitem');button.textContent=t(mode==='split'?'splitScene':'mergeScene');button.disabled=!native||busy||(mode==='merge'&&!next);
+      button.onclick=async event=>{event.stopPropagation();closeOutlineMenu();try{if(!await commitDraft())return;const scene=await invoke('selected',{id});const revision=model.revision;restructureScene({scene,next,mode,t,escape,save:async action=>{model=await invoke('edit',{expectedRevision:revision,action});model=await invoke('choose',{id:action.id??action.first});await loadDetail(model.selected);render();}});}catch(e){error=String(e);render();}};
+      outlineMenu.append(button);
+    }
+  }
   document.body.append(outlineMenu);
   const bounds=row.getBoundingClientRect();
   const x=event.clientX||bounds.left+20,y=event.clientY||bounds.bottom;
@@ -793,15 +842,24 @@ document.addEventListener('click',async event=>{
     if(element.dataset.select){await choose(element.dataset.select);return;}
     if(element.dataset.tab){if(!await commitDraft())return;tab=element.dataset.tab;reading=false;render();return;}
     const action=element.dataset.action;closeMenus();
+    if(action==='exportGraph'){if(!native||busy||!await commitDraft())return;closeMenus();busy=true;error='';render();try{const destination=await invoke('export_graph',{format:element.dataset.format,language});if(destination)status='exportReady';}catch(e){error=String(e);}finally{busy=false;render();}return;}
     if(action==='export'){
       if(!native||busy||!await commitDraft())return;
-      busy=true;error='';render();
-      try{const destination=await invoke('export_manuscript',{format:element.dataset.format,language});if(destination)status='exportReady';}
+      const scope=await exportScope({t,escape,selected:detail&&['story.block','story.sequence','story.scene'].includes(detail.type_id)?detail.id:null,path});if(!scope)return;
+      const settings=['pdf','script'].includes(element.dataset.format)?await pdfSettings({t,escape,script:element.dataset.format==='script'}):null;if(['pdf','script'].includes(element.dataset.format)&&!settings)return;
+      if(!await commitDraft())return;busy=true;error='';render();
+      try{const destination=await invoke('export_manuscript',{format:element.dataset.format,language,scope,settings});if(destination)status='exportReady';}
       catch(e){error=String(e);}finally{busy=false;render();}return;
     }
     if(action==='toggleLeftPanel'||action==='toggleRightPanel'){const key=action==='toggleLeftPanel'?'leftPanelOpen':'rightPanelOpen';await savePreferences({...preferences,[key]:!preferences[key]});return;}
     if(action==='newWorkspace'){if(await commitDraft())await invoke('new_workspace');return;}
     if(action==='openWorkspace'){if(await commitDraft())await showWorkspaces();return;}
+    if(action==='paths'){if(!native||busy||!await commitDraft())return;const expectedRevision=model.revision;openPaths({paths:model.paths,nodes:model.nodes,selected:path,t,escape,save:async(definitions,key,outlinePath)=>{busy=true;try{model=await invoke('edit',{expectedRevision,action:{kind:'paths',paths:definitions,outline_path:outlinePath}});path=key;const current=model.nodes.find(n=>n.id===model.selected);if(current?.type==='story.scene'&&!Object.hasOwn(current.routes,key)){const first=definitions.find(p=>(p.legacy??p.id)===key)?.scenes[0];if(first)model=await invoke('choose',{id:first});}await loadDetail(model.selected);status='saved';}finally{busy=false;render();}}});return;}
+    if(action==='narrative'){if(!native||busy||!await commitDraft())return;await openNarrative({invoke,nodes:model.nodes,paths:model.paths,t,escape,save:async(declarations,expectedRevision)=>{const selected=detail?.id;busy=true;try{model=await invoke('edit',{expectedRevision,action:{kind:'narrative',declarations}});await loadDetail(selected??model.selected);status='saved';}finally{busy=false;render();}}});return;}
+    if(action==='search'){if(await commitDraft())showSearch();return;}
+    if(action==='exportArchive'||action==='importArchive'){if(!native||busy||!await commitDraft())return;busy=true;error='';render();try{const done=await invoke(action==='exportArchive'?'export_archive':'import_archive');if(done)status=action==='exportArchive'?'archiveReady':'saved';}catch(e){error=String(e);}finally{busy=false;render();}return;}
+    if(action==='exportSharedWorkspace'||action==='exportSharedArchive'||action==='exportSharedHistory'){if(!native||busy||!await commitDraft())return;busy=true;error='';render();try{if(await invoke(action==='exportSharedWorkspace'?'export_shared_workspace':'export_shared_archive',action==='exportSharedWorkspace'?{}:{history:action==='exportSharedHistory'}))status='exportReady';}catch(e){error=String(e);}finally{busy=false;render();}return;}
+    if(action==='importWorkspace'){if(await commitDraft()){busy=true;try{await invoke('import_workspace');}finally{busy=false;render();}}return;}
     if(action==='restoreBackup'){if(await commitDraft())await showBackups();return;}
     if(action==='preferences'){showPreferences();return;}
     if(action==='importPortrait'){await importPortrait();return;}
@@ -900,6 +958,7 @@ async function start() {
   else {try {preferences={...defaultPreferences,...JSON.parse(localStorage.getItem('story-preferences')||'{}')};}catch {} }
   preferences.rightPanelOpen=false;
   language=preferences.language;
+  await loadPanelLayout();
   await refresh();
   if(native){
     await invoke('locale',{language});
@@ -913,11 +972,32 @@ async function start() {
     await listen('story://preferences',event=>{preferences=event.payload;language=preferences.language;render();});
     await listen('story://changed',async event=>{
       if(busy)return;
-      if(dirty()){pendingRemote=event.payload;error='revision_conflict';render();return;}
-      model=event.payload;await loadDetail(model.selected);status=model.saved===false?'unsaved':'saved';if(model.saved===false)error='save_failed';render();
+      if(localDirty()){if(event.payload.revision<=model?.revision)return;pendingRemote=event.payload;error='revision_conflict';render();return;}
+      if(event.payload.revision<model?.revision)return;
+      diskDirty=event.payload.saved===false;
+      model=event.payload;await loadDetail(model.selected);status=model.saved===false?'unsaved':'saved';error=model.saved===false?'save_failed':'';render();
     });
+    await listen('story://layout',event=>applyLayout(event.payload));
     await listen('story://panel',event=>{floating=event.payload;render();});
     await listen('story://save-error',()=>{status='unsaved';error='save_failed';render();});
   }
 }
 start().catch(e=>{document.getElementById('app').textContent=`${t('error')}: ${String(e)}`;});
+
+function showSearch() {
+  openSearch({t,escape,invoke,onHit:async(hit,revision)=>{
+    try {
+      if(!await commitDraft())return;tab='scenes';reading=false;await choose(hit.scene);
+      if(model.revision!==revision)return;
+      if(hit.paragraph){
+        const peers=[...document.querySelectorAll('[data-paragraph]')].filter(block=>block.dataset.paragraph===hit.paragraph);
+        const block=peers.find(block=>hit.start>=Number(block.dataset.start)&&hit.start<Number(block.dataset.start)+Number(block.dataset.length))??peers.at(-1);
+        if(block)mountManuscriptInput(document,hit.paragraph,Number(block.dataset.manuscriptBlock.split('-').at(-1)));
+        else mountManuscriptInput(document,hit.paragraph);
+        const input=[...document.querySelectorAll('textarea[data-block]')].find(input=>input.dataset.block===hit.paragraph&&hit.start>=Number(input.dataset.start)&&hit.start<=Number(input.dataset.start)+Number(input.dataset.length));
+        if(input){const source=paragraphValue(input);const start=Number(input.dataset.start);input.focus();input.setSelectionRange(source.slice(start,hit.start).replace(/\r\n/g,'\n').length,source.slice(start,hit.end).replace(/\r\n/g,'\n').length);input.scrollIntoView({block:'center',inline:'center'});}
+      }else{if(hit.field==='notes'){expandedNotes.add(hit.scene);render();}const input=hit.field==='title'?document.querySelector(`[data-outline-title="${hit.scene}"]`):document.querySelector(`[data-field="${hit.field}"]`);input?.focus();input?.setSelectionRange(hit.start,hit.end);}
+    }catch(e){error=String(e);render();}
+  }});
+}
+document.addEventListener('keydown',async event=>{if(native&&(event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='f'){event.preventDefault();if(!document.querySelector('dialog[open]')&&await commitDraft())showSearch();}});

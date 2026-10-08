@@ -180,7 +180,7 @@ macOSのpredefined QuitはAppKitの直接終了経路になるため、標準メ
 
 ## 差分ジャーナル復旧契約（接続前）
 
-`journal.rs`は保存済みcheckpointのバイト列を基準とし、共通prefix／suffixの間を置換するversion 1のJSON行レコードを扱う。before SHA-256がcheckpointまたは直前の復旧結果を識別し、after SHA-256が適用結果を検証する。sequenceは1から連続し、256件でcheckpointが必要。文書とジャーナル入力の上限は各128MiB。バイト差分なのでUnicode文字内部で境界が分かれても、復旧後の元バイト列を保持する。
+`journal.rs`は保存済みcheckpointのバイト列を基準とし、共通prefix／suffixの間を置換するversion 2のJSON行レコードを生成し、legacy version 1も読み込む。before SHA-256がcheckpointまたは直前の復旧結果を識別し、after SHA-256が適用結果を検証する。sequenceは1から連続し、256件でcheckpointが必要。文書とジャーナル入力の上限は各128MiB。バイト差分なのでUnicode文字内部で境界が分かれても、復旧後の元バイト列を保持する。
 
 prepareは状態を進めず、呼出側がappendとfsyncに成功した後にcommitする契約。recoverは改行で終わった全レコードを検証し、末尾の未完了レコードのみ除外してvalid_bytesを返す。完成レコードの破損、未知version、checksum不一致、連番不一致は復旧を拒否し、元checkpointを変更しない。SHAは誤破損検知であり認証署名ではない。
 
@@ -242,3 +242,49 @@ Hidden canvas panels return only a hidden marker instead of cloning the workspac
 段落差分の保存では、検証済みのノード構造と本文以外のDocument／Graphメタデータを保持する。候補全文をJSONとして再解析せず、同じ段落IDの変更前後・その他のプロパティ・ポート・接続・配置を照合する。差分外の変更、重複、古い段落、64件超、大きい変更は全文serializerへ戻す。キャッシュの本文はfsync成功後、完全に一致する変更前段落だけを変更後の値へ置き換える。全文経路の成功時は構造を再構築し、同期失敗やファイルstamp変化時は既存の保存キャッシュと一緒に破棄する。
 
 構造は一世代分のノード内容を追加保持するため、常駐メモリが増える。変更のない本文を毎回parse・cloneする処理を削減する一方、構造照合・バイト列生成・SHA-256・Engine snapshotの全文処理は残る。RSSとrelease測定は次の工程。
+
+### 作品内検索と範囲書き出し
+
+検索はRust正本のsnapshotをworkerで読み、本文・セリフ・役者名・シーン名・メモを走査する。最大2,000一致を保持し、40件の抜粋とUTF-16位置・元revisionだけを返す。WebViewは検索語とページ位置を持ち、正本本文を検索用に所有しない。検索後にrevisionが変わった場合は対象シーンだけを開き、古いoffsetを適用しない。
+
+書き出しのScopeはRustで検証した項目IDまたは本編／別展開。シーンの集合と祖先の構造見出しをRustで選び、すべての形式が同じ対象を使用する。外部snapshotは標準ファイルダイアログで選択したファイルだけをworkerで検証し、完成するまでは非公開の作品ディレクトリへ保存する。取り込みは現在の作品と元ファイルを変更しない。
+
+### Graph viewport focus
+
+Focus is a Rust-owned viewport command. It frames the selected nodes and their immediate neighbors, or the endpoints of a selected cable. Framing uses the unobscured canvas after reserving the icon rail and, when open, the inspector; it neither changes Document nor records an authored Undo operation. WebViews send only the action and display the existing selection projection.
+
+### Portable Story Graph archive and lineage
+
+The `.komyaku-story` archive is an application-specific binary format, not the shared Canonical Archive contract. It contains a versioned magic header followed by SHA-256 protected length-delimited records: preferences, a complete working snapshot, version count, and every immutable version's metadata/snapshot. The 2 GiB archive, 128 MiB snapshot, 16 KiB metadata and 512-version limits bound processing. No filenames from the input are extracted: canonical UUIDs identify only known snapshot/metadata paths. Import builds a hidden workspace, validates every document and history parent relation, syncs its files, and publishes it atomically. Export never replaces the destination before all records validate and the temporary file is synchronized. Credentials are excluded.
+
+History metadata defaults legacy entries to `main`. Ordered parents may number zero, one or two; each must exist at an earlier unique sequence. This ensures a DAG independently of wall-clock time. Branch heads are derived from immutable sequence order. Fork copies verified history and creates a child of the selected version in a separate workspace. Merge finds one closest common ancestor, merges independent object fields, and treats authored arrays, text, deletion/edit and same-ID addition as explicit conflicts. Side choices must match the preview's conflict paths; revision and head are checked again. Final domain validation is required. The new workspace contains a working-draft checkpoint and a two-parent merged version, preserving the source workspace.
+
+## Named reading paths and scene restructuring
+
+`Document.extensions["komyaku.story.paths"]` owns up to 32 named, ordered scene-reference lists. Legacy main/alternative routes project into stable path IDs until the first path edit. A single batch updates references and the union of narrative adjacency edges; the generic DAG validator rejects cyclic orders without partial mutation. Outline containment remains independent. Reading-path exports follow reference order, including repeated ancestor headings when returning to another sequence.
+
+Snapshots with document extensions use SavedWorkspace version 2; version 1 remains readable. This prevents older binaries from silently dropping named paths. New journal operation records use version 2 with a checksum over their payload and metadata; legacy version 1 records remain readable. The portable `.komyaku-story` archive accepts both snapshot versions.
+
+Scene split accepts a canonical block boundary or a grapheme-safe UTF-16 offset within a paragraph. Existing block IDs remain on authored blocks; a split paragraph receives a new ID for its second half. Dialogue tables remain atomic. All routes containing the source receive the continuation. Merge requires adjacent outline siblings and matching consecutive membership in every route. It appends canonical blocks and notes, removes the second scene, and preserves an ID-based split/merge event under `komyaku.story.scene-lineage` (512 events maximum). Each restructure and its routes form one undoable command.
+
+## Graph groups, portrait crop and graph export
+
+Character groups are reversible `SetGroup` commands, capped at 32 groups with 80-character names and character-only membership. Rust-rendered backgrounds follow committed member bounds and native drag previews. Portable snapshots, history and archives retain memberships. Portrait import retains at most 8MiB of original bytes per authoring window in a temporary Rust store; previews and adoption bind the import token and document revision. The saved normalized PNG contains no original metadata. Later recropping requires reimporting the original.
+
+Relationship PNG/PDF export builds an immutable filtered graph, includes localized labels and group backgrounds, fits all cards, and suppresses editing overlays. An offscreen native GPU target renders 3072×2048 pixels entirely in Rust. PNG is encoded there; PDF embeds a compressed RGB image. No frame bytes traverse the WebView. Outputs are written to a synced temporary sibling before replacement.
+
+## PDF layout settings
+
+PDF export accepts validated A4/B5/Letter dimensions, font family, font size and margins. Standard vertical pages and screenplay pages share the OpenType vertical glyph renderer. Script layout derives its rule, frame, line capacity and indentation from settings; impossible layouts are refused before file publication. Horizontal pagination and PDF media boxes use the selected dimensions. Settings are remembered in the current export UI session; they do not change the manuscript or editor appearance.
+
+## Presentation state and failed persistence
+
+Rust owns panel widths and physical window positions with logical inner sizes in a separate layout.json. Presentation changes never advance manuscript revisions. A debounced atomic writer coalesces changes; exit captures remaining windows and flushes immediately. Restore clamps rectangles to available monitors. WebViews receive layout projections and send resize commands; keyboard resizing shares the same contract.
+
+Accepted edits return saved:false when disk persistence fails. The UI retains this distinction from unsent local input, and save_now retries the accepted Rust snapshot without replaying commands or advancing revisions. Close remains blocked until manuscript persistence succeeds.
+
+## Explicit state and shared archives
+
+Author-declared entities, initial state, conditions, effects and assertions reside in the narrative extension. Each named path evaluates independently, with conditions before scene effects. Missing and explicit JSON null remain distinct. Impact reports follow route, foreshadow and declared state dependencies. Typed value controls are a UI projection of the same bounded JSON contract.
+
+Shared Archive v1 exports one Canonical document and the native graph through the workspace extension in a stored ZIP. Import validates ZIP structure, CRC, manifest and exact workspace reprojection before publishing a separate work. This bridge does not yet replace native composite persistence or history with shared Archive v2.

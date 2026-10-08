@@ -2556,6 +2556,7 @@ name = "komyaku-story-graph"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "flate2",
  "futures",
  "image",
  "lopdf",
@@ -5568,6 +5569,7 @@ dependencies = [
  "cosmic-text",
  "image",
  "pollster",
+ "serde_json",
  "unge-core",
  "unge-interaction",
  "wgpu",

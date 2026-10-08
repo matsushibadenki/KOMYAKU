@@ -68,6 +68,8 @@ pub struct SceneIndex {
     edge_index: SpatialIndex,
     incident: BTreeMap<Id, BTreeSet<Id>>,
     story: bool,
+    minimap_bounds: Option<Rect>,
+    groups: Vec<(Id, String, BTreeSet<Id>)>,
 }
 #[derive(Debug, Default)]
 pub struct Scene {
@@ -368,6 +370,13 @@ impl SceneIndex {
         }
 
         Self {
+            groups: doc
+                .graph()
+                .groups()
+                .values()
+                .map(|g| (g.id, g.label.clone(), g.nodes.clone()))
+                .collect(),
+            minimap_bounds: crate::minimap_bounds(nodes.values().map(|n| n.rect)),
             story: nodes
                 .values()
                 .any(|node| node.type_id.starts_with("story.")),
@@ -377,6 +386,10 @@ impl SceneIndex {
             node_index: SpatialIndex::new(doc),
             edge_index: SpatialIndex::from_rects(bounds),
         }
+    }
+    pub fn without_minimap(mut self) -> Self {
+        self.minimap_bounds = None;
+        self
     }
     pub fn scene(&self, viewport: Viewport, selection: &BTreeSet<Id>) -> unge_core::Result<Scene> {
         self.scene_with_preview(viewport, selection, &Preview::default())
@@ -449,6 +462,57 @@ impl SceneIndex {
         );
         grid.params[2] = 1.0;
         scene.quads.push(grid);
+        // Backgrounds follow member positions, including native drag previews.
+        const GROUP_COLORS: [[f32; 4]; 5] = [
+            [0.80, 0.87, 0.85, 0.68],
+            [0.87, 0.83, 0.91, 0.68],
+            [0.94, 0.86, 0.78, 0.68],
+            [0.81, 0.87, 0.94, 0.68],
+            [0.89, 0.90, 0.77, 0.68],
+        ];
+        for (id, label, members) in &self.groups {
+            let Some(bounds) = crate::minimap_bounds(members.iter().filter_map(|id| {
+                preview
+                    .placement
+                    .get(id)
+                    .copied()
+                    .or_else(|| self.nodes.get(id).map(|n| n.rect))
+            })) else {
+                continue;
+            };
+            let rect = Rect {
+                x: bounds.x - 24.,
+                y: bounds.y - 48.,
+                width: bounds.width + 48.,
+                height: bounds.height + 72.,
+            };
+            if rect.x + rect.width < area.x
+                || rect.x > area.x + area.width
+                || rect.y + rect.height < area.y
+                || rect.y > area.y + area.height
+            {
+                continue;
+            }
+            let color = GROUP_COLORS[(id.as_u128() % 5) as usize];
+            scene.quads.push(Quad::rectangle(rect, color, 12.));
+            scene.labels.push(TextLabel {
+                text: label
+                    .chars()
+                    .take(80)
+                    .map(|c| if c.is_control() { ' ' } else { c })
+                    .collect(),
+                rect: Rect {
+                    x: rect.x + 16.,
+                    y: rect.y + 10.,
+                    width: rect.width - 32.,
+                    height: 28.,
+                },
+                font_size: 14.,
+                right_aligned: false,
+                color: [0.19, 0.22, 0.26, 1.],
+                after_quad: scene.quads.len(),
+            });
+        }
         let mut edges: BTreeSet<_> = self.edge_index.query(area).into_iter().collect();
         for id in preview.placement.keys() {
             edges.extend(self.incident.get(id).into_iter().flatten());
@@ -679,6 +743,105 @@ impl SceneIndex {
                 scene
                     .quads
                     .push(Quad::rectangle(border, [0.2, 0.8, 0.72, 1.0], 0.0));
+            }
+        }
+        if self.story
+            && let Some(map) = self
+                .minimap_bounds
+                .and_then(|bounds| crate::Minimap::new(bounds, viewport))
+        {
+            let to_world = |rect: Rect| {
+                let p = viewport.to_world([rect.x, rect.y]);
+                Rect {
+                    x: p[0],
+                    y: p[1],
+                    width: rect.width / viewport.zoom,
+                    height: rect.height / viewport.zoom,
+                }
+            };
+            scene.quads.push(Quad::rectangle(
+                to_world(map.frame),
+                RULE,
+                5. / viewport.zoom,
+            ));
+            scene.quads.push(Quad::rectangle(
+                to_world(Rect {
+                    x: map.frame.x + 1.,
+                    y: map.frame.y + 1.,
+                    width: map.frame.width - 2.,
+                    height: map.frame.height - 2.,
+                }),
+                PAPER,
+                4. / viewport.zoom,
+            ));
+            for edge in self.edges.values() {
+                let project = |point: [f32; 2]| {
+                    viewport.to_world([
+                        map.origin[0] + (point[0] - map.bounds.x) * map.scale,
+                        map.origin[1] + (point[1] - map.bounds.y) * map.scale,
+                    ])
+                };
+                let mut line = Quad::line(project(edge.points[0]), project(edge.points[3]));
+                line.rect[2] = (line.rect[2] - 4.).max(0.001);
+                line.rect[3] = 0.8 / viewport.zoom;
+                line.params[1] = 0.;
+                line.color = edge.color.unwrap_or(RULE);
+                scene.quads.push(line);
+            }
+            for (id, node) in &self.nodes {
+                scene.quads.push(Quad::rectangle(
+                    to_world(map.project(node.rect)),
+                    if selection.contains(id) {
+                        INK
+                    } else {
+                        node.accent
+                    },
+                    1. / viewport.zoom,
+                ));
+            }
+            let projected = map.project(viewport.world_rect());
+            let f = map.frame;
+            let x = projected.x.clamp(f.x + 2., f.x + f.width - 3.);
+            let y = projected.y.clamp(f.y + 2., f.y + f.height - 3.);
+            let right = (projected.x + projected.width).clamp(x + 1., f.x + f.width - 2.);
+            let bottom = (projected.y + projected.height).clamp(y + 1., f.y + f.height - 2.);
+            scene.quads.push(Quad::rectangle(
+                to_world(Rect {
+                    x,
+                    y,
+                    width: right - x,
+                    height: bottom - y,
+                }),
+                [0.25, 0.49, 0.55, 0.10],
+                0.,
+            ));
+            for rect in [
+                Rect {
+                    x,
+                    y,
+                    width: right - x,
+                    height: 2.,
+                },
+                Rect {
+                    x,
+                    y: bottom - 2.,
+                    width: right - x,
+                    height: 2.,
+                },
+                Rect {
+                    x,
+                    y,
+                    width: 2.,
+                    height: bottom - y,
+                },
+                Rect {
+                    x: right - 2.,
+                    y,
+                    width: 2.,
+                    height: bottom - y,
+                },
+            ] {
+                scene.quads.push(Quad::rectangle(to_world(rect), TEAL, 0.));
             }
         }
         Ok(scene)
