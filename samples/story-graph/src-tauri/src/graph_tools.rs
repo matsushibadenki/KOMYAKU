@@ -224,10 +224,11 @@ pub fn graph_state(
     tools: tauri::State<Tools>,
 ) -> std::result::Result<Value, String> {
     authorize(&webview)?;
-    if webview
-        .app_handle()
-        .get_window("canvas")
-        .is_none_or(|window| !window.is_visible().unwrap_or(false))
+    if webview.label() != "controls"
+        && webview
+            .app_handle()
+            .get_window("canvas")
+            .is_none_or(|window| !window.is_visible().unwrap_or(false))
     {
         return Ok(json!({"hidden":true}));
     }
@@ -288,6 +289,29 @@ fn frame_rects(viewport: &mut Viewport, rects: &[Rect], inspector_open: bool) {
     viewport.origin = [
         (left + right) * 0.5 - (rail + width * 0.5) / viewport.zoom,
         (top + bottom) * 0.5 - height * 0.5 / viewport.zoom,
+    ];
+}
+
+fn frame_embedded(viewport: &mut Viewport, rects: &[Rect]) {
+    if rects.is_empty() {
+        return;
+    }
+    let left = rects.iter().map(|r| r.x).fold(f32::INFINITY, f32::min);
+    let top = rects.iter().map(|r| r.y).fold(f32::INFINITY, f32::min);
+    let right = rects
+        .iter()
+        .map(|r| r.x + r.width)
+        .fold(f32::NEG_INFINITY, f32::max);
+    let bottom = rects
+        .iter()
+        .map(|r| r.y + r.height)
+        .fold(f32::NEG_INFINITY, f32::max);
+    viewport.zoom = (viewport.size[0] / (right - left + 80.))
+        .min(viewport.size[1] / (bottom - top + 80.))
+        .clamp(0.02, 2.);
+    viewport.origin = [
+        (left + right) * 0.5 - viewport.size[0] * 0.5 / viewport.zoom,
+        (top + bottom) * 0.5 - viewport.size[1] * 0.5 / viewport.zoom,
     ];
 }
 
@@ -371,6 +395,10 @@ pub async fn graph_action(
                     doc.placement().values().copied().collect()
                 };
                 frame_rects(&mut viewport, &rects, state.open);
+                if super::docked_graph::visible() {
+                    // Embedded Surface bounds already exclude the rail and form.
+                    frame_embedded(&mut viewport, &rects);
+                }
             }
             host.engine
                 .dispatch("controls", Request::SetViewport { viewport })

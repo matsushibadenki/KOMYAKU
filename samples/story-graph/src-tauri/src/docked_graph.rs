@@ -91,6 +91,7 @@ mod mac {
         scale: f64,
         visible: bool,
     }
+    static VISIBLE:std::sync::atomic::AtomicBool=std::sync::atomic::AtomicBool::new(false);
     thread_local! {static PANEL:RefCell<Option<Panel>>=const{RefCell::new(None)};}
     pub fn resize(
         window: &tauri::WebviewWindow,
@@ -104,6 +105,7 @@ mod mac {
                 if let Some(panel) = slot.as_mut() {
                     panel.view.setHidden(true);
                     panel.visible = false;
+                    VISIBLE.store(false,std::sync::atomic::Ordering::Release);
                 }
                 return Ok(());
             };
@@ -157,6 +159,7 @@ mod mac {
             panel.size = size;
             panel.scale = scale;
             panel.visible = true;
+            VISIBLE.store(true,std::sync::atomic::Ordering::Release);
             engine
                 .draw_surface("controls", "docked-graph", size, scale)
                 .map_err(|e| e.code)?;
@@ -164,7 +167,7 @@ mod mac {
         })
     }
     pub fn visible() -> bool {
-        PANEL.with(|slot| slot.borrow().as_ref().is_some_and(|panel| panel.visible))
+        VISIBLE.load(std::sync::atomic::Ordering::Acquire)
     }
     pub fn draw(engine: &Engine) {
         PANEL.with(|slot| {
@@ -269,10 +272,46 @@ pub async fn docked_graph_pointer(
         {
             return Ok(before);
         }
+        if let unge_interaction::PointerEvent::Down {
+            position,
+            button: unge_interaction::PointerButton::Primary,
+            ..
+        } = &event
+        {
+            if super::graph_tools::connecting(&app) {
+                let position = *position;
+                drop(_guard);
+                super::graph_tools::click(&app, &host.engine, position);
+                return host
+                    .engine
+                    .dispatch("controls", unge_tauri::Request::Summary)
+                    .map(|s| s.revision)
+                    .map_err(|e| e.code);
+            }
+        }
+        let event = match event {
+            unge_interaction::PointerEvent::Down {
+                pointer,
+                position,
+                button: unge_interaction::PointerButton::Primary,
+                additive,
+            } if super::graph_tools::pan(&app) => unge_interaction::PointerEvent::Down {
+                pointer,
+                position,
+                button: unge_interaction::PointerButton::Pan,
+                additive,
+            },
+            other => other,
+        };
+        let released = match &event {
+            unge_interaction::PointerEvent::Up { position, .. } => Some(*position),
+            _ => None,
+        };
         let finish = matches!(
             event,
             unge_interaction::PointerEvent::Up { .. } | unge_interaction::PointerEvent::Cancel
         );
+        if cfg!(debug_assertions)&&std::env::var_os("STORY_GRAPH_PERFORMANCE_QA").is_some(){eprintln!("QA_GRAPH event={event:?}");}
         let summary = host
             .engine
             .dispatch(
@@ -285,6 +324,10 @@ pub async fn docked_graph_pointer(
             .map_err(|e| e.code)?;
         if summary.revision != before {
             let _ = app.emit("unge://changed", &summary);
+        }
+        drop(_guard);
+        if let Some(position) = released {
+            super::graph_tools::click(&app, &host.engine, position);
         }
         if finish {
             let _ = app.emit("story://view-changed", ());

@@ -1,3 +1,5 @@
+import {hitTextPosition} from './text-hit.js';
+import {mountGraphTools} from './graph-tools.js';
 import {createParagraphLayouts} from './paragraph-layout.js';
 import {installDockedGraph} from './docked-graph.js';
 import {installPerformanceQA} from './performance-qa.js';
@@ -8,6 +10,7 @@ import './style.css';
 import {mountHistory} from './history.js';
 let disposeHistory;
 let embeddedGraph=false;
+let dockedGraphTools=[];
 let syncDockedGraph=()=>{};
 let caretQA=false;
 import { fragments, inputPatch, characters, graphemeStep, canonicalPosition } from './text-performance.js';
@@ -96,6 +99,7 @@ async function loadDetail(id) {
 }
 async function refresh() { model = native ? await invoke('workspace') : preview; await loadDetail(model.selected); pendingRemote=null; render(); }
 function render() {
+  for(const tools of dockedGraphTools)tools.dispose();dockedGraphTools=[];
   paragraphLayouts.cancel();
   readingLayoutAbort?.abort();
   if(model?.paths?.length&&!model.paths.some(p=>p.key===path))path=model.paths[0].key;
@@ -188,7 +192,7 @@ ${escape(latestDetail.properties.notes||'')}</pre><div>${button('applyDraft','ap
   if(!reading&&tab==='scenes')observeManuscriptSize();
   if(tab==='history'&&!floatingWindow){const panel=shell.querySelector('.writing');panel.classList.add('history-panel');disposeHistory=mountHistory(panel,{native,invoke,t,escape,language,commit:commitDraft,revision:()=>model.revision,title:projectTitle});if(native)panel.insertAdjacentHTML('afterbegin',`<button class="history-float-button" data-float-panel="history">${escape(t(panelWindow==='history'?'returnSidePanel':'floatSidePanel'))}</button>`);}
   if(native&&!panelWindow&&historyDocked()){const panel=shell.querySelector('.history-docked');disposeHistory=mountHistory(panel,{native,invoke,t,escape,language,commit:commitDraft,revision:()=>model.revision,title:projectTitle});}
-  if(embeddedGraph&&native&&!panelWindow){shell.querySelector('.writing').classList.add('graph-writing');const content=shell.querySelector('.editor-content');content.className='editor-content docked-graph-content';content.innerHTML=`<div class="docked-graph-actions"><button data-action="graph">${escape(t('editor'))}</button><button data-action="floatGraph">${escape(t('graph'))} ↗</button><button data-docked-action="zoom" data-factor="1.2" aria-label="${escape(t('zoomIn'))}">＋</button><button data-docked-action="zoom" data-factor="0.8333333333" aria-label="${escape(t('zoomOut'))}">−</button><button data-docked-action="fit">${escape(t('fit'))}</button><button data-docked-action="pan" aria-pressed="false">${escape(t('pan'))}</button></div><div data-docked-graph aria-label="${escape(t('relationships'))}" tabindex="0"></div>`;}
+  if(embeddedGraph&&native&&!panelWindow){shell.querySelector('.writing').classList.add('graph-writing');const content=shell.querySelector('.editor-content');content.className='editor-content docked-graph-content';content.innerHTML=`<div class="docked-graph-actions"><button data-action="graph">${escape(t('editor'))}</button><button data-action="floatGraph">${escape(t('graph'))} ↗</button><button data-docked-action="zoom" data-factor="1.2" aria-label="${escape(t('zoomIn'))}">＋</button><button data-docked-action="zoom" data-factor="0.8333333333" aria-label="${escape(t('zoomOut'))}">−</button><button data-docked-action="fit">${escape(t('fit'))}</button></div><div class="docked-graph-workspace"><nav class="docked-graph-tools"><div class="icon-menu-items"></div></nav><div data-docked-graph aria-label="${escape(t('relationships'))}" tabindex="0"></div><aside class="docked-graph-inspector" hidden><main id="inspector"></main></aside></div>`;const rail=content.querySelector('.docked-graph-tools'),panel=content.querySelector('.docked-graph-inspector');dockedGraphTools=[mountGraphTools(rail),mountGraphTools(panel,{inspector:true,onState:state=>{panel.hidden=!state.open;}})];}
   renderPanelHandles(t,native);
   syncDockedGraph();
   if(reopenPreferences) showPreferences();
@@ -387,7 +391,7 @@ const fragmentKey=(scene,id,index)=>`${scene}:${id}-${index}`;
 const paragraphLayouts=createParagraphLayouts({
   blocked:()=>composing||Boolean(pointerSelection)||Boolean(widthDrag)||busy||reading||embeddedGraph,
   current:input=>paragraphById(paragraphDocument(input),input.dataset.block),
-  apply:input=>{const active=document.activeElement;const focused=active?.dataset.block===input.dataset.block&&inputScene(active)===inputScene(input);reflowParagraph(focused?active:input,focused?caretPosition(active):Number(input.dataset.start),focused);}
+  apply:input=>{if(caretQA){const parts=paragraphLayouts.get(paragraphById(paragraphDocument(input),input.dataset.block));invoke('performance_qa_caret',{values:[-13,preferences.writingMode==='vertical'?1:0,parts.length,parts[0].text.length,parts[1]?.text.length??0,parts.at(-1).text.length,input.clientWidth,input.clientHeight,0,0]}).catch(()=>{});}const active=document.activeElement;const focused=active?.dataset.block===input.dataset.block&&inputScene(active)===inputScene(input);reflowParagraph(focused?active:input,focused?caretPosition(active):Number(input.dataset.start),focused);}
 });
 function paragraphMarkup(node,lazy=false,scene=detail?.id) {
   return (paragraphLayouts.get(node)??fragments(paragraphText(node))).map((part,index)=>{
@@ -624,7 +628,15 @@ function hitParagraphPosition(input,x,y) {
   const px=Math.max(bounds.left+1,Math.min(x,bounds.right-1)),py=Math.max(bounds.top+1,Math.min(y,bounds.bottom-1));
   const caret=document.caretPositionFromPoint?.(px,py),range=caret?null:document.caretRangeFromPoint?.(px,py);
   const node=caret?.offsetNode??range?.startContainer,offset=caret?.offset??range?.startOffset;
-  const position=node===text?caretPosition(input,Math.min(offset,input.value.length)):null;
+  let position=node===text?caretPosition(input,Math.min(offset,input.value.length)):null;
+  if(position===null){
+    // WebKit can return the underlying native textarea rather than its text
+    // mirror. Range geometry still describes the same glyphs. Search in reading
+    // order instead of measuring every glyph in a potentially large cell.
+    const glyph=document.createRange();
+    const best=hitTextPosition(text.data,px,py,preferences.writingMode==='vertical',(i,end)=>{glyph.setStart(text,i);glyph.setEnd(text,end);return glyph.getBoundingClientRect();});
+    glyph.detach();position=caretPosition(input,Math.min(best,input.value.length));
+  }
   mirror.remove();range?.detach();return position;
 }
 function paintParagraphSelection(input) {
@@ -755,7 +767,9 @@ document.addEventListener('pointerdown',event=>{
   }
   clearParagraphSelection();
   if(native&&!composing&&event.button===0&&input.dataset.block){
-    const pending={input,anchor:null,pointer:event.pointerId,drag:true,crossed:false};pointerSelection=pending;
+    const owned=Boolean(input.closest('.dialogue-sheet')),anchor=owned?hitParagraphPosition(input,event.clientX,event.clientY):null;
+    const pending={input,anchor,pointer:event.pointerId,drag:true,crossed:false,owned:owned&&anchor!==null};pointerSelection=pending;
+    if(pending.owned){event.preventDefault();input.setPointerCapture(event.pointerId);reflowing=true;focusLogicalParagraph(input,anchor);reflowing=false;return;}
     // Let the native pointer default action establish the anchor. In WebKit,
     // a mirror inserted before pointerdown completes can report its start.
     requestAnimationFrame(()=>{if(pointerSelection===pending)pending.anchor=caretPosition(input,input.selectionDirection==='backward'?input.selectionEnd:input.selectionStart);});
@@ -795,7 +809,7 @@ function extendPointerSelection(event){
     const block=document.elementFromPoint(x,y)?.closest('.manuscript-block');
     if(!block||inputScene(block)!==inputScene(pending.input))return;
     manuscriptViewport?.mount(block);
-    const target=pointerParagraph(block,x,y);if(!target||target===pending.input&&!pending.crossed)return;
+    const target=pointerParagraph(block,x,y);if(!target||target===pending.input&&!pending.crossed&&!pending.owned)return;
     const focus=hitParagraphPosition(target,x,y);if(focus===null)return;
     pending.anchorPoint??={id:pending.input.dataset.block,offset:pending.anchor};
     pending.crossed=true;pending.focus=focus;
@@ -818,7 +832,7 @@ function finishPointerSelection(event){
       if(block&&inputScene(block)===inputScene(pending.input)){
         manuscriptViewport?.mount(block);
         const target=pointerParagraph(block,event.clientX,event.clientY);
-        if(target&&target!==pending.input){
+        if(target&&(target!==pending.input||pending.owned)){
           const focus=hitParagraphPosition(target,event.clientX,event.clientY);
           if(focus!==null){pending.anchorPoint??={id:pending.input.dataset.block,offset:pending.anchor};pending.crossed=true;pending.focus=focus;
             if(target.dataset.block===pending.anchorPoint.id&&!documentSelection)selectParagraphPosition(target,pointSelection(paragraphValue(target).length,pending.anchor,focus));
@@ -1240,7 +1254,7 @@ async function start() {
         else {const canonical=applyRemoteParagraphs(target.properties.canonical,delta.paragraphs);if(canonical){target.properties={...target.properties,canonical};reused=true;}}
       }
       diskDirty=event.payload.saved===false;
-      model=event.payload;if(!reused)await loadDetail(model.selected);status=model.saved===false?'unsaved':'saved';error=model.saved===false?'save_failed':'';render();
+      model=event.payload;if(!reused)await loadDetail(model.selected);status=model.saved===false?'unsaved':'saved';error=model.saved===false?'save_failed':'';if(embeddedGraph){for(const tools of dockedGraphTools)tools.refresh();}else render();
     });
     await listen('story://layout',event=>applyLayout(event.payload));
     await listen('story://panel',event=>{floating=event.payload;render();});

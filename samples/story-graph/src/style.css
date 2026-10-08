@@ -478,3 +478,24 @@ body[data-panel-window=history] main>.writing {display:flex!important;height:100
 [data-docked-graph] {flex:1;min-width:0;min-height:0;touch-action:none;}
 
 .graph-writing .editor-actions {display:none;}
+
+.docked-graph-workspace {display:flex;flex:1;min-height:0;min-width:0;overflow:hidden;}
+.docked-graph-tools {width:48px;flex:none;padding:5px;border-right:1px solid var(--line);background:var(--panel);display:flex;}
+.docked-graph-tools .icon-menu-items {display:flex;flex-direction:column;flex:1;gap:2px;overflow-y:auto;}
+.docked-graph-tools .graph-tool {width:36px;height:36px;padding:8px;border:0;background:transparent;flex-shrink:0;}
+.docked-graph-tools .graph-tool svg {width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;}
+.docked-graph-tools .graph-tool[aria-pressed=true] {background:var(--selected);color:var(--accent);}
+.docked-graph-tools .graph-tools-bottom {display:flex;flex-direction:column;gap:2px;margin-top:auto;padding-top:12px;}
+.docked-graph-tools .graph-tools-divider {height:1px;flex-shrink:0;background:var(--line);margin:6px;}
+.docked-graph-inspector {width:280px;max-width:40%;flex:none;padding:16px;border-left:1px solid var(--line);overflow:auto;}
+.docked-graph-inspector[hidden] {display:none;}
+.docked-graph-inspector header {display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:16px;}
+.docked-graph-inspector h1 {font-size:16px;margin:0;}
+.docked-graph-inspector form,.docked-graph-inspector label {display:flex;flex-direction:column;gap:6px;}
+.docked-graph-inspector form {gap:14px;}
+.docked-graph-inspector input,.docked-graph-inspector select,.docked-graph-inspector textarea {width:100%;min-width:0;font:inherit;padding:8px;}
+.docked-graph-inspector textarea {min-height:96px;resize:vertical;}
+.docked-graph-inspector label.check {flex-direction:row;align-items:center;}
+.docked-graph-inspector .check input {width:auto;}
+.docked-graph-inspector .status {font-size:12px;overflow-wrap:anywhere;}
+@media (max-width:700px) {.docked-graph-inspector {width:220px;padding:10px;}}
