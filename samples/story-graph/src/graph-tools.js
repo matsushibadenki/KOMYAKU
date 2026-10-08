@@ -54,7 +54,7 @@ function panel(){mount.querySelector('[role="status"]')?.remove();const root=mou
 function nodeType(id){return state.nodes.find(n=>n.id===id)?.type;}
 async function refresh(force=false){if(disposed||!mount.isConnected)return;if(inspector&&focusedDirty&&!force){return;}const ticket=++refreshTicket;try{const next=await invoke('graph_state');if(disposed||ticket!==refreshTicket||next.hidden)return;state=next;onState(state);inspector?panel():rail();}catch(e){message(t('error'));}}
 if(mount===document.body)subscribe('story://history-command',event=>{if(document.activeElement?.matches('input,textarea'))document.execCommand(event.payload);else if(state)act({kind:event.payload});});
-subscribe('graph://changed',()=>refresh());subscribe('story://view-changed',()=>refresh());subscribe('story://changed',()=>refresh());subscribe('story://preferences',()=>refresh());
+subscribe('graph://changed',()=>refresh());subscribe('story://view-changed',()=>refresh());subscribe('story://changed',()=>refresh());subscribe('unge://changed',()=>refresh());subscribe('story://preferences',()=>refresh());
 refresh();
 return {refresh,dispose(){disposed=true;refreshTicket++;for(const unsubscribe of subscriptions)unsubscribe();}};
 }

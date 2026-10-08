@@ -91,7 +91,7 @@ mod mac {
         scale: f64,
         visible: bool,
     }
-    static VISIBLE:std::sync::atomic::AtomicBool=std::sync::atomic::AtomicBool::new(false);
+    static VISIBLE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     thread_local! {static PANEL:RefCell<Option<Panel>>=const{RefCell::new(None)};}
     pub fn resize(
         window: &tauri::WebviewWindow,
@@ -105,7 +105,7 @@ mod mac {
                 if let Some(panel) = slot.as_mut() {
                     panel.view.setHidden(true);
                     panel.visible = false;
-                    VISIBLE.store(false,std::sync::atomic::Ordering::Release);
+                    VISIBLE.store(false, std::sync::atomic::Ordering::Release);
                 }
                 return Ok(());
             };
@@ -159,7 +159,7 @@ mod mac {
             panel.size = size;
             panel.scale = scale;
             panel.visible = true;
-            VISIBLE.store(true,std::sync::atomic::Ordering::Release);
+            VISIBLE.store(true, std::sync::atomic::Ordering::Release);
             engine
                 .draw_surface("controls", "docked-graph", size, scale)
                 .map_err(|e| e.code)?;
@@ -273,21 +273,41 @@ pub async fn docked_graph_pointer(
             return Ok(before);
         }
         if let unge_interaction::PointerEvent::Down {
+            pointer,
             position,
             button: unge_interaction::PointerButton::Primary,
             ..
         } = &event
+            && super::graph_tools::connecting(&app)
         {
-            if super::graph_tools::connecting(&app) {
-                let position = *position;
-                drop(_guard);
-                super::graph_tools::click(&app, &host.engine, position);
-                return host
-                    .engine
-                    .dispatch("controls", unge_tauri::Request::Summary)
-                    .map(|s| s.revision)
-                    .map_err(|e| e.code);
+            app.state::<super::graph_tools::Tools>()
+                .state
+                .lock()
+                .map_err(|_| "state_unavailable")?
+                .consumed_pointer = Some(*pointer);
+            let position = *position;
+            drop(_guard);
+            super::graph_tools::click(&app, &host.engine, position);
+            return host
+                .engine
+                .dispatch("controls", unge_tauri::Request::Summary)
+                .map(|s| s.revision)
+                .map_err(|e| e.code);
+        }
+        if let unge_interaction::PointerEvent::Up { pointer, .. } = &event {
+            let tools = app.state::<super::graph_tools::Tools>();
+            let mut state = tools.state.lock().map_err(|_| "state_unavailable")?;
+            if state.consumed_pointer == Some(*pointer) {
+                state.consumed_pointer = None;
+                return Ok(before);
             }
+        }
+        if matches!(event, unge_interaction::PointerEvent::Cancel) {
+            app.state::<super::graph_tools::Tools>()
+                .state
+                .lock()
+                .map_err(|_| "state_unavailable")?
+                .consumed_pointer = None;
         }
         let event = match event {
             unge_interaction::PointerEvent::Down {
@@ -311,7 +331,9 @@ pub async fn docked_graph_pointer(
             event,
             unge_interaction::PointerEvent::Up { .. } | unge_interaction::PointerEvent::Cancel
         );
-        if cfg!(debug_assertions)&&std::env::var_os("STORY_GRAPH_PERFORMANCE_QA").is_some(){eprintln!("QA_GRAPH event={event:?}");}
+        if cfg!(debug_assertions) && std::env::var_os("STORY_GRAPH_PERFORMANCE_QA").is_some() {
+            eprintln!("QA_GRAPH event={event:?}");
+        }
         let summary = host
             .engine
             .dispatch(

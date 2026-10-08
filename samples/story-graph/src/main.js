@@ -99,6 +99,8 @@ async function loadDetail(id) {
 }
 async function refresh() { model = native ? await invoke('workspace') : preview; await loadDetail(model.selected); pendingRemote=null; render(); }
 function render() {
+  const activeBefore=document.activeElement;
+  const logicalCursor=activeBefore?.dataset?.block?{start:caretPosition(activeBefore),end:caretPosition(activeBefore,activeBefore.selectionEnd),direction:activeBefore.selectionDirection}:null;
   for(const tools of dockedGraphTools)tools.dispose();dockedGraphTools=[];
   paragraphLayouts.cancel();
   readingLayoutAbort?.abort();
@@ -120,7 +122,7 @@ function render() {
   const listScroll=document.querySelector('.node-list')?.scrollTop||0;
   renderedDetailId=detail?.id;
   const active=document.activeElement;
-  const cursor=active?.dataset?.block ? {scene:inputScene(active),block:active.dataset.block,fragment:active.dataset.fragment,start:active.selectionStart,end:active.selectionEnd} : active?.dataset?.outlineTitle ? {title:active.dataset.outlineTitle,start:active.selectionStart,end:active.selectionEnd,direction:active.selectionDirection} : active?.dataset?.field ? {key:active.dataset.field,start:active.selectionStart,end:active.selectionEnd} : null;
+  const cursor=active?.dataset?.block ? {scene:inputScene(active),block:active.dataset.block,fragment:active.dataset.fragment,start:active.selectionStart,end:active.selectionEnd,logical:logicalCursor} : active?.dataset?.outlineTitle ? {title:active.dataset.outlineTitle,start:active.selectionStart,end:active.selectionEnd,direction:active.selectionDirection} : active?.dataset?.field ? {key:active.dataset.field,start:active.selectionStart,end:active.selectionEnd} : null;
   document.documentElement.lang = language;
   const projectTitle=model?.projectTitle?.trim()||t(model?.untitled?'untitledProject':'project');
   const windowTitle = `${projectTitle} · KOMYAKU Story Graph${floatingWindow ? ` · ${t('editor')}` : panelWindow==='navigator'?` · ${t('scenes')}`:panelWindow==='inspector'?` · ${t('relationships')}`:panelWindow==='history'?` · ${t('history')}`:''}`;
@@ -181,9 +183,20 @@ ${escape(latestDetail.properties.notes||'')}</pre><div>${button('applyDraft','ap
   resizeManuscript();
   if(cursor) {
     const scope=cursor.scene?shell.querySelector(`[data-scene="${cursor.scene}"]`):shell;
-    if(cursor.block)mountManuscriptInput(scope,cursor.block,cursor.fragment??0);
-    const input=scope?.querySelector(cursor.block?`[data-block="${cursor.block}"][data-fragment="${cursor.fragment??0}"]`:cursor.title?`[data-outline-title="${cursor.title}"]`:`[data-field="${cursor.key}"]`);
-    if(input){input.focus({preventScroll:true});if(typeof cursor.start==='number' && input.setSelectionRange)input.setSelectionRange(cursor.start,cursor.end,cursor.direction);}
+    let input;
+    if(cursor.block&&cursor.logical){
+      const position=cursor.logical.direction==='backward'?cursor.logical.start:cursor.logical.end;
+      const block=manuscriptViewport?.findParagraphFragment(cursor.block,position,cursor.scene??detail?.id)??[...scope?.querySelectorAll('[data-paragraph]')??[]].find(block=>block.dataset.paragraph===cursor.block&&position>=Number(block.dataset.start)&&position<=Number(block.dataset.start)+Number(block.dataset.length));
+      if(block){manuscriptViewport?.mount(block);input=block.querySelector('textarea');}
+      else{mountManuscriptInput(scope,cursor.block,0);input=scope?.querySelector(`[data-block="${cursor.block}"]`);}
+      if(input){reflowing=true;focusLogicalParagraph(input,position);reflowing=false;
+        if(cursor.logical.end>cursor.logical.start&&!input.closest('.dialogue-sheet'))selectParagraphPosition(document.activeElement,{anchor:cursor.logical.direction==='backward'?cursor.logical.end:cursor.logical.start,focus:position});
+        else if(cursor.logical.end>cursor.logical.start)input.setSelectionRange(cursor.start,cursor.end,cursor.logical.direction);
+      }
+    }else{
+      input=scope?.querySelector(cursor.title?`[data-outline-title="${cursor.title}"]`:`[data-field="${cursor.key}"]`);
+      if(input){input.focus({preventScroll:true});if(typeof cursor.start==='number' && input.setSelectionRange)input.setSelectionRange(cursor.start,cursor.end,cursor.direction);}
+    }
   }
   shell.querySelector('.editor-actions').insertAdjacentHTML('afterbegin',button('writingAssist','writingAssist',null,!native||busy||reading||detail?.type_id!=='story.scene'||(floating&&!floatingWindow)));
   const sceneViewport=shell.querySelector('.scene-writing .manuscript-pages');if(sceneViewport&&preferences.writingMode==='vertical')sceneViewport.scrollLeft=sceneScroll;
@@ -192,7 +205,7 @@ ${escape(latestDetail.properties.notes||'')}</pre><div>${button('applyDraft','ap
   if(!reading&&tab==='scenes')observeManuscriptSize();
   if(tab==='history'&&!floatingWindow){const panel=shell.querySelector('.writing');panel.classList.add('history-panel');disposeHistory=mountHistory(panel,{native,invoke,t,escape,language,commit:commitDraft,revision:()=>model.revision,title:projectTitle});if(native)panel.insertAdjacentHTML('afterbegin',`<button class="history-float-button" data-float-panel="history">${escape(t(panelWindow==='history'?'returnSidePanel':'floatSidePanel'))}</button>`);}
   if(native&&!panelWindow&&historyDocked()){const panel=shell.querySelector('.history-docked');disposeHistory=mountHistory(panel,{native,invoke,t,escape,language,commit:commitDraft,revision:()=>model.revision,title:projectTitle});}
-  if(embeddedGraph&&native&&!panelWindow){shell.querySelector('.writing').classList.add('graph-writing');const content=shell.querySelector('.editor-content');content.className='editor-content docked-graph-content';content.innerHTML=`<div class="docked-graph-actions"><button data-action="graph">${escape(t('editor'))}</button><button data-action="floatGraph">${escape(t('graph'))} ↗</button><button data-docked-action="zoom" data-factor="1.2" aria-label="${escape(t('zoomIn'))}">＋</button><button data-docked-action="zoom" data-factor="0.8333333333" aria-label="${escape(t('zoomOut'))}">−</button><button data-docked-action="fit">${escape(t('fit'))}</button></div><div class="docked-graph-workspace"><nav class="docked-graph-tools"><div class="icon-menu-items"></div></nav><div data-docked-graph aria-label="${escape(t('relationships'))}" tabindex="0"></div><aside class="docked-graph-inspector" hidden><main id="inspector"></main></aside></div>`;const rail=content.querySelector('.docked-graph-tools'),panel=content.querySelector('.docked-graph-inspector');dockedGraphTools=[mountGraphTools(rail),mountGraphTools(panel,{inspector:true,onState:state=>{panel.hidden=!state.open;}})];}
+  if(embeddedGraph&&native&&!panelWindow){shell.querySelector('.writing').classList.add('graph-writing');const content=shell.querySelector('.editor-content');content.className='editor-content docked-graph-content';content.innerHTML=`<div class="docked-graph-actions"><button data-action="graph">${escape(t('editor'))}</button><button data-action="floatGraph">${escape(t('graph'))} ↗</button><button data-docked-action="zoom" data-factor="1.2" aria-label="${escape(t('zoomIn'))}">＋</button><button data-docked-action="zoom" data-factor="0.8333333333" aria-label="${escape(t('zoomOut'))}">−</button><button data-docked-action="fit">${escape(t('fit'))}</button></div><div class="docked-graph-workspace"><nav class="docked-graph-tools"><div class="icon-menu-items"></div></nav><div data-docked-graph aria-label="${escape(t('relationships'))}" tabindex="0"></div><aside class="docked-graph-inspector" hidden><div id="inspector"></div></aside></div>`;const rail=content.querySelector('.docked-graph-tools'),panel=content.querySelector('.docked-graph-inspector');dockedGraphTools=[mountGraphTools(rail),mountGraphTools(panel,{inspector:true,onState:state=>{panel.hidden=!state.open;}})];}
   renderPanelHandles(t,native);
   syncDockedGraph();
   if(reopenPreferences) showPreferences();
@@ -459,6 +472,15 @@ function resizeOutlineTitle(input) {
     input.style.width=`${width}px`;input.style.width=`${Math.max(width,input.scrollWidth)}px`;
   }else {input.style.height='0px';input.style.height=`${input.scrollHeight}px`;}
 }
+const verticalMeasures=new WeakMap();
+function verticalTextExtent(input) {
+  const style=getComputedStyle(input),text=input.value||input.placeholder||' ',height=input.clientHeight;
+  const key=[height,style.font,style.lineHeight,style.letterSpacing,style.wordSpacing,style.padding,style.wordBreak,style.overflowWrap,style.tabSize,style.textOrientation].join('|');
+  const cached=verticalMeasures.get(input);if(cached?.text===text&&cached.key===key)return cached.width;
+  const probe=paragraphOverlay(input);probe.textContent=text;
+  Object.assign(probe.style,{position:'fixed',inset:'auto',left:'0',top:'0',width:'max-content',height:`${height}px`,visibility:'hidden',overflow:'visible'});
+  document.body.append(probe);const width=Math.max(preferences.bodySize*preferences.lineHeight,Math.ceil(probe.getBoundingClientRect().width));probe.remove();verticalMeasures.set(input,{text,key,width});return width;
+}
 function resizeManuscript(scope=null) {
   if(!scope) {
     document.querySelectorAll('textarea[data-outline-title]').forEach(resizeOutlineTitle);
@@ -475,7 +497,7 @@ function resizeManuscript(scope=null) {
     const wrapper=input.closest('.manuscript-block');
     if(!input.closest('.dialogue-sheet')){const node=paragraphById(paragraphDocument(input),input.dataset.block);paragraphLayouts.queue(input,node,node?paragraphText(node):'');}
     const stretch=wrapper?.parentElement.classList.contains('manuscript-pages')&&wrapper===wrapper.parentElement.lastElementChild&&input.parentElement===wrapper;
-    if(preferences.writingMode==='vertical'){input.style.flex='none';input.style.minHeight='0px';input.style.height='100%';input.style.minWidth='0px';const capacity=Math.max(1,Math.floor(input.clientHeight/preferences.bodySize));const columns=(input.value||input.placeholder||' ').split('\n').reduce((sum,line)=>sum+Math.max(1,Math.ceil([...line].length/capacity)),0);input.style.width=`${columns*preferences.bodySize*preferences.lineHeight}px`;input.style.width=`${Math.max(input.scrollWidth,columns*preferences.bodySize*preferences.lineHeight)}px`;if(wrapper)wrapper.style.width=`${Math.max(...[...wrapper.querySelectorAll('textarea')].map(item=>parseFloat(item.style.width)||preferences.bodySize*preferences.lineHeight))}px`;const actor=wrapper?.querySelector('.dialogue-actor');if(actor)wrapper.querySelectorAll('.dialogue-sheet td').forEach(cell=>cell.style.setProperty('width',wrapper.style.width,'important'));return;}
+    if(preferences.writingMode==='vertical'){input.style.flex='none';input.style.minHeight='0px';input.style.height='100%';input.style.minWidth='0px';input.style.width=`${verticalTextExtent(input)}px`;if(wrapper)wrapper.style.width=`${Math.max(...[...wrapper.querySelectorAll('textarea')].map(item=>parseFloat(item.style.width)||preferences.bodySize*preferences.lineHeight))}px`;const actor=wrapper?.querySelector('.dialogue-actor');if(actor)wrapper.querySelectorAll('.dialogue-sheet td').forEach(cell=>cell.style.setProperty('width',wrapper.style.width,'important'));return;}
     if(wrapper){wrapper.style.width='';wrapper.querySelectorAll('.dialogue-sheet td').forEach(cell=>cell.style.removeProperty('width'));}input.style.width='';input.style.minWidth='';
     input.style.flex='none';input.style.minHeight='0px';input.style.height='0px';
     const height=input.scrollHeight;
@@ -924,6 +946,7 @@ document.addEventListener('keydown',event=>{
   const input=event.target;if(!native||!input.dataset.block||composing||event.isComposing||event.keyCode===229||input.closest('.dialogue-sheet'))return;
   if((manuscriptViewport?manuscriptViewport.paragraphBlocks(input).length:paragraphInputs(input).length)<2)return;
   if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='a'){event.preventDefault();selectParagraphPosition(input,{anchor:0,focus:paragraphValue(input).length});return;}
+  if((event.metaKey&&['ArrowUp','ArrowDown'].includes(event.key))||(event.ctrlKey&&['Home','End'].includes(event.key))){event.preventDefault();const end=['ArrowDown','End'].includes(event.key),position=end?paragraphValue(input).length:0;if(event.shiftKey){const anchor=selectedParagraph(input)?paragraphSelection.anchor:caretPosition(input,input.selectionDirection==='backward'?input.selectionEnd:input.selectionStart);selectParagraphPosition(input,{anchor,focus:position});}else{clearParagraphSelection();focusLogicalParagraph(input,position);}return;}
   const backward=preferences.writingMode==='vertical'?'ArrowUp':'ArrowLeft',forward=preferences.writingMode==='vertical'?'ArrowDown':'ArrowRight';
   if(event.shiftKey&&!event.metaKey&&!event.ctrlKey&&!event.altKey&&[backward,forward].includes(event.key)){
     event.preventDefault();const direction=event.key===forward?1:-1;

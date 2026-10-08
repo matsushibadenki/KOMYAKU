@@ -13,6 +13,7 @@ pub struct ToolState {
     pub edge: Option<Id>,
     pub open: bool,
     pub form: Option<String>,
+    pub consumed_pointer: Option<u32>,
 }
 fn authorize(webview: &tauri::Webview) -> std::result::Result<(), String> {
     if ["graph-rail", "graph-inspector", "controls"].contains(&webview.label()) {
