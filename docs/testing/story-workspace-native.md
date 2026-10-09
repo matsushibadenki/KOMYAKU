@@ -85,3 +85,95 @@
 [Done] The shared Archive package now has the independent [Story History v3 reference contract](../formats/komyaku-story-archive-v3.md), retaining every exact composite Snapshot alongside nested verified v2 history. Six reference tests pass.
 
 [Next] These remain **internal validated-candidate primitives**, not ordinary Agent commands or production runtime adoption. Add authoritative current-state derivation for named/alternative saves, complete author/label/time metadata, resolve normalized-input/schema/resource conformance, register production migrations/ACL/IPC/adapters, connect historical references to Asset reclamation and implement native v3 transactional import/export. No production migration or command was added in this stage. Earlier notices that composite history/format support is entirely absent are superseded only for this tested internal/reference scope.
+
+## Authoritative capture and image declaration conformance — 2026-10-09
+
+🟢 [Done] Native normalized Document validation now accepts the same `image/` subtype grammar as the shared schema. The single corpus consumed by JavaScript and Rust contains 60 cases, including JPEG/WebP/GIF/SVG/AVIF declarations, malformed media types, UTF-16 alternative-text boundaries and safe integer dimensions. Schema acceptance does not authorize decoding or establish rendering support.
+
+🟢 [Done] Internal `capture_current` takes operation identity, revision and history guards, with no caller-supplied Document/Graph/Paths. Inside the reserved SQLite writer transaction it checks receipts first, reads and validates authoritative composite state, and adopts exact Snapshot bytes, history/head/selection, Asset references and receipt atomically. Named and alternative kinds are supported; initial/restore/reviewed merge still use their distinct candidate contracts. Regression covers a working Path edit, exact captures, replay after a newer alternative without rewinding state, changed-request collision, stale revision and malformed stored state without extra history or receipts.
+
+🟠 [Next] This remains an internal boundary. Production owner/IPC/ACL, complete metadata, Asset reclamation and native v3 import/export are unfinished. N3S remains open.
+
+Verification: `cargo test --lib --manifest-path apps/desktop/src-tauri/Cargo.toml` passed 62 tests with one ignored performance fixture. The repository `bun test` run passed 567 tests with 25 PostgreSQL-dependent skips; the shared conformance corpus alone passed all 60 cases. `git diff --check` passed. No UI or native IPC verification is claimed for this internal boundary.
+
+## Composite history metadata — 2026-10-09
+
+🟢 [Done] Internal Version persistence includes optional `metadata` with `authorId`, nullable `label` and UTC `createdAt`. Branch creation and update timestamps are persisted with the Version, state, ordered parents, selection, Asset closure and receipt. UUID author identity, Gregorian UTC datetime (including optional seconds) and the shared 1,000 UTF-16-unit label bound are validated before adoption. Supplying metadata does not authenticate the author; trusted author derivation remains a production-owner requirement.
+
+🟢 [Done] Transactional, repeatable migration upgrades legacy internal tables with nullable columns. Existing historical identities and timestamps are not fabricated. A legacy request omits `metadata` when serialized, preserving its exact receipt identity. Old rows remain unknown/null; no conversion to a valid v3 manifest is claimed for those incomplete rows.
+
+🟢 [Done] Regression reconstructs a legacy schema, migrates it twice and successfully replays its exact request; injects receipt-stage failure and proves no Version/state adoption; retries successfully, checks multilingual metadata and new Branch timestamps, and rejects an altered label under an existing operation ID. File-backed history reopening preserves exact metadata across named, alternative, restore and merge rows. Invalid author IDs, invalid dates, non-UTC offsets and astral-label overflow are rejected. Full Rust suite: **64 passed / 1 ignored**.
+
+🟠 [Next] Register production migrations/commands/ACL and Agent adapters, require complete metadata for new product operations with author identity derived by the owner, protect historical Assets from reclamation, and connect native Archive v3 import/export. N3S is not complete.
+
+## Production Asset retention and schema provisioning — 2026-10-09
+
+🟢 [Done] Tauri registers migration 10, provisioning composite current state/receipts, immutable Versions/ordered parents, Branch/selection, current/historical Asset references and nullable history metadata. Existing internal migration remains compatible; runtime commands are not registered by this change.
+
+🟢 [Done] `local_retained_asset_references` combines ordinary draft, imported Archive, ordinary immutable Version, composite current state and composite immutable Version references. Ordinary draft saves and Version adoption use it when marking Archive Assets active/quarantined; active-preview removal and abandoned-preview quarantine require no retained reference. Quarantine listing independently excludes any referenced Asset even if its persisted lifecycle flag is stale. No physical byte deletion is implemented.
+
+🟢 [Done] The file-backed native regression applies the registered migration, repeats schema setup and runs the internal migration; verifies current-only protection, then retains a PNG solely through a composite immutable Version after removing its working reference. An ordinary draft save keeps Archive bytes active and an aged pending preview protected. A deliberately stale quarantine flag cannot expose the PNG as a candidate. Full DB close/reopen retains exact bytes and quarantine exclusion. Only explicit fixture deletion of the final history reference permits quarantine and listing. Existing lifecycle and restore tests remain green.
+
+Verification: full Rust library suite **65 passed / 1 ignored**; `git diff --check` passed. This exercises registered migration SQL and production persistence functions directly. ⭕️ [Pending] Packaged WebView startup on an existing profile with migration 10 has not been run for this change. 🟠 [Next] Composite owner/IPC/ACL/Agent adapters and native Archive v3 dispatch/recovery remain unfinished; N3S is still open.
+
+## Read-only Workspace discovery IPC — 2026-10-09
+
+🟢 [Done] `list_story_workspaces` is registered in the Tauri handler and command manifest, with `allow-list-story-workspaces` granted only to the main window. The hidden renderer retains event-only permissions. It reads the shared SQLite pool and accepts only an optional lowercase UUID continuation cursor.
+
+🟢 [Done] Rust queries at most 101 rows, returns at most 100 ordered summaries (`workspaceId`, `documentId`, `revision`) and emits the last returned ID as continuation only when another row exists. It rejects malformed/oversized Snapshot JSON, absent or inconsistent identity and out-of-range revisions. Discovery does not claim full Canonical/Graph conformance and does not return Snapshot bytes, authored content or receipts. It does not write state.
+
+🟢 [Done] The Desktop adapter validates strict response fields, safe positive revisions, unique ascending IDs after the requested cursor and correct continuation; freezes the returned summaries; and refuses non-native use rather than simulating an empty native library. Native regression verifies a 102-Workspace traversal and no receipt mutation, plus corrupt JSON/identity and invalid cursor refusal. Three adapter tests cover IPC payload, valid paging, malformed/unsolicited content, duplicate/unordered IDs, bad cursors and browser refusal. Existing ACL manifest/renderer-boundary tests pass.
+
+Verification: Rust **66 passed / 1 ignored**, Bun **570 passed / 25 PostgreSQL-dependent skips**, Desktop frontend build successful, `git diff --check` passed. ⭕️ [Pending] Actual invocation in the packaged WebView has not been run for this command. 🟠 [Next] Validated production write dispatch, Agent integration and native Archive v3 recovery remain open; this discovery adapter does not complete N3S.
+
+## Shared Graph conformance and stored edit boundary — 2026-10-09
+
+🟢 [Done] JavaScript `parseStoryGraph` and Rust `validate_graph_schema` consume the same 34-case corpus under `packages/story-graph/test/fixtures/native-conformance.json`. Inputs use normalized lowercase UUIDs. The corpus covers each state condition/effect operation with valid and invalid value presence, including explicit null/object values; missing and duplicate document references; missing entities and Path nodes; duplicate/empty Paths; strict root/node/position fields; subtype grammar; invalid extension keys; and astral title boundaries. All 34 JavaScript cases and the native corpus test pass. External normalization, uppercase identities and native-specific resource ceilings are not certified by this corpus.
+
+🟢 [Done] Internal editing checks the stored composite byte ceiling before parsing, exact root field set and schema identity/version, and agreement of the stored Document ID, Graph ID and Graph document ID with the requested workspace. Four injected corruptions (unknown root field, foreign schema, newer schema version and foreign Graph document identity) reject edits without changing revision/state or adding receipts. The writer remains internal; no new write IPC is registered in this change.
+
+🟠 [Next] Complete remaining identity/resource conformance and trusted author derivation, then expose initial/edit/named/alternative dispatch through the production owner and Agent adapter. Native Archive v3 recovery remains open. N3S is not complete.
+
+Verification: full Rust library suite **68 passed / 1 ignored**, full Bun suite **604 passed / 25 PostgreSQL-dependent skips**, and `git diff --check` passed. No packaged write-IPC verification is claimed.
+
+## UUID identity and opaque Graph resource ceilings — 2026-10-09
+
+🟢 [Done] The native lowercase UUID predicate now checks UUID versions 1–8 and variants 8/9/a/b in addition to shape. It matches the existing Desktop adapter contract. Native unit tests exercise all accepted version/variant combinations and reject unsupported versions/variants, uppercase, nil and maximal UUIDs. This deliberately bounded native identity contract is stricter than some shared external UUID inputs; no implicit identity remapping is performed. Four invalid version/variant cases were added to each shared corpus: **64 Document cases and 38 Graph cases**.
+
+🟢 [Done] Full native Graph schema validation first traverses every JSON value iteratively, including opaque metadata, entity initial state and condition/effect values. Independent ceilings are 64 depth levels (root 0), 500,000 JSON values and 10×1024×1024 UTF-16 units counting strings and object keys. These native ceilings supplement shared array/schema limits; a Graph within individual array limits may still exceed the combined budget. Exact depth/value-count/astral-string boundaries pass; exceeding each fails. No new general metadata-key grammar is imposed.
+
+🟢 [Done] Transactional regressions reject oversized initialization without state adoption, then reject an oversized entity-state edit without changing the existing revision/Snapshot or adding a receipt. Full Rust suite **71 passed / 1 ignored**; full Bun suite **612 passed / 25 PostgreSQL-dependent skips**; `git diff --check` passed.
+
+🟠 [Next] Derive local author metadata in the Rust owner and connect bounded write dispatch plus Agent adapters, then complete native Archive v3 integration/recovery. No write IPC was registered in this change. N3S remains open; the corpus does not claim exhaustive shared/native normalization equivalence.
+
+## Rust-owned local attribution — 2026-10-09
+
+🟢 [Done] Production migration 11 and the repeatable internal migration provision `story_workspace_local_author`. The singleton local profile UUID is allocated using SQLite random bytes by Rust inside the history writer transaction. New owned named/alternative capture rejects supplied `HistoryMetadata`; only the label is caller-controlled. The UTC timestamp comes from the transactional SQLite clock. This is local attribution, not an authenticated account or tamper-proof author claim; the existing main-window SQL capability still exists.
+
+🟢 [Done] Owned capture request identity includes input history guards/label and excludes generated author/time. The writer reserves the transaction and checks the exact durable receipt first. New operations derive attribution and commit it together with state, history, heads, Asset references and receipt; errors roll back the author allocation as well. Legacy candidate/capture helpers are unchanged. No new write IPC is registered.
+
+🟢 [Done] File-backed regression injects final receipt failure and proves no author row or revision adoption; retries successfully; checks multilingual labels and stable authors for named/alternative Versions; closes/reopens the database; corrupts the author row and still replays the original request without changing its Snapshot or metadata; rejects a changed label under the same operation ID, rejects a new write with corrupt author state and rejects caller-supplied author/time. Existing state and receipt counts are retained on rejection.
+
+Verification: full Rust suite **72 passed / 1 ignored**, `git diff --check` passed. ⭕️ [Pending] Packaged startup with migration 11 and real write IPC are not certified. 🟠 [Next] Connect owned capture and initialization/edit dispatch to production IPC/ACL and Agent adapters, then native Archive v3 recovery. N3S remains open.
+
+## Owned named/alternative capture IPC — 2026-10-09
+
+🟢 [Done] Tauri registers `capture_story_workspace_version` with a strict camelCase DTO: `workspaceId`, `operationId`, `expectedRevision`, `versionId`, `branchId`, `branchName`, `expectedBranchId`, `expectedHeadId`, `kind` and optional `label`. Only `named` and `alternative` are accepted. Native history validation and owned capture enforce identity, branch rules, selection/head/revision guards and label bounds. Rust derives the sole parent from the expected head, reads authoritative state and derives local author/time. The main window alone receives the new generated permission; the hidden renderer remains event-only.
+
+🟢 [Done] The native result is limited to `workspaceId`, `versionId`, `branchId`, `revision`, `replayed`. The Desktop adapter requires all request fields (use explicit null label), rejects extra content/author/time/parents and unsupported kinds, freezes a prepared request, and validates exact result identity/revision/fields. Uncertain invocation errors propagate; callers must preserve the same operation ID, Version ID and guards for retries. The adapter does not manufacture a new request or silently accept a malformed response.
+
+🟢 [Done] Runtime regression seeds validated internal history, captures a named Version, verifies Rust-derived parent and five-field receipt, rejects DTO extras, captures an alternative and replays the original capture without rewinding the newer revision. Stale revision is rejected. Three adapter regressions verify identical retry payloads, caller-spoof rejection before IPC, explicit alternatives, unexpected response rejection and propagated response-loss errors. Existing ACL manifest tests pass.
+
+Verification: Rust **73 passed / 1 ignored**, Bun **615 passed / 25 PostgreSQL-dependent skips**, Desktop build succeeded, `git diff --check` passed. ⭕️ [Pending] Real packaged invocation and product UI adoption are unverified. 🟠 [Next] Initialization/edit/read-state and restore/reviewed-Merge dispatch, Agent-facing integration and native Archive v3 recovery remain open. The existing internal seed used in this test is not a public initializer. N3S remains unfinished.
+
+## Connected initial/edit/read lifecycle — 2026-10-09
+
+🟢 [Done] Main-window-only commands `initialize_story_workspace`, `edit_story_workspace` and `read_story_workspace` are registered in the handler/ACL manifest. Initial input includes validated normalized Document/Graph and first Version/Branch identity plus label, excluding caller author/time. Rust commits initial composite/history/head/selection/closure/local attribution/receipt in one transaction with expected revision zero; another operation cannot overwrite an existing Workspace. Edit DTO carries operation identity and a bounded command JSON string; the existing validator/CAS updates working state without an implicit immutable Version. Read validates the composite and obtains current selection in one SQLite reader transaction, preserving raw Snapshot bytes.
+
+🟢 [Done] Desktop adapters normalize/detach initial input into prepared JSON for exact retries; serialize detached edit commands with strict operation fields and a 24 MiB byte ceiling; validate result identity/revision/fields; and validate full read responses/selection pairing/composite identity. Browsers cannot use these native APIs. The Desktop now declares the existing local `@komyaku/story-graph` workspace dependency; offline install updated only that workspace lock dependency.
+
+🟢 [Done] File-backed runtime flow starts through the new initializer (no internal history seed), edits a multilingual Graph node and Path, reads working state with the unchanged original selection, captures a named Version and checks stable Rust-derived author identity. A different initialization operation cannot overwrite it. After full DB close/reopen, initial/edit/capture exact requests replay while revision 3 and exact Snapshot bytes remain unchanged; receipts remain three. Three adapter tests cover detached initial retry data, unsolicited author rejection, edited-result identity and validated native reads.
+
+🟢 [Done] Asset verification rejects more than 5,000 unique attachments before any lookup and caps aggregate verification bytes at 512 MiB, alongside existing per-Asset bounds and integrity checks. The excessive-closure regression proves no state or receipt adoption. The aggregate ceiling is implemented; this test does not allocate a 512 MiB boundary fixture.
+
+Verification: Rust **75 passed / 1 ignored**, Bun **618 passed / 25 PostgreSQL-dependent skips**, Desktop build succeeded, `git diff --check` passed. ⭕️ [Pending] Real packaged IPC invocation and editor UI adoption have not been verified. 🟠 [Next] Restore/reviewed-Merge dispatch, Agent orchestration and native Archive v3 recovery remain open. N3S is unfinished.

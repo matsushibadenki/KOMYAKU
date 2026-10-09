@@ -1743,6 +1743,7 @@ fn main() {
             floating_panels::float_side_panel,
             performance_qa::performance_qa_enabled,
             performance_qa::performance_qa_sample,
+            performance_qa::performance_qa_latency,
             performance_qa::performance_qa_caret,
             layout::get_layout,
             layout::resize_panel,

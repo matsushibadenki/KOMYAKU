@@ -66,6 +66,29 @@ pub fn performance_qa_sample(
     );
     Ok(())
 }
+fn latency_valid(kind: &str, milliseconds: f64) -> bool {
+    ["wheel", "resize", "scroll", "input", "paste"].contains(&kind)
+        && milliseconds.is_finite()
+        && (0. ..=60000.).contains(&milliseconds)
+}
+#[tauri::command]
+pub fn performance_qa_latency(
+    window: tauri::WebviewWindow,
+    kind: String,
+    milliseconds: f64,
+) -> std::result::Result<(), String> {
+    allowed(&window)?;
+    if !enabled() || !latency_valid(&kind, milliseconds) {
+        return Err("diagnostic_disabled".into());
+    }
+    eprintln!(
+        "QA_EVENT window={} kind={} first_frame_ms={:.3}",
+        window.label(),
+        kind,
+        milliseconds
+    );
+    Ok(())
+}
 #[tauri::command]
 pub fn performance_qa_caret(
     window: tauri::WebviewWindow,
@@ -86,6 +109,14 @@ pub fn performance_qa_caret(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn latency_accepts_only_bounded_diagnostics() {
+        assert!(latency_valid("paste", 450.));
+        for value in [f64::NAN, f64::INFINITY, -1., 60001.] {
+            assert!(!latency_valid("input", value));
+        }
+        assert!(!latency_valid("manuscript", 20.));
+    }
     #[test]
     fn rejects_invalid_samples() {
         let mut sample = Sample {

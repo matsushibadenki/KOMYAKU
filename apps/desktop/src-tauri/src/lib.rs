@@ -8,12 +8,15 @@ mod story_workspace_commands;
 #[allow(dead_code)]
 mod story_graph_validation;
 
-// Internal groundwork; enable runtime use after native composite validation.
+// Authoritative composite storage; runtime exposes bounded owned capture.
 #[allow(dead_code)]
 mod story_workspace_store;
 
 #[allow(dead_code)]
 mod story_workspace_history;
+mod story_workspace_runtime;
+#[allow(dead_code)]
+mod story_workspace_author;
 
 use image::{ImageFormat, ImageReader, Limits};
 use serde::{Deserialize, Serialize};
@@ -279,6 +282,8 @@ async fn list_quarantined_local_assets_transaction(
            AND inspection_status = 'accepted'
            AND detected_media_type = 'image/png'
            AND quarantined_at IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM local_retained_asset_references reference
+                           WHERE reference.asset_id = local_asset_previews.asset_id)
          ORDER BY quarantined_at DESC, asset_id ASC
          LIMIT 100",
     )
@@ -1165,9 +1170,7 @@ async fn save_local_draft_transaction(
 
     sqlx::query(
         "UPDATE local_archive_assets SET lifecycle_status = CASE
-           WHEN EXISTS (SELECT 1 FROM local_archive_asset_references reference
-                        WHERE reference.asset_id = local_archive_assets.asset_id)
-             OR EXISTS (SELECT 1 FROM local_version_asset_references reference
+           WHEN EXISTS (SELECT 1 FROM local_retained_asset_references reference
                         WHERE reference.asset_id = local_archive_assets.asset_id)
            THEN 'active' ELSE 'quarantined' END, updated_at = ?",
     )
@@ -1198,7 +1201,7 @@ async fn save_local_draft_transaction(
                  SELECT 1 FROM local_document_asset_references WHERE asset_id = ?
                )
                AND NOT EXISTS (
-                 SELECT 1 FROM local_version_asset_references WHERE asset_id = ?
+                 SELECT 1 FROM local_retained_asset_references WHERE asset_id = ?
                )",
         )
         .bind(&input.updated_at)
@@ -1220,7 +1223,7 @@ async fn save_local_draft_transaction(
              WHERE asset_id = local_asset_previews.asset_id
            )
            AND NOT EXISTS (
-             SELECT 1 FROM local_version_asset_references
+             SELECT 1 FROM local_retained_asset_references
              WHERE asset_id = local_asset_previews.asset_id
            )",
     )
@@ -1826,6 +1829,8 @@ async fn mutate_local_document_transaction(
 fn valid_lower_uuid(value: &str) -> bool {
     validate_provider_reference(value).is_ok()
         && !value.bytes().any(|byte| byte.is_ascii_uppercase())
+        && (b'1'..=b'8').contains(&value.as_bytes()[14])
+        && b"89ab".contains(&value.as_bytes()[19])
 }
 
 async fn save_local_version_transaction(
@@ -2051,16 +2056,14 @@ async fn save_local_version_transaction(
                 "UPDATE local_asset_previews SET lifecycle_status = 'quarantined', quarantined_at = ?
                  WHERE asset_id = ? AND lifecycle_status = 'active'
                    AND NOT EXISTS (SELECT 1 FROM local_document_asset_references WHERE asset_id = ?)
-                   AND NOT EXISTS (SELECT 1 FROM local_version_asset_references WHERE asset_id = ?)")
+                   AND NOT EXISTS (SELECT 1 FROM local_retained_asset_references WHERE asset_id = ?)")
                 .bind(&version.created_at).bind(&asset_id).bind(&asset_id).bind(&asset_id)
                 .execute(&mut *transaction).await.map_err(|_| "local_version_storage_failure")?;
         }
         sqlx::query(
             "UPDATE local_archive_assets SET lifecycle_status = CASE
-               WHEN EXISTS (SELECT 1 FROM local_archive_asset_references reference
-                            WHERE reference.asset_id = local_archive_assets.asset_id)
-                 OR EXISTS (SELECT 1 FROM local_version_asset_references reference
-                            WHERE reference.asset_id = local_archive_assets.asset_id)
+               WHEN EXISTS (SELECT 1 FROM local_retained_asset_references reference
+                        WHERE reference.asset_id = local_archive_assets.asset_id)
                THEN 'active' ELSE 'quarantined' END, updated_at = ?")
             .bind(&version.created_at).execute(&mut *transaction).await
             .map_err(|_| "local_version_storage_failure")?;
@@ -2392,6 +2395,70 @@ async fn list_quarantined_local_assets(
         .map_err(str::to_string)
 }
 
+#[tauri::command]
+async fn list_story_workspaces(
+    db_instances: State<'_, DbInstances>, after: Option<String>,
+) -> Result<story_workspace_runtime::Page, String> {
+    let pool = {
+        let instances = db_instances.0.read().await;
+        match instances.get(LOCAL_DATABASE_URL) {
+            Some(DbPool::Sqlite(pool)) => pool.clone(),
+            _ => return Err("tauri_database_unavailable".into()),
+        }
+    };
+    story_workspace_runtime::list(&pool, after.as_deref()).await
+}
+
+#[tauri::command]
+async fn capture_story_workspace_version(
+    db_instances: State<'_, DbInstances>, input: story_workspace_runtime::CaptureRequest,
+) -> Result<story_workspace_runtime::CaptureResult, String> {
+    let pool = {
+        let instances = db_instances.0.read().await;
+        match instances.get(LOCAL_DATABASE_URL) {
+            Some(DbPool::Sqlite(pool)) => pool.clone(),
+            _ => return Err("tauri_database_unavailable".into()),
+        }
+    };
+    story_workspace_runtime::capture(&pool, input).await
+}
+
+#[tauri::command]
+async fn initialize_story_workspace(db_instances: State<'_, DbInstances>, input: story_workspace_runtime::InitializeRequest) -> Result<story_workspace_runtime::CaptureResult, String> {
+    let pool = {
+        let instances = db_instances.0.read().await;
+        match instances.get(LOCAL_DATABASE_URL) {
+            Some(DbPool::Sqlite(pool)) => pool.clone(),
+            _ => return Err("tauri_database_unavailable".into()),
+        }
+    };
+    story_workspace_runtime::initialize(&pool, input).await
+}
+
+#[tauri::command]
+async fn edit_story_workspace(db_instances: State<'_, DbInstances>, input: story_workspace_runtime::EditRequest) -> Result<story_workspace_runtime::EditResult, String> {
+    let pool = {
+        let instances = db_instances.0.read().await;
+        match instances.get(LOCAL_DATABASE_URL) {
+            Some(DbPool::Sqlite(pool)) => pool.clone(),
+            _ => return Err("tauri_database_unavailable".into()),
+        }
+    };
+    story_workspace_runtime::edit(&pool, input).await
+}
+
+#[tauri::command]
+async fn read_story_workspace(db_instances: State<'_, DbInstances>, workspace_id: String) -> Result<story_workspace_runtime::CurrentState, String> {
+    let pool = {
+        let instances = db_instances.0.read().await;
+        match instances.get(LOCAL_DATABASE_URL) {
+            Some(DbPool::Sqlite(pool)) => pool.clone(),
+            _ => return Err("tauri_database_unavailable".into()),
+        }
+    };
+    story_workspace_runtime::read(&pool, &workspace_id).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let migrations = vec![
@@ -2449,6 +2516,18 @@ pub fn run() {
             sql: include_str!("../migrations/0009_local_history_archive_imports.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 10,
+            description: "create_story_workspace_asset_retention",
+            sql: include_str!("../migrations/0010_story_workspace_asset_retention.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 11,
+            description: "create_story_workspace_local_author",
+            sql: include_str!("../migrations/0011_story_workspace_local_author.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -2462,6 +2541,11 @@ pub fn run() {
             mutate_local_document_atomic,
             save_local_version_atomic,
             list_local_version_history,
+            list_story_workspaces,
+            capture_story_workspace_version,
+            read_story_workspace,
+            edit_story_workspace,
+            initialize_story_workspace,
             load_local_version_snapshot,
             load_local_version_assets,
             store_cloud_session,
@@ -2594,6 +2678,21 @@ mod tests {
         std::fs::remove_file(path).unwrap();
     }
 
+    #[test]
+    fn native_uuid_matches_desktop_version_variant_and_lowercase_contract() {
+        for version in '1'..='8' {
+            for variant in ['8', '9', 'a', 'b'] {
+                assert!(valid_lower_uuid(&format!("00000000-0000-{version}000-{variant}000-000000000001")));
+            }
+        }
+        for invalid in ["", "00000000-0000-0000-8000-000000000001",
+            "00000000-0000-9000-8000-000000000001", "00000000-0000-4000-c000-000000000001",
+            "00000000-0000-4000-8000-00000000000A", "00000000-0000-0000-0000-000000000000",
+            "ffffffff-ffff-ffff-ffff-ffffffffffff"] {
+            assert!(!valid_lower_uuid(invalid), "{invalid}");
+        }
+    }
+
     fn input(revision: i64, title: &str) -> LocalDraftInput {
         let document_id = "00000000-0000-4000-8000-000000000001";
         LocalDraftInput {
@@ -2660,6 +2759,10 @@ mod tests {
             .execute(pool).await.expect("apply local Version paging schema");
         sqlx::raw_sql(include_str!("../migrations/0009_local_history_archive_imports.sql"))
             .execute(pool).await.expect("apply local History Archive import schema");
+        sqlx::raw_sql(include_str!("../migrations/0010_story_workspace_asset_retention.sql"))
+            .execute(pool).await.expect("apply composite Asset retention schema");
+        sqlx::raw_sql(story_workspace_author::SCHEMA)
+            .execute(pool).await.expect("apply local author schema");
     }
 
     fn local_version_input(
@@ -3310,6 +3413,87 @@ mod tests {
         }]);
         draft.content_json = content.to_string();
         draft
+    }
+
+    #[tokio::test]
+    async fn composite_current_and_historical_assets_are_not_quarantine_candidates() {
+        let path = std::env::temp_dir().join(format!("komyaku-retention-{}-{}.db",
+            std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        std::fs::File::create(&path).unwrap();
+        let url = format!("sqlite:{}", path.display());
+        let db = SqlitePoolOptions::new().max_connections(1).connect(&url).await.unwrap();
+        migrate_test_pool(&db).await;
+        // Repeated schema setup and internal migration cannot destroy references.
+        sqlx::raw_sql(include_str!("../migrations/0010_story_workspace_asset_retention.sql"))
+            .execute(&db).await.unwrap();
+        story_workspace_store::migrate(&db).await.unwrap();
+        let asset = "00000000-0000-4000-8000-000000000209";
+        let preview = local_png_preview_input(asset);
+        store_local_png_preview_transaction(&db, &preview).await.unwrap();
+        sqlx::query("INSERT INTO local_archive_assets(asset_id,bytes,byte_size,content_hash,media_type,inspection_policy_version,inspected_width,inspected_height,created_at,updated_at) SELECT asset_id,bytes,byte_size,content_hash,'image/png','decoder-backed-png-v1',inspected_width,inspected_height,updated_at,updated_at FROM local_asset_previews WHERE asset_id=?")
+            .bind(asset).execute(&db).await.unwrap();
+        let mut document = story_document_validation::tests::document();
+        document["content"][0] = serde_json::json!({"id":"00000000-0000-4000-8000-000000000002",
+            "schemaVersion":1,"type":"image","metadata":{},"extensions":{},"renderArtifacts":[],
+            "assetId":asset,"mediaType":"image/png","altText":"履歴 / History / 历史",
+            "caption":[],"width":null,"height":null});
+        let graph = serde_json::json!({"schemaId":"https://komyaku.example/schemas/story-graph/v1","schemaVersion":1,
+            "id":"00000000-0000-4000-8000-000000000010","documentId":document["id"],
+            "nodes":[],"edges":[],"entities":[],"paths":[]});
+        let workspace = graph["id"].as_str().unwrap();
+        // Current-only protection, before any immutable history exists.
+        let snapshot = serde_json::json!({"schemaId":"https://komyaku.example/schemas/story-workspace/v1",
+            "schemaVersion":1,"document":document,"graph":graph}).to_string();
+        story_workspace_store::commit(&db, workspace, "current-op", 0, "{}", &snapshot).await.unwrap();
+        let mut ordinary = input(1, "Ordinary draft");
+        ordinary.updated_at = "2026-10-09T00:00:00Z".into();
+        save_local_draft_transaction(&db, &ordinary).await.unwrap();
+        let lifecycle: (String,String) = sqlx::query_as("SELECT archive.lifecycle_status,preview.lifecycle_status FROM local_archive_assets archive JOIN local_asset_previews preview USING(asset_id) WHERE asset_id=?")
+            .bind(asset).fetch_one(&db).await.unwrap();
+        assert_eq!(lifecycle, ("active".into(), "pending".into()));
+        let history = story_workspace_history::HistoryCommit {
+            version_id:"00000000-0000-4000-8000-000000000020".into(),
+            branch_id:"00000000-0000-4000-8000-000000000030".into(),branch_name:"Main".into(),
+            expected_branch_id:None,expected_head_id:None,parent_ids:vec![],kind:"initial".into(),
+            source_branch_id:None,restored_from_id:None,metadata:None,
+        };
+        story_workspace_history::save_candidate(&db, "00000000-0000-4000-8000-000000000050", 1, &document, &graph, &history).await.unwrap();
+        let empty = story_document_validation::tests::document();
+        let removed = serde_json::json!({"schemaId":"https://komyaku.example/schemas/story-workspace/v1",
+            "schemaVersion":1,"document":empty,"graph":graph}).to_string();
+        story_workspace_store::commit(&db, workspace, "remove-current-op", 2, "{}", &removed).await.unwrap();
+        ordinary.local_revision = 2;
+        save_local_draft_transaction(&db, &ordinary).await.unwrap();
+        let counts: (i64,i64) = sqlx::query_as("SELECT (SELECT COUNT(*) FROM story_workspace_assets),(SELECT COUNT(*) FROM story_workspace_version_assets)")
+            .fetch_one(&db).await.unwrap();
+        assert_eq!(counts, (0,1));
+        let active: String = sqlx::query_scalar("SELECT lifecycle_status FROM local_archive_assets WHERE asset_id=?")
+            .bind(asset).fetch_one(&db).await.unwrap();
+        assert_eq!(active, "active");
+        // Even a stale quarantine flag cannot expose retained bytes as candidates.
+        sqlx::query("UPDATE local_asset_previews SET lifecycle_status='quarantined',quarantined_at='2026-10-09T00:00:00Z' WHERE asset_id=?")
+            .bind(asset).execute(&db).await.unwrap();
+        assert!(list_quarantined_local_assets_transaction(&db).await.unwrap().is_empty());
+        let bytes: Vec<u8> = sqlx::query_scalar("SELECT bytes FROM local_archive_assets WHERE asset_id=?")
+            .bind(asset).fetch_one(&db).await.unwrap();
+        assert_eq!(bytes, preview.bytes);
+        db.close().await;
+        let db = SqlitePoolOptions::new().max_connections(1).connect(&url).await.unwrap();
+        assert!(list_quarantined_local_assets_transaction(&db).await.unwrap().is_empty());
+        let recovered: Vec<u8> = sqlx::query_scalar("SELECT bytes FROM local_archive_assets WHERE asset_id=?")
+            .bind(asset).fetch_one(&db).await.unwrap();
+        assert_eq!(recovered, bytes);
+        // Only deleting the final reference in this fixture permits quarantine.
+        sqlx::query("DELETE FROM story_workspace_version_assets WHERE asset_id=?")
+            .bind(asset).execute(&db).await.unwrap();
+        ordinary.local_revision = 3;
+        save_local_draft_transaction(&db, &ordinary).await.unwrap();
+        assert_eq!(list_quarantined_local_assets_transaction(&db).await.unwrap().len(), 1);
+        let inactive: String = sqlx::query_scalar("SELECT lifecycle_status FROM local_archive_assets WHERE asset_id=?")
+            .bind(asset).fetch_one(&db).await.unwrap();
+        assert_eq!(inactive, "quarantined");
+        db.close().await;
+        std::fs::remove_file(path).unwrap();
     }
 
     #[tokio::test]

@@ -33,6 +33,7 @@ pub(crate) async fn migrate(pool: &Pool<Sqlite>) -> Result<(), sqlx::Error> {
     .execute(&mut *tx)
     .await?;
     super::story_workspace_history::migrate(&mut tx).await?;
+    sqlx::raw_sql(super::story_workspace_author::SCHEMA).execute(&mut *tx).await?;
     tx.commit().await
 }
 
@@ -57,13 +58,50 @@ pub(crate) async fn commit_with_history(
     snapshot_json: &str,
     history: Option<&super::story_workspace_history::HistoryCommit>,
 ) -> Result<Receipt, String> {
+    commit_inner(pool, workspace_id, operation_id, expected_revision, request_json,
+        Some(snapshot_json), history, None).await
+}
+
+pub(crate) async fn capture_history(
+    pool: &Pool<Sqlite>, workspace_id: &str, operation_id: &str,
+    expected_revision: i64, request_json: &str,
+    history: &super::story_workspace_history::HistoryCommit,
+) -> Result<Receipt, String> {
+    commit_inner(pool, workspace_id, operation_id, expected_revision, request_json,
+        None, Some(history), None).await
+}
+
+pub(crate) async fn capture_owned_history(
+    pool: &Pool<Sqlite>, workspace_id: &str, operation_id: &str,
+    expected_revision: i64, request_json: &str,
+    history: &super::story_workspace_history::HistoryCommit, label: &Option<String>,
+) -> Result<Receipt, String> {
+    commit_inner(pool, workspace_id, operation_id, expected_revision, request_json,
+        None, Some(history), Some(label)).await
+}
+
+pub(crate) async fn initialize_owned_history(
+    pool: &Pool<Sqlite>, workspace_id: &str, operation_id: &str,
+    request_json: &str, snapshot_json: &str,
+    history: &super::story_workspace_history::HistoryCommit, label: &Option<String>,
+) -> Result<Receipt, String> {
+    commit_inner(pool, workspace_id, operation_id, 0, request_json,
+        Some(snapshot_json), Some(history), Some(label)).await
+}
+
+async fn commit_inner(
+    pool: &Pool<Sqlite>, workspace_id: &str, operation_id: &str,
+    expected_revision: i64, request_json: &str, candidate: Option<&str>,
+    history: Option<&super::story_workspace_history::HistoryCommit>,
+    owner_label: Option<&Option<String>>,
+) -> Result<Receipt, String> {
     if workspace_id.is_empty()
         || workspace_id.len() > 100
         || operation_id.is_empty()
         || operation_id.len() > 100
         || !(0..=MAX_REVISION).contains(&expected_revision)
         || request_json.len() > MAX_BYTES
-        || snapshot_json.len() > MAX_BYTES
+        || candidate.is_some_and(|snapshot| snapshot.len() > MAX_BYTES)
     {
         return Err("invalid_story_storage_request".into());
     }
@@ -71,8 +109,10 @@ pub(crate) async fn commit_with_history(
     // belongs to the future native owner; callers cannot be WebView input.
     serde_json::from_str::<serde_json::Value>(request_json)
         .map_err(|_| "invalid_story_storage_request")?;
-    serde_json::from_str::<serde_json::Value>(snapshot_json)
-        .map_err(|_| "invalid_story_storage_request")?;
+    if let Some(snapshot) = candidate {
+        serde_json::from_str::<serde_json::Value>(snapshot)
+            .map_err(|_| "invalid_story_storage_request")?;
+    }
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     // Reserve the writer before reading receipts, so concurrent callers serialize.
     sqlx::query("UPDATE story_workspace_states SET revision = revision WHERE workspace_id = ?")
@@ -94,6 +134,39 @@ pub(crate) async fn commit_with_history(
             replayed: true,
         });
     }
+    let owned_history;
+    let history = if let Some(label) = owner_label {
+        let mut owned = history.ok_or("invalid_story_history_capture")?.clone();
+        owned.metadata = Some(super::story_workspace_author::metadata(&mut tx, label).await?);
+        owned_history = owned;
+        Some(&owned_history)
+    } else { history };
+    let captured;
+    let snapshot_json = if let Some(snapshot) = candidate { snapshot } else {
+        let current: Option<(i64, String)> = sqlx::query_as(
+            "SELECT revision,snapshot_json FROM story_workspace_states WHERE workspace_id=?")
+            .bind(workspace_id).fetch_optional(&mut *tx).await.map_err(|e| e.to_string())?;
+        let (revision, snapshot) = current.ok_or("missing_story_workspace")?;
+        if revision != expected_revision { return Err("stale_story_workspace_revision".into()); }
+        if snapshot.len() > MAX_BYTES { return Err("invalid_stored_story_workspace".into()); }
+        let value: serde_json::Value = serde_json::from_str(&snapshot)
+            .map_err(|_| "invalid_stored_story_workspace")?;
+        if value.as_object().is_none_or(|object| object.len() != 4
+            || object.keys().any(|key| !["schemaId", "schemaVersion", "document", "graph"].contains(&key.as_str())))
+            || value["schemaId"] != "https://komyaku.example/schemas/story-workspace/v1"
+            || value["schemaVersion"] != 1 {
+            return Err("invalid_stored_story_workspace".into());
+        }
+        let ids = super::story_document_validation::validate_document_subset(&value["document"])?;
+        if value["graph"]["id"].as_str() != Some(workspace_id)
+            || value["graph"]["documentId"] != value["document"]["id"] {
+            return Err("story_workspace_document_mismatch".into());
+        }
+        super::story_graph_validation::validate_graph_schema(&value["graph"], &ids)
+            .map_err(str::to_string)?;
+        captured = snapshot;
+        captured.as_str()
+    };
     let asset_ids = verify_workspace_assets(&mut tx, snapshot_json).await?;
     if history.is_some() {
         let previous: Option<String> = sqlx::query_scalar("SELECT snapshot_json FROM story_workspace_states WHERE workspace_id=?")
@@ -486,10 +559,18 @@ async fn verify_workspace_assets(
             }
         }
     }
+    if references.len() > 5000 {
+        return Err("story_asset_limit_exceeded".into());
+    }
+    let mut total_bytes = 0usize;
     for (id, media) in &references {
         let asset:Option<(Vec<u8>,i64,String,String)>=sqlx::query_as("SELECT bytes,byte_size,content_hash,media_type FROM local_archive_assets WHERE asset_id=?")
             .bind(id).fetch_optional(&mut **tx).await.map_err(|e|e.to_string())?;
         let (bytes, size, hash, stored_media) = asset.ok_or("missing_story_workspace_asset")?;
+        total_bytes = total_bytes.checked_add(bytes.len()).ok_or("story_asset_limit_exceeded")?;
+        if total_bytes > 512 * 1024 * 1024 {
+            return Err("story_asset_limit_exceeded".into());
+        }
         if stored_media != *media {
             return Err("story_asset_media_mismatch".into());
         }
@@ -592,5 +673,21 @@ mod asset_tests {
             .await
             .unwrap();
         assert_eq!(count, 1);
+    }
+}
+
+#[cfg(test)]
+mod closure_budget_tests {
+    use super::*;
+    #[tokio::test]
+    async fn excessive_asset_closure_is_rejected_before_lookup_or_adoption() {
+        let db=sqlx::sqlite::SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
+        migrate(&db).await.unwrap();
+        let nodes:Vec<_>=(1..=5001).map(|n|serde_json::json!({"type":"file",
+            "assetId":format!("00000000-0000-4000-8000-{n:012}"),"mediaType":"text/plain"})).collect();
+        let snapshot=serde_json::json!({"schemaId":"https://komyaku.example/schemas/story-workspace/v1","document":{"content":nodes}}).to_string();
+        assert_eq!(commit(&db,"w","op",0,"{}",&snapshot).await.unwrap_err(),"story_asset_limit_exceeded");
+        let counts:(i64,i64)=sqlx::query_as("SELECT (SELECT COUNT(*) FROM story_workspace_states),(SELECT COUNT(*) FROM story_workspace_receipts)")
+            .fetch_one(&db).await.unwrap();assert_eq!(counts,(0,0));
     }
 }

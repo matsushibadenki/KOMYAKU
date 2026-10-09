@@ -1,5 +1,5 @@
-//! Internal composite command subset. Document replacement supports only
-//! normalized prose/source/file blocks; remaining rich content fails closed. No public IPC yet.
+//! Validated normalized composite edits behind bounded runtime IPC.
+//! Unsupported inputs fail closed; edits do not create immutable history.
 use super::story_workspace_store::{commit, Receipt};
 use serde::Deserialize;
 use serde_json::Value;
@@ -98,10 +98,24 @@ pub(crate) async fn execute(
         )
         .await;
     }
+    if snapshot.len() > 24 * 1024 * 1024 {
+        return Err("invalid_stored_story_workspace".into());
+    }
     let mut workspace: Value =
         serde_json::from_str(&snapshot).map_err(|_| "invalid_stored_story_workspace")?;
+    if workspace.as_object().is_none_or(|object| {
+        object.len() != 4
+            || object.keys().any(|key| {
+                !["schemaId", "schemaVersion", "document", "graph"].contains(&key.as_str())
+            })
+    }) || workspace["schemaId"] != "https://komyaku.example/schemas/story-workspace/v1"
+        || workspace["schemaVersion"] != 1
+    {
+        return Err("invalid_stored_story_workspace".into());
+    }
     if workspace["document"]["id"].as_str() != Some(&command.document_id)
         || workspace["graph"]["id"].as_str() != Some(&command.graph_id)
+        || workspace["graph"]["documentId"].as_str() != Some(&command.document_id)
     {
         return Err("story_command_workspace_mismatch".into());
     }
@@ -349,5 +363,126 @@ mod tests {
         assert_eq!(replay.snapshot_json, saved.snapshot_json);
         pool.close().await;
         std::fs::remove_file(path).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod stored_boundary_tests {
+    use super::*;
+    use serde_json::json;
+    #[tokio::test]
+    async fn invalid_composite_envelope_cannot_be_readopted_by_edit() {
+        let db = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        super::super::story_workspace_store::migrate(&db)
+            .await
+            .unwrap();
+        let id = |n| format!("00000000-0000-4000-8000-{n:012}");
+        let document = super::super::story_document_validation::tests::document();
+        let graph = json!({"schemaId":"https://komyaku.example/schemas/story-graph/v1","schemaVersion":1,
+            "id":id(2),"documentId":id(1),"nodes":[],"edges":[],"paths":[],"entities":[]});
+        super::super::story_workspace_store::commit_workspace(&db, &id(3), 0, &document, &graph)
+            .await
+            .unwrap();
+        let command=json!({"documentId":id(1),"graphId":id(2),"expectedRevision":1,
+            "operations":[{"type":"put","collection":"entities","value":{"id":id(5),"type":"character","name":"人物"}}]}).to_string();
+        let original = json!({"schemaId":"https://komyaku.example/schemas/story-workspace/v1","schemaVersion":1,
+            "document":document,"graph":graph});
+        for mode in 0..4 {
+            let mut invalid = original.clone();
+            match mode {
+                0 => invalid["unknown"] = json!(true),
+                1 => invalid["schemaId"] = json!("foreign"),
+                2 => invalid["schemaVersion"] = json!(2),
+                _ => invalid["graph"]["documentId"] = json!(id(99)),
+            }
+            let snapshot = invalid.to_string();
+            sqlx::query("UPDATE story_workspace_states SET snapshot_json=?")
+                .bind(&snapshot)
+                .execute(&db)
+                .await
+                .unwrap();
+            assert!(execute(&db, &id(4), &command).await.is_err());
+            let state: (i64, String) =
+                sqlx::query_as("SELECT revision,snapshot_json FROM story_workspace_states")
+                    .fetch_one(&db)
+                    .await
+                    .unwrap();
+            assert_eq!(state, (1, snapshot));
+            let receipts: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM story_workspace_receipts")
+                .fetch_one(&db)
+                .await
+                .unwrap();
+            assert_eq!(receipts, 1);
+        }
+    }
+}
+
+#[cfg(test)]
+mod opaque_resource_tests {
+    use super::*;
+    use serde_json::json;
+    #[tokio::test]
+    async fn oversized_opaque_graph_state_cannot_create_state_or_receipt() {
+        let db = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        super::super::story_workspace_store::migrate(&db)
+            .await
+            .unwrap();
+        let id = |n| format!("00000000-0000-4000-8000-{n:012}");
+        let document = super::super::story_document_validation::tests::document();
+        let graph = json!({"schemaId":"https://komyaku.example/schemas/story-graph/v1","schemaVersion":1,
+            "id":id(2),"documentId":id(1),"nodes":[],"edges":[],"paths":[],"entities":[]});
+        let mut oversized = graph.clone();
+        oversized["metadata"] = json!({"opaque":vec![Value::Null;500_000]});
+        assert_eq!(
+            super::super::story_workspace_store::commit_workspace(
+                &db,
+                &id(3),
+                0,
+                &document,
+                &oversized
+            )
+            .await
+            .unwrap_err(),
+            "story_graph_limit_exceeded"
+        );
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM story_workspace_states")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(count, 0);
+        let first = super::super::story_workspace_store::commit_workspace(
+            &db,
+            &id(3),
+            0,
+            &document,
+            &graph,
+        )
+        .await
+        .unwrap();
+        let command=json!({"documentId":id(1),"graphId":id(2),"expectedRevision":1,"operations":[{
+            "type":"put","collection":"entities","value":{"id":id(5),"type":"character","name":"人物","initialState":{"opaque":vec![Value::Null;500_000]}}}]}).to_string();
+        assert_eq!(
+            execute(&db, &id(4), &command).await.unwrap_err(),
+            "story_graph_limit_exceeded"
+        );
+        let state: (i64, String) =
+            sqlx::query_as("SELECT revision,snapshot_json FROM story_workspace_states")
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert_eq!(state, (1, first.snapshot_json));
+        let receipts: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM story_workspace_receipts")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(receipts, 1);
     }
 }

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-story-workspaces"
+description = "Enables the list_story_workspaces command without any pre-configured scope."
+commands.allow = ["list_story_workspaces"]
+
+[[permission]]
+identifier = "deny-list-story-workspaces"
+description = "Denies the list_story_workspaces command without any pre-configured scope."
+commands.deny = ["list_story_workspaces"]

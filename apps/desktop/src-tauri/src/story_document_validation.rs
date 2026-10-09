@@ -1,5 +1,6 @@
-//! Strict normalized Canonical subset with prose, code, block math and files.
-//! Non-PNG image formats and external-input normalization remain unsupported.
+//! Strict normalized Canonical validation. Image media declarations are opaque:
+//! accepting their schema does not establish decoder or renderer support.
+//! External-input normalization remains unsupported.
 use serde_json::Value;
 use std::collections::BTreeSet;
 fn fields(value: &Value, names: &[&str]) -> Result<(), String> {
@@ -10,7 +11,7 @@ fn fields(value: &Value, names: &[&str]) -> Result<(), String> {
     Ok(())
 }
 // Mirrors the shared Zod offset datetime contract, including optional seconds.
-fn provenance_datetime(value: &str) -> bool {
+pub(crate) fn provenance_datetime(value: &str) -> bool {
     let bytes = value.as_bytes();
     if !value.is_ascii()
         || bytes.len() < 17
@@ -590,7 +591,14 @@ fn validate_source_block(
             block["assetId"]
                 .as_str()
                 .is_some_and(super::valid_lower_uuid)
-                && block["mediaType"] == "image/png"
+                && block["mediaType"].as_str().is_some_and(|media| {
+                    media.strip_prefix("image/").is_some_and(|subtype| {
+                        !subtype.is_empty()
+                            && subtype
+                                .bytes()
+                                .all(|byte| byte.is_ascii_alphanumeric() || b".+-".contains(&byte))
+                    })
+                })
                 && bounded_string(&block["altText"], 0, 10_000, false)
                 && ["width", "height"].iter().all(|field| {
                     block[*field].is_null()
@@ -675,7 +683,7 @@ pub(crate) mod tests {
         }
     }
     #[test]
-    fn validates_png_caption_and_dimensions_without_rendering() {
+    fn validates_image_declarations_caption_and_dimensions_without_rendering() {
         let mut value = document();
         value["content"] = json!([{"id":"00000000-0000-4000-8000-000000000002","schemaVersion":1,"type":"image",
             "metadata":{},"extensions":{},"renderArtifacts":[],"assetId":"00000000-0000-4000-8000-000000000003",
@@ -684,7 +692,7 @@ pub(crate) mod tests {
         for (field, bad) in [
             ("width", json!(0)),
             ("height", json!(1.5)),
-            ("mediaType", json!("image/svg+xml")),
+            ("mediaType", json!("image/svg+xml; charset=utf-8")),
             ("caption", json!(null)),
         ] {
             let mut invalid = value.clone();

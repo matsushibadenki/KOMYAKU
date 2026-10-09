@@ -183,6 +183,12 @@
           "markdownDescription": "Enables the acl_boundary_canary command without any pre-configured scope."
         },
         {
+          "description": "Enables the capture_story_workspace_version command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-capture-story-workspace-version",
+          "markdownDescription": "Enables the capture_story_workspace_version command without any pre-configured scope."
+        },
+        {
           "description": "Enables the delete_cloud_session command without any pre-configured scope.",
           "type": "string",
           "const": "allow-delete-cloud-session",
@@ -195,6 +201,12 @@
           "markdownDescription": "Enables the delete_provider_credential command without any pre-configured scope."
         },
         {
+          "description": "Enables the edit_story_workspace command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-edit-story-workspace",
+          "markdownDescription": "Enables the edit_story_workspace command without any pre-configured scope."
+        },
+        {
           "description": "Enables the import_local_history_archive_atomic command without any pre-configured scope.",
           "type": "string",
           "const": "allow-import-local-history-archive-atomic",
@@ -205,6 +217,12 @@
           "type": "string",
           "const": "allow-import-local-komyaku-archive-atomic",
           "markdownDescription": "Enables the import_local_komyaku_archive_atomic command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the initialize_story_workspace command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-initialize-story-workspace",
+          "markdownDescription": "Enables the initialize_story_workspace command without any pre-configured scope."
         },
         {
           "description": "Enables the list_local_conversations command without any pre-configured scope.",
@@ -229,6 +247,12 @@
           "type": "string",
           "const": "allow-list-quarantined-local-assets",
           "markdownDescription": "Enables the list_quarantined_local_assets command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the list_story_workspaces command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-list-story-workspaces",
+          "markdownDescription": "Enables the list_story_workspaces command without any pre-configured scope."
         },
         {
           "description": "Enables the load_cloud_session command without any pre-configured scope.",
@@ -265,6 +289,12 @@
           "type": "string",
           "const": "allow-mutate-local-document-atomic",
           "markdownDescription": "Enables the mutate_local_document_atomic command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the read_story_workspace command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-read-story-workspace",
+          "markdownDescription": "Enables the read_story_workspace command without any pre-configured scope."
         },
         {
           "description": "Enables the save_local_ai_handoff_atomic command without any pre-configured scope.",
@@ -309,6 +339,12 @@
           "markdownDescription": "Denies the acl_boundary_canary command without any pre-configured scope."
         },
         {
+          "description": "Denies the capture_story_workspace_version command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-capture-story-workspace-version",
+          "markdownDescription": "Denies the capture_story_workspace_version command without any pre-configured scope."
+        },
+        {
           "description": "Denies the delete_cloud_session command without any pre-configured scope.",
           "type": "string",
           "const": "deny-delete-cloud-session",
@@ -321,6 +357,12 @@
           "markdownDescription": "Denies the delete_provider_credential command without any pre-configured scope."
         },
         {
+          "description": "Denies the edit_story_workspace command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-edit-story-workspace",
+          "markdownDescription": "Denies the edit_story_workspace command without any pre-configured scope."
+        },
+        {
           "description": "Denies the import_local_history_archive_atomic command without any pre-configured scope.",
           "type": "string",
           "const": "deny-import-local-history-archive-atomic",
@@ -331,6 +373,12 @@
           "type": "string",
           "const": "deny-import-local-komyaku-archive-atomic",
           "markdownDescription": "Denies the import_local_komyaku_archive_atomic command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the initialize_story_workspace command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-initialize-story-workspace",
+          "markdownDescription": "Denies the initialize_story_workspace command without any pre-configured scope."
         },
         {
           "description": "Denies the list_local_conversations command without any pre-configured scope.",
@@ -355,6 +403,12 @@
           "type": "string",
           "const": "deny-list-quarantined-local-assets",
           "markdownDescription": "Denies the list_quarantined_local_assets command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the list_story_workspaces command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-list-story-workspaces",
+          "markdownDescription": "Denies the list_story_workspaces command without any pre-configured scope."
         },
         {
           "description": "Denies the load_cloud_session command without any pre-configured scope.",
@@ -391,6 +445,12 @@
           "type": "string",
           "const": "deny-mutate-local-document-atomic",
           "markdownDescription": "Denies the mutate_local_document_atomic command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the read_story_workspace command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-read-story-workspace",
+          "markdownDescription": "Denies the read_story_workspace command without any pre-configured scope."
         },
         {
           "description": "Denies the save_local_ai_handoff_atomic command without any pre-configured scope.",

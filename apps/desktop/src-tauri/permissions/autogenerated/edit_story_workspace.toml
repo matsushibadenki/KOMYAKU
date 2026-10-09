@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-edit-story-workspace"
+description = "Enables the edit_story_workspace command without any pre-configured scope."
+commands.allow = ["edit_story_workspace"]
+
+[[permission]]
+identifier = "deny-edit-story-workspace"
+description = "Denies the edit_story_workspace command without any pre-configured scope."
+commands.deny = ["edit_story_workspace"]

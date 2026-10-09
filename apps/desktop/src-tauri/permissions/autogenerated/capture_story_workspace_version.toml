@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-capture-story-workspace-version"
+description = "Enables the capture_story_workspace_version command without any pre-configured scope."
+commands.allow = ["capture_story_workspace_version"]
+
+[[permission]]
+identifier = "deny-capture-story-workspace-version"
+description = "Denies the capture_story_workspace_version command without any pre-configured scope."
+commands.deny = ["capture_story_workspace_version"]

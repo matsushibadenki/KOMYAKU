@@ -242,6 +242,7 @@ fn choice(value: &Value, field: &str, options: &[&str]) -> Result<()> {
 /// Validates a normalized shared Graph snapshot. Shared writers materialize
 /// default arrays before native validation; unnormalized external input is rejected.
 pub(crate) fn validate_graph_schema(graph: &Value, canonical_ids: &BTreeSet<String>) -> Result<()> {
+    validate_json_budget(graph)?;
     fields(
         graph,
         &[
@@ -413,6 +414,35 @@ pub(crate) fn validate_graph_schema(graph: &Value, canonical_ids: &BTreeSet<Stri
     validate_graph_links(graph, canonical_ids)
 }
 
+// Schema array limits do not bound opaque metadata or state values. Apply a
+// separate native resource ceiling to the complete Graph before traversal.
+fn validate_json_budget(graph: &Value) -> Result<()> {
+    let mut pending = vec![(graph, 0usize)];
+    let mut count = 0usize;
+    let mut strings = 0usize;
+    while let Some((value, depth)) = pending.pop() {
+        count += 1;
+        if count > 500_000 || depth > 64 {
+            return Err("story_graph_limit_exceeded");
+        }
+        match value {
+            Value::String(text) => strings += text.encode_utf16().count(),
+            Value::Array(items) => pending.extend(items.iter().map(|value| (value, depth + 1))),
+            Value::Object(items) => {
+                for (key, value) in items {
+                    strings += key.encode_utf16().count();
+                    pending.push((value, depth + 1));
+                }
+            }
+            _ => {}
+        }
+        if strings > 10 * 1024 * 1024 {
+            return Err("story_graph_limit_exceeded");
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod schema_tests {
     use super::*;
@@ -459,5 +489,64 @@ mod schema_tests {
             broken["nodes"][0][field] = value;
             assert!(validate_graph_schema(&broken, &BTreeSet::new()).is_err());
         }
+    }
+}
+
+#[cfg(test)]
+mod shared_conformance {
+    use super::*;
+    #[test]
+    fn normalized_graph_matches_shared_corpus() {
+        let corpus: Value = serde_json::from_str(include_str!(
+            "../../../../packages/story-graph/test/fixtures/native-conformance.json"
+        ))
+        .unwrap();
+        for case in corpus.as_array().unwrap() {
+            let ids = case["canonicalNodeIds"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|id| id.as_str().unwrap().to_string())
+                .collect();
+            let result = validate_graph_schema(&case["graph"], &ids);
+            assert_eq!(
+                result.is_ok(),
+                case["valid"].as_bool().unwrap(),
+                "{}: {:?}",
+                case["name"],
+                result
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod native_resource_tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn json_budget_bounds_opaque_values_at_exact_depth_count_and_utf16_limits() {
+        let nested = |depth| {
+            let mut value = Value::Null;
+            for _ in 0..depth {
+                value = json!([value]);
+            }
+            value
+        };
+        assert!(validate_json_budget(&nested(64)).is_ok());
+        assert_eq!(
+            validate_json_budget(&nested(65)),
+            Err("story_graph_limit_exceeded")
+        );
+        assert!(validate_json_budget(&json!(vec![Value::Null; 499_999])).is_ok());
+        assert_eq!(
+            validate_json_budget(&json!(vec![Value::Null; 500_000])),
+            Err("story_graph_limit_exceeded")
+        );
+        assert!(validate_json_budget(&json!("😀".repeat(5 * 1024 * 1024))).is_ok());
+        assert_eq!(
+            validate_json_budget(&json!("😀".repeat(5 * 1024 * 1024 + 1))),
+            Err("story_graph_limit_exceeded")
+        );
     }
 }

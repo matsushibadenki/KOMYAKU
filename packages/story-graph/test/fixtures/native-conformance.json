@@ -1,0 +1,2329 @@
+[
+  {
+    "name": "multilingual normalized graph",
+    "valid": true,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "condition equals",
+    "valid": true,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [
+            {
+              "entityId": "00000000-0000-4000-8000-000000000003",
+              "key": "known",
+              "operator": "equals",
+              "value": null
+            }
+          ],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "condition wrong value presence equals",
+    "valid": false,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [
+            {
+              "entityId": "00000000-0000-4000-8000-000000000003",
+              "key": "known",
+              "operator": "equals"
+            }
+          ],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "condition not-equals",
+    "valid": true,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [
+            {
+              "entityId": "00000000-0000-4000-8000-000000000003",
+              "key": "known",
+              "operator": "not-equals",
+              "value": null
+            }
+          ],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "condition wrong value presence not-equals",
+    "valid": false,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [
+            {
+              "entityId": "00000000-0000-4000-8000-000000000003",
+              "key": "known",
+              "operator": "not-equals"
+            }
+          ],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "condition contains",
+    "valid": true,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [
+            {
+              "entityId": "00000000-0000-4000-8000-000000000003",
+              "key": "known",
+              "operator": "contains",
+              "value": null
+            }
+          ],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "condition wrong value presence contains",
+    "valid": false,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [
+            {
+              "entityId": "00000000-0000-4000-8000-000000000003",
+              "key": "known",
+              "operator": "contains"
+            }
+          ],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "condition not-contains",
+    "valid": true,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [
+            {
+              "entityId": "00000000-0000-4000-8000-000000000003",
+              "key": "known",
+              "operator": "not-contains",
+              "value": null
+            }
+          ],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "condition wrong value presence not-contains",
+    "valid": false,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [
+            {
+              "entityId": "00000000-0000-4000-8000-000000000003",
+              "key": "known",
+              "operator": "not-contains"
+            }
+          ],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "condition exists",
+    "valid": true,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [
+            {
+              "entityId": "00000000-0000-4000-8000-000000000003",
+              "key": "known",
+              "operator": "exists"
+            }
+          ],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "condition wrong value presence exists",
+    "valid": false,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [
+            {
+              "entityId": "00000000-0000-4000-8000-000000000003",
+              "key": "known",
+              "operator": "exists",
+              "value": null
+            }
+          ],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "condition not-exists",
+    "valid": true,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [
+            {
+              "entityId": "00000000-0000-4000-8000-000000000003",
+              "key": "known",
+              "operator": "not-exists"
+            }
+          ],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "condition wrong value presence not-exists",
+    "valid": false,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [
+            {
+              "entityId": "00000000-0000-4000-8000-000000000003",
+              "key": "known",
+              "operator": "not-exists",
+              "value": null
+            }
+          ],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "effect set",
+    "valid": true,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [],
+          "effects": [
+            {
+              "entityId": "00000000-0000-4000-8000-000000000003",
+              "key": "known",
+              "operation": "set",
+              "value": {
+                "languages": [
+                  "ja",
+                  "en",
+                  "zh-Hans"
+                ]
+              }
+            }
+          ],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "effect wrong value presence set",
+    "valid": false,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [],
+          "effects": [
+            {
+              "entityId": "00000000-0000-4000-8000-000000000003",
+              "key": "known",
+              "operation": "set"
+            }
+          ],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "effect unset",
+    "valid": true,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [],
+          "effects": [
+            {
+              "entityId": "00000000-0000-4000-8000-000000000003",
+              "key": "known",
+              "operation": "unset"
+            }
+          ],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "effect wrong value presence unset",
+    "valid": false,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [],
+          "effects": [
+            {
+              "entityId": "00000000-0000-4000-8000-000000000003",
+              "key": "known",
+              "operation": "unset",
+              "value": false
+            }
+          ],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "effect add",
+    "valid": true,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [],
+          "effects": [
+            {
+              "entityId": "00000000-0000-4000-8000-000000000003",
+              "key": "known",
+              "operation": "add",
+              "value": {
+                "languages": [
+                  "ja",
+                  "en",
+                  "zh-Hans"
+                ]
+              }
+            }
+          ],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "effect wrong value presence add",
+    "valid": false,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [],
+          "effects": [
+            {
+              "entityId": "00000000-0000-4000-8000-000000000003",
+              "key": "known",
+              "operation": "add"
+            }
+          ],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "effect remove",
+    "valid": true,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [],
+          "effects": [
+            {
+              "entityId": "00000000-0000-4000-8000-000000000003",
+              "key": "known",
+              "operation": "remove",
+              "value": {
+                "languages": [
+                  "ja",
+                  "en",
+                  "zh-Hans"
+                ]
+              }
+            }
+          ],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "effect wrong value presence remove",
+    "valid": false,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [],
+          "effects": [
+            {
+              "entityId": "00000000-0000-4000-8000-000000000003",
+              "key": "known",
+              "operation": "remove"
+            }
+          ],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "missing document reference",
+    "valid": false,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000099"
+            }
+          ],
+          "preconditions": [],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "duplicate document reference",
+    "valid": false,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            },
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "missing entity reference",
+    "valid": false,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [],
+          "effects": [
+            {
+              "entityId": "00000000-0000-4000-8000-000000000099",
+              "key": "x",
+              "operation": "unset"
+            }
+          ],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "unknown root field",
+    "valid": false,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ],
+      "unknown": true
+    }
+  },
+  {
+    "name": "unknown node field",
+    "valid": false,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "unknown": true
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid subtype",
+    "valid": false,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "Scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "astral title boundary",
+    "valid": true,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "astral title overflow",
+    "valid": false,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "invalid extension key",
+    "valid": false,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {
+        "": true
+      },
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "missing path node",
+    "valid": false,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000099"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "duplicate path node",
+    "valid": false,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004",
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "empty path",
+    "valid": false,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "position extra field",
+    "valid": false,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 1
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "UUID version zero",
+    "valid": false,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-0000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "UUID version nine",
+    "valid": false,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-9000-8000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "UUID variant zero",
+    "valid": false,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-0000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "UUID variant c",
+    "valid": false,
+    "canonicalNodeIds": [
+      "00000000-0000-4000-8000-000000000009"
+    ],
+    "graph": {
+      "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+      "schemaVersion": 1,
+      "id": "00000000-0000-4000-c000-000000000001",
+      "documentId": "00000000-0000-4000-8000-000000000002",
+      "metadata": {},
+      "extensions": {},
+      "entities": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "type": "character",
+          "name": "人物 / Character / 人物",
+          "initialState": {},
+          "metadata": {},
+          "extensions": {}
+        }
+      ],
+      "nodes": [
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "content",
+          "subtype": "scene",
+          "title": "場面 / Scene / 场景",
+          "documentRefs": [
+            {
+              "nodeId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "preconditions": [],
+          "effects": [],
+          "metadata": {},
+          "extensions": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [],
+      "paths": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "name": "Main",
+          "nodeIds": [
+            "00000000-0000-4000-8000-000000000004"
+          ],
+          "extensions": {}
+        }
+      ]
+    }
+  }
+]
