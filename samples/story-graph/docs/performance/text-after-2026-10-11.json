@@ -1,0 +1,134 @@
+{
+  "runtime": "v26.3.0",
+  "scope": "CPU text preparation; excludes WebView layout, GPU presentation and disk",
+  "warmup": 2,
+  "runs": 10,
+  "rows": [
+    {
+      "layout": "newlines",
+      "utf16": 100004,
+      "fragments": 13,
+      "fragmentMs": {
+        "samples": 10,
+        "p50": 0.0622920000000029,
+        "p95": 0.17604100000000145,
+        "max": 0.17604100000000145,
+        "over50": 0
+      },
+      "localEditMs": {
+        "samples": 100,
+        "p50": 0.6505830000000046,
+        "p95": 1.1350000000000051,
+        "max": 2.871291999999997,
+        "over50": 0
+      },
+      "sha256": "d8075760b8873f9cd9ffe1f23767cce0feac1d9832c62e3fa8c1fc44b1dfe6a1",
+      "exact": true
+    },
+    {
+      "layout": "unbroken",
+      "utf16": 100002,
+      "fragments": 13,
+      "fragmentMs": {
+        "samples": 10,
+        "p50": 0.08545900000000017,
+        "p95": 0.2333330000000018,
+        "max": 0.2333330000000018,
+        "over50": 0
+      },
+      "localEditMs": {
+        "samples": 100,
+        "p50": 0.24387499999998852,
+        "p95": 0.36291700000001015,
+        "max": 1.0234159999999974,
+        "over50": 0
+      },
+      "sha256": "6bc2afafdaddb668c8037c9a6f4c27f858b168fe131c297aa6ccb936ea2eb030",
+      "exact": true
+    },
+    {
+      "layout": "newlines",
+      "utf16": 1000017,
+      "fragments": 123,
+      "fragmentMs": {
+        "samples": 10,
+        "p50": 0.2412920000000156,
+        "p95": 1.502207999999996,
+        "max": 1.502207999999996,
+        "over50": 0
+      },
+      "localEditMs": {
+        "samples": 100,
+        "p50": 0.5534579999999778,
+        "p95": 0.9626249999999743,
+        "max": 1.903708999999992,
+        "over50": 0
+      },
+      "sha256": "cc1c094f274755a99eb91aa04eb7fea3eff7bf2568c6ee0bc05977d5adb9aee9",
+      "exact": true
+    },
+    {
+      "layout": "unbroken",
+      "utf16": 1000020,
+      "fragments": 123,
+      "fragmentMs": {
+        "samples": 10,
+        "p50": 0.34745800000001736,
+        "p95": 0.9172080000000165,
+        "max": 0.9172080000000165,
+        "over50": 0
+      },
+      "localEditMs": {
+        "samples": 100,
+        "p50": 0.24287499999996953,
+        "p95": 0.394916999999964,
+        "max": 0.8278339999999957,
+        "over50": 0
+      },
+      "sha256": "c61ff3213f349ab3a432b32e219ac5b681a4e4502e905729f3b7142fd63cfaef",
+      "exact": true
+    },
+    {
+      "layout": "newlines",
+      "utf16": 5000016,
+      "fragments": 611,
+      "fragmentMs": {
+        "samples": 10,
+        "p50": 1.37337500000001,
+        "p95": 2.389082999999971,
+        "max": 2.389082999999971,
+        "over50": 0
+      },
+      "localEditMs": {
+        "samples": 100,
+        "p50": 0.5347080000000233,
+        "p95": 0.6264169999999467,
+        "max": 1.0003750000000764,
+        "over50": 0
+      },
+      "sha256": "b7318cb2fba21f7649a0a75107463111c4d84926d1f22a6140eb0142de03dc1a",
+      "exact": true
+    },
+    {
+      "layout": "unbroken",
+      "utf16": 5000016,
+      "fragments": 611,
+      "fragmentMs": {
+        "samples": 10,
+        "p50": 2.586834000000067,
+        "p95": 8.270708000000013,
+        "max": 8.270708000000013,
+        "over50": 0
+      },
+      "localEditMs": {
+        "samples": 100,
+        "p50": 0.38466699999992215,
+        "p95": 1.254083000000037,
+        "max": 9.156958999999915,
+        "over50": 0
+      },
+      "sha256": "12f6cde8afec51f410706918ccca480da657f57cf0efb74400913f8222bae286",
+      "exact": true
+    }
+  ]
+}

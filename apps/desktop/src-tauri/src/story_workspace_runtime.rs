@@ -573,3 +573,240 @@ mod full_flow_tests {
         std::fs::remove_file(path).unwrap();
     }
 }
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct RestoreRequest {
+    pub workspace_id: String,
+    pub operation_id: String,
+    pub expected_revision: i64,
+    pub version_id: String,
+    pub branch_id: String,
+    pub branch_name: String,
+    pub expected_head_id: String,
+    pub restored_from_id: String,
+    pub label: Option<String>,
+}
+pub(crate) async fn restore(
+    pool: &Pool<Sqlite>,
+    input: RestoreRequest,
+) -> Result<CaptureResult, String> {
+    if !(1..=9_007_199_254_740_990).contains(&input.expected_revision) {
+        return Err("invalid_story_restore_revision".into());
+    }
+    let history = super::story_workspace_history::HistoryCommit {
+        version_id: input.version_id.clone(),
+        branch_id: input.branch_id.clone(),
+        branch_name: input.branch_name,
+        expected_branch_id: Some(input.branch_id.clone()),
+        expected_head_id: Some(input.expected_head_id.clone()),
+        parent_ids: vec![input.expected_head_id],
+        kind: "restore".into(),
+        source_branch_id: None,
+        restored_from_id: Some(input.restored_from_id),
+        metadata: None,
+    };
+    let receipt = super::story_workspace_history::restore_owned(
+        pool,
+        &input.workspace_id,
+        &input.operation_id,
+        input.expected_revision,
+        &history,
+        input.label,
+    )
+    .await?;
+    Ok(CaptureResult {
+        workspace_id: input.workspace_id,
+        version_id: input.version_id,
+        branch_id: input.branch_id,
+        revision: receipt.revision,
+        replayed: receipt.replayed,
+    })
+}
+
+#[cfg(test)]
+mod restore_flow_tests {
+    use super::*;
+    use serde_json::json;
+    use sha2::{Digest, Sha256};
+    #[tokio::test]
+    async fn owned_restore_preserves_exact_composite_assets_and_rolls_back_or_replays_atomically() {
+        let path = std::env::temp_dir().join(format!(
+            "komyaku-owned-restore-{}-{}.db",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::File::create(&path).unwrap();
+        let url = format!("sqlite:{}", path.display());
+        let db = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect(&url)
+            .await
+            .unwrap();
+        super::super::story_workspace_store::migrate(&db)
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE local_archive_assets(asset_id TEXT,bytes BLOB,byte_size INTEGER,content_hash TEXT,media_type TEXT)").execute(&db).await.unwrap();
+        let id = |n| format!("00000000-0000-4000-8000-{n:012}");
+        let bytes = "資料 / Source / 资料".as_bytes();
+        let hash = Sha256::digest(bytes)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        sqlx::query("INSERT INTO local_archive_assets VALUES(?,?,?,?,?)")
+            .bind(id(40))
+            .bind(bytes)
+            .bind(bytes.len() as i64)
+            .bind(hash)
+            .bind("text/markdown")
+            .execute(&db)
+            .await
+            .unwrap();
+        let prose = super::super::story_document_validation::tests::document();
+        let mut document = prose.clone();
+        document["content"][0] = json!({"id":id(2),"schemaVersion":1,"type":"file","assetId":id(40),"mediaType":"text/markdown",
+            "fileName":"資料.md","title":null,"description":null,"metadata":{},"extensions":{},"renderArtifacts":[]});
+        let graph = json!({"schemaId":"https://komyaku.example/schemas/story-graph/v1","schemaVersion":1,"id":id(10),"documentId":document["id"],
+            "entities":[],"edges":[],"nodes":[{"id":id(11),"kind":"content","subtype":"scene","title":"A","documentRefs":[],"preconditions":[],"effects":[]}],
+            "paths":[{"id":id(12),"name":"Route A","nodeIds":[id(11)]}]});
+        initialize(&db,serde_json::from_value(json!({"operationId":id(50),"versionId":id(20),"branchId":id(30),"branchName":"Main","label":null,"document":document,"graph":graph})).unwrap()).await.unwrap();
+        let original = read(&db, &id(10)).await.unwrap();
+        edit(&db,EditRequest{operation_id:id(51),command_json:json!({"documentId":prose["id"],"graphId":id(10),"expectedRevision":1,"operations":[
+            {"type":"replace-document","document":prose},{"type":"put","collection":"paths","value":{"id":id(12),"name":"Route B","nodeIds":[id(11)]}}]}).to_string()}).await.unwrap();
+        capture(&db,serde_json::from_value(json!({"workspaceId":id(10),"operationId":id(52),"expectedRevision":2,"versionId":id(21),"branchId":id(30),"branchName":"Main","expectedBranchId":id(30),"expectedHeadId":id(20),"kind":"named","label":null})).unwrap()).await.unwrap();
+        let baseline = read(&db, &id(10)).await.unwrap();
+        let request = json!({"workspaceId":id(10),"operationId":id(53),"expectedRevision":3,"versionId":id(22),"branchId":id(30),"branchName":"Main","expectedHeadId":id(21),"restoredFromId":id(20),"label":"復元 / Restore / 恢复"});
+        let target_hash: String = sqlx::query_scalar(
+            "SELECT snapshot_hash FROM story_workspace_versions WHERE version_id=?",
+        )
+        .bind(id(20))
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        sqlx::query("UPDATE story_workspace_versions SET snapshot_hash=? WHERE version_id=?")
+            .bind("0".repeat(64))
+            .bind(id(20))
+            .execute(&db)
+            .await
+            .unwrap();
+        assert_eq!(
+            restore(&db, serde_json::from_value(request.clone()).unwrap())
+                .await
+                .unwrap_err(),
+            "story_version_hash_mismatch"
+        );
+        sqlx::query("UPDATE story_workspace_versions SET snapshot_hash=? WHERE version_id=?")
+            .bind(target_hash)
+            .bind(id(20))
+            .execute(&db)
+            .await
+            .unwrap();
+        sqlx::query("UPDATE local_archive_assets SET bytes=?")
+            .bind(vec![0u8; bytes.len()])
+            .execute(&db)
+            .await
+            .unwrap();
+        assert_eq!(
+            restore(&db, serde_json::from_value(request.clone()).unwrap())
+                .await
+                .unwrap_err(),
+            "story_asset_integrity_mismatch"
+        );
+        sqlx::query("UPDATE local_archive_assets SET bytes=?")
+            .bind(bytes)
+            .execute(&db)
+            .await
+            .unwrap();
+        sqlx::query("CREATE TRIGGER reject_restore_receipt BEFORE INSERT ON story_workspace_receipts BEGIN SELECT RAISE(ABORT,'restore rollback'); END").execute(&db).await.unwrap();
+        assert!(
+            restore(&db, serde_json::from_value(request.clone()).unwrap())
+                .await
+                .is_err()
+        );
+        let unchanged = read(&db, &id(10)).await.unwrap();
+        assert_eq!(unchanged.snapshot_json, baseline.snapshot_json);
+        assert_eq!(unchanged.revision, 3);
+        assert_eq!(unchanged.current_version_id, Some(id(21)));
+        let counts:(i64,i64,i64)=sqlx::query_as("SELECT (SELECT COUNT(*) FROM story_workspace_versions),(SELECT COUNT(*) FROM story_workspace_receipts),(SELECT COUNT(*) FROM story_workspace_assets)").fetch_one(&db).await.unwrap();
+        assert_eq!(counts, (2, 3, 0));
+        sqlx::query("DROP TRIGGER reject_restore_receipt")
+            .execute(&db)
+            .await
+            .unwrap();
+        let restored = restore(&db, serde_json::from_value(request.clone()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(restored.revision, 4);
+        let state = read(&db, &id(10)).await.unwrap();
+        assert_eq!(state.snapshot_json, original.snapshot_json);
+        assert_eq!(state.current_version_id, Some(id(22)));
+        let provenance: (String, String, String) = sqlx::query_as(
+            "SELECT kind,restored_from_id,label FROM story_workspace_versions WHERE version_id=?",
+        )
+        .bind(id(22))
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        assert_eq!(
+            provenance,
+            ("restore".into(), id(20), "復元 / Restore / 恢复".into())
+        );
+        let parent: String = sqlx::query_scalar(
+            "SELECT parent_id FROM story_workspace_version_parents WHERE version_id=?",
+        )
+        .bind(id(22))
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        assert_eq!(parent, id(21));
+        edit(&db,EditRequest{operation_id:id(54),command_json:json!({"documentId":document["id"],"graphId":id(10),"expectedRevision":4,"operations":[{"type":"put","collection":"paths","value":{"id":id(12),"name":"Route C","nodeIds":[id(11)]}}]}).to_string()}).await.unwrap();
+        let later = read(&db, &id(10)).await.unwrap();
+        db.close().await;
+        let db = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect(&url)
+            .await
+            .unwrap();
+        let replay = restore(&db, serde_json::from_value(request.clone()).unwrap())
+            .await
+            .unwrap();
+        assert!(replay.replayed);
+        assert_eq!(replay.revision, 4);
+        let recovered = read(&db, &id(10)).await.unwrap();
+        assert_eq!(recovered.revision, 5);
+        assert_eq!(recovered.snapshot_json, later.snapshot_json);
+        let stored: Vec<u8> = sqlx::query_scalar("SELECT bytes FROM local_archive_assets")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(stored, bytes);
+        let mut stale = request.clone();
+        stale["operationId"] = json!(id(55));
+        assert_eq!(
+            restore(&db, serde_json::from_value(stale).unwrap())
+                .await
+                .unwrap_err(),
+            "stale_story_workspace_revision"
+        );
+        let mut missing = request;
+        missing["operationId"] = json!(id(56));
+        missing["expectedRevision"] = json!(5);
+        missing["expectedHeadId"] = json!(id(22));
+        missing["versionId"] = json!(id(23));
+        missing["restoredFromId"] = json!(id(99));
+        assert_eq!(
+            restore(&db, serde_json::from_value(missing).unwrap())
+                .await
+                .unwrap_err(),
+            "missing_story_version"
+        );
+        let retained:(i64,i64,i64)=sqlx::query_as("SELECT (SELECT COUNT(*) FROM story_workspace_receipts),(SELECT COUNT(*) FROM story_workspace_assets),(SELECT COUNT(*) FROM story_workspace_version_assets)")
+            .fetch_one(&db).await.unwrap();
+        assert_eq!(retained, (5, 1, 2));
+        db.close().await;
+        std::fs::remove_file(path).unwrap();
+    }
+}

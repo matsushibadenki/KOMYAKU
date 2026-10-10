@@ -6,17 +6,33 @@ export function graphemeStep(text,position,direction) {
   if(position>=text.length)return text.length;
   const segment=segments.containing(position);return segment.index+segment.segment.length;
 }
+// Adjacent ordinary Japanese bases have a guaranteed grapheme break. Bound
+// local ICU work by two certified breaks; unusual clusters use the full input.
+const japaneseBase=code=>(code>=0x4e00&&code<=0x9fff)||(code>=0x3041&&code<=0x3096)||(code>=0x30a1&&code<=0x30fa);
+const certifiedBreak=(text,index)=>index===0||index===text.length||(japaneseBase(text.charCodeAt(index-1))&&japaneseBase(text.charCodeAt(index)));
+function fragmentBoundary(text,position,fullSegments) {
+ let left=position,right=position;
+ while(left>0&&position-left<128&&!certifiedBreak(text,left))left--;
+ while(right<text.length&&right-position<128&&!certifiedBreak(text,right))right++;
+ if(certifiedBreak(text,left)&&certifiedBreak(text,right)){
+  if(left===position)return {index:position,segment:''};
+  const part=graphemes.segment(text.slice(left,right)).containing(position-left);
+  return {index:left+part.index,segment:part.segment};
+ }
+ return fullSegments.containing(position);
+}
 export function fragments(text,limit=8192) {
   if(!Number.isInteger(limit)||limit<2)throw new RangeError('fragment limit');
   const parts=[];let start=0;
   const boundaries=graphemes.segment(text);
   while(text.length-start>limit) {
-    const edge=text.lastIndexOf('\n',start+limit);
+    const localEdge=text.slice(start,start+limit+1).lastIndexOf('\n');
+    const edge=localEdge<0?-1:start+localEdge;
     if(edge>=start+limit/2){
       const end=text[edge-1]==='\r'?edge-1:edge;
       parts.push({start,text:text.slice(start,end),separator:text.slice(end,edge+1)});start=edge+1;
     }else {
-      const boundary=boundaries.containing(start+limit);
+      const boundary=fragmentBoundary(text,start+limit,boundaries);
       const end=boundary.index>start?boundary.index:boundary.index+boundary.segment.length;
       parts.push({start,text:text.slice(start,end),separator:''});start=end;
     }

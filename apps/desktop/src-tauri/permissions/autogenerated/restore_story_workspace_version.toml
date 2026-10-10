@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-restore-story-workspace-version"
+description = "Enables the restore_story_workspace_version command without any pre-configured scope."
+commands.allow = ["restore_story_workspace_version"]
+
+[[permission]]
+identifier = "deny-restore-story-workspace-version"
+description = "Denies the restore_story_workspace_version command without any pre-configured scope."
+commands.deny = ["restore_story_workspace_version"]

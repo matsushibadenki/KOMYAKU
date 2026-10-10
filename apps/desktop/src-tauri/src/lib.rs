@@ -2459,6 +2459,20 @@ async fn read_story_workspace(db_instances: State<'_, DbInstances>, workspace_id
     story_workspace_runtime::read(&pool, &workspace_id).await
 }
 
+#[tauri::command]
+async fn restore_story_workspace_version(
+    db_instances: State<'_, DbInstances>, input: story_workspace_runtime::RestoreRequest,
+) -> Result<story_workspace_runtime::CaptureResult, String> {
+    let pool = {
+        let instances = db_instances.0.read().await;
+        match instances.get(LOCAL_DATABASE_URL) {
+            Some(DbPool::Sqlite(pool)) => pool.clone(),
+            _ => return Err("tauri_database_unavailable".into()),
+        }
+    };
+    story_workspace_runtime::restore(&pool, input).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let migrations = vec![
@@ -2543,6 +2557,7 @@ pub fn run() {
             list_local_version_history,
             list_story_workspaces,
             capture_story_workspace_version,
+            restore_story_workspace_version,
             read_story_workspace,
             edit_story_workspace,
             initialize_story_workspace,

@@ -1104,7 +1104,7 @@ fn benchmark_large_story_graphs() {
                 snapshot_bytes,
                 indexing.as_secs_f64() * 1000.,
                 samples[50],
-                samples[95]
+                samples[94]
             );
         }
     }
@@ -1282,12 +1282,12 @@ fn benchmark_native_gpu_graphs() {
                             f64::NAN
                         },
                         if invalid_timestamps == 0 {
-                            gpu[19]
+                            gpu[18]
                         } else {
                             f64::NAN
                         },
                         wall[10],
-                        wall[19]
+                        wall[18]
                     );
                 }
             }

@@ -57,3 +57,14 @@ test('display fragments preserve canonical newlines and UTF-16 edit ranges prese
     expect(characters(after)-characters(before)).toBe(characters(patch.text)-characters(patch.removed));
   }
 });
+
+test('local Japanese boundary acceleration agrees with full Unicode segmentation',()=>{
+ const samples=['雨の日。か\u3099👨‍👩‍👧‍👦🇯🇵', 'あいう👍🏽漢字✈️', '雨'+ '\u0301'.repeat(300)+'日', '\u0600雨日🇯🇵'];
+ for(const unit of samples){
+  const text=unit.repeat(100),valid=new Set([...new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(text)].map(x=>x.index));valid.add(text.length);
+  for(const limit of [17,32,129])for(const part of fragments(text,limit)){
+   expect(valid.has(part.start)).toBe(true);expect(valid.has(part.start+part.text.length)).toBe(true);
+  }
+  expect(fragments(text,17).map(x=>x.text+x.separator).join('')).toBe(text);
+ }
+});

@@ -10,6 +10,7 @@ fn main() {
         "list_local_documents",
         "list_story_workspaces",
         "capture_story_workspace_version",
+        "restore_story_workspace_version",
         "initialize_story_workspace",
         "edit_story_workspace",
         "read_story_workspace",

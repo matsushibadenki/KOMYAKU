@@ -164,6 +164,28 @@ async fn commit_inner(
         }
         super::story_graph_validation::validate_graph_schema(&value["graph"], &ids)
             .map_err(str::to_string)?;
+        let snapshot = if let Some(target) = history.and_then(|h| h.restored_from_id.as_ref()) {
+            let saved: Option<(String,String)> = sqlx::query_as(
+                "SELECT snapshot_json,snapshot_hash FROM story_workspace_versions WHERE workspace_id=? AND version_id=?")
+                .bind(workspace_id).bind(target).fetch_optional(&mut *tx).await.map_err(|e| e.to_string())?;
+            let (saved,hash)=saved.ok_or("missing_story_version")?;
+            if saved.len()>MAX_BYTES { return Err("invalid_stored_story_workspace".into()); }
+            use sha2::Digest;
+            let actual=sha2::Sha256::digest(saved.as_bytes()).iter().map(|byte|format!("{byte:02x}")).collect::<String>();
+            if actual!=hash { return Err("story_version_hash_mismatch".into()); }
+            let target_value:serde_json::Value=serde_json::from_str(&saved).map_err(|_|"invalid_stored_story_workspace")?;
+            if target_value.as_object().is_none_or(|object|object.len()!=4 || object.keys().any(|key|
+                !["schemaId","schemaVersion","document","graph"].contains(&key.as_str())))
+                || target_value["schemaId"]!="https://komyaku.example/schemas/story-workspace/v1"
+                || target_value["schemaVersion"]!=1
+                || target_value["graph"]["id"].as_str()!=Some(workspace_id)
+                || target_value["graph"]["documentId"]!=target_value["document"]["id"] {
+                return Err("invalid_stored_story_workspace".into());
+            }
+            let ids=super::story_document_validation::validate_document_subset(&target_value["document"])?;
+            super::story_graph_validation::validate_graph_schema(&target_value["graph"],&ids).map_err(str::to_string)?;
+            saved
+        } else { snapshot };
         captured = snapshot;
         captured.as_str()
     };

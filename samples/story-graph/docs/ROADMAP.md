@@ -5,6 +5,15 @@
 - 🔴 [Later] planned, but not the closest next step
 - ⭕️ [Pending] Anything that can't be tested in the dev environment is on hold for now.
 
+## 表示速度・精度 — 2026-10-11
+
+- 🟢 [Done] 10万／100万／500万UTF-16単位の混在Unicode本文を反復計測。改行検索を断片内へ限定し、確実な日本語書記素境界の局所ICU処理を追加。改行なし500万単位の分割p95 288.080ms→8.271ms。復元SHA-256・UTF-16範囲・結合文字／絵文字の境界を検証。
+- 🟢 [Done] Apple M4 / Metalで1,000／5,000／10,000ノード・DPI1/2を描画。1万ノードのシーン準備からGPU完了待ちまでp95最大11.419ms。画像・3言語テキスト・clipのGPUピクセル試験成功。GPU専用timestampが無効のため単独GPU時間は未確定。
+- 🟠 [Next] 実WebViewで新版の初回表示・入力・縦横スクロールと最大RSSを測定し、画面提示を含む応答を確認。
+- ⭕️ [Pending] GPU-only時間、実アプリで256ノード超の編集・保存・復旧、他OS／端末。上限解除や全環境の表示性能保証は行っていない。
+
+詳細と再実行手順は [表示性能・精度の計測](DISPLAY-PERFORMANCE-2026-10-11.md)。
+
 ## 継続実装 — 2026-10-09
 
 - 🟢 [Done] 貼り付け・入力・スクロール・resize・ホイールの開始から、最初の描画コールバック到達までの遅延を独立して記録。操作直後の同期処理を計測から落とさず、別イベントによるフレーム集計の切替でも保持する。

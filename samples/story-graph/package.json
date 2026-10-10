@@ -9,7 +9,8 @@
     "tauri": "bun run build && cargo run --manifest-path src-tauri/Cargo.toml --locked",
     "check": "bun run build && bun test test && cargo test --workspace --locked",
     "test": "bun test test",
-    "package": "bun run build && bun ../../apps/desktop/node_modules/@tauri-apps/cli/tauri.js build --debug --bundles app"
+    "package": "bun run build && bun ../../apps/desktop/node_modules/@tauri-apps/cli/tauri.js build --debug --bundles app",
+    "benchmark:text": "bun scripts/benchmark-text.js"
   },
   "dependencies": {
     "@komyaku/document-schema": "file:../../packages/document-schema",

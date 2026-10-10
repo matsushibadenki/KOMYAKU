@@ -297,6 +297,12 @@
           "markdownDescription": "Enables the read_story_workspace command without any pre-configured scope."
         },
         {
+          "description": "Enables the restore_story_workspace_version command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-restore-story-workspace-version",
+          "markdownDescription": "Enables the restore_story_workspace_version command without any pre-configured scope."
+        },
+        {
           "description": "Enables the save_local_ai_handoff_atomic command without any pre-configured scope.",
           "type": "string",
           "const": "allow-save-local-ai-handoff-atomic",
@@ -451,6 +457,12 @@
           "type": "string",
           "const": "deny-read-story-workspace",
           "markdownDescription": "Denies the read_story_workspace command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the restore_story_workspace_version command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-restore-story-workspace-version",
+          "markdownDescription": "Denies the restore_story_workspace_version command without any pre-configured scope."
         },
         {
           "description": "Denies the save_local_ai_handoff_atomic command without any pre-configured scope.",

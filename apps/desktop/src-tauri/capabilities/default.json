@@ -21,6 +21,7 @@
     "allow-list-local-documents",
     "allow-list-story-workspaces",
     "allow-capture-story-workspace-version",
+    "allow-restore-story-workspace-version",
     "allow-initialize-story-workspace",
     "allow-edit-story-workspace",
     "allow-read-story-workspace",

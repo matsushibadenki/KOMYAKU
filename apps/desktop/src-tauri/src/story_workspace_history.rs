@@ -943,6 +943,39 @@ pub(crate) async fn capture_owned_current(
     .await
 }
 
+pub(crate) async fn restore_owned(
+    pool: &Pool<Sqlite>,
+    workspace_id: &str,
+    operation_id: &str,
+    expected_revision: i64,
+    history: &HistoryCommit,
+    label: Option<String>,
+) -> Result<super::story_workspace_store::Receipt, String> {
+    validate(history)?;
+    if history.kind != "restore"
+        || history.metadata.is_some()
+        || !super::valid_lower_uuid(workspace_id)
+        || !super::valid_lower_uuid(operation_id)
+        || label
+            .as_ref()
+            .is_some_and(|label| label.encode_utf16().count() > 1000)
+    {
+        return Err("invalid_story_owned_restore".into());
+    }
+    let request=serde_json::json!({"kind":"restore-owned-v1","workspaceId":workspace_id,
+        "operationId":operation_id,"expectedRevision":expected_revision,"history":history,"label":label}).to_string();
+    super::story_workspace_store::capture_owned_history(
+        pool,
+        workspace_id,
+        operation_id,
+        expected_revision,
+        &request,
+        history,
+        &label,
+    )
+    .await
+}
+
 pub(crate) async fn save_candidate(
     pool: &Pool<Sqlite>,
     operation_id: &str,
