@@ -4,6 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "test:agent-editor:package": "tauri build --debug --bundles app --config src-tauri/tauri.agent-editor-qa.conf.json",
+    "test:story-agent:package": "tauri build --debug --bundles app --config src-tauri/tauri.story-agent-qa.conf.json",
     "dev": "vite",
     "build": "vite build",
     "check": "vite build",

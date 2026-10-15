@@ -59,7 +59,7 @@ pub(crate) async fn commit_with_history(
     history: Option<&super::story_workspace_history::HistoryCommit>,
 ) -> Result<Receipt, String> {
     commit_inner(pool, workspace_id, operation_id, expected_revision, request_json,
-        Some(snapshot_json), history, None).await
+        Some(snapshot_json), history, None, None).await
 }
 
 pub(crate) async fn capture_history(
@@ -68,7 +68,7 @@ pub(crate) async fn capture_history(
     history: &super::story_workspace_history::HistoryCommit,
 ) -> Result<Receipt, String> {
     commit_inner(pool, workspace_id, operation_id, expected_revision, request_json,
-        None, Some(history), None).await
+        None, Some(history), None, None).await
 }
 
 pub(crate) async fn capture_owned_history(
@@ -77,7 +77,7 @@ pub(crate) async fn capture_owned_history(
     history: &super::story_workspace_history::HistoryCommit, label: &Option<String>,
 ) -> Result<Receipt, String> {
     commit_inner(pool, workspace_id, operation_id, expected_revision, request_json,
-        None, Some(history), Some(label)).await
+        None, Some(history), Some(label), None).await
 }
 
 pub(crate) async fn initialize_owned_history(
@@ -86,7 +86,25 @@ pub(crate) async fn initialize_owned_history(
     history: &super::story_workspace_history::HistoryCommit, label: &Option<String>,
 ) -> Result<Receipt, String> {
     commit_inner(pool, workspace_id, operation_id, 0, request_json,
-        Some(snapshot_json), Some(history), Some(label)).await
+        Some(snapshot_json), Some(history), Some(label), None).await
+}
+
+pub(crate) async fn adopt_owned_candidate(
+    pool: &Pool<Sqlite>, workspace_id: &str, operation_id: &str,
+    expected_revision: i64, request_json: &str, snapshot: &str,
+    history: &super::story_workspace_history::HistoryCommit, label: &Option<String>,
+) -> Result<Receipt, String> {
+    commit_inner(pool, workspace_id, operation_id, expected_revision, request_json,
+        Some(snapshot), Some(history), Some(label), None).await
+}
+
+pub(crate) async fn adopt_review_candidate(
+    pool: &Pool<Sqlite>, workspace_id: &str, operation_id: &str,
+    expected_revision: i64, request_json: &str, snapshot: &str,
+    history: &super::story_workspace_history::HistoryCommit, label: &Option<String>, review_id: &str,
+) -> Result<Receipt, String> {
+    commit_inner(pool, workspace_id, operation_id, expected_revision, request_json,
+        Some(snapshot), Some(history), Some(label), Some(review_id)).await
 }
 
 async fn commit_inner(
@@ -94,6 +112,7 @@ async fn commit_inner(
     expected_revision: i64, request_json: &str, candidate: Option<&str>,
     history: Option<&super::story_workspace_history::HistoryCommit>,
     owner_label: Option<&Option<String>>,
+    review_id: Option<&str>,
 ) -> Result<Receipt, String> {
     if workspace_id.is_empty()
         || workspace_id.len() > 100
@@ -236,6 +255,9 @@ async fn commit_inner(
     sqlx::query("INSERT INTO story_workspace_receipts(operation_id, workspace_id, request_json, revision, snapshot_json) VALUES (?, ?, ?, ?, ?)")
         .bind(operation_id).bind(workspace_id).bind(request_json).bind(revision).bind(snapshot_json)
         .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    if let Some(review_id) = review_id {
+        super::story_agent_reviews::finish(&mut tx, review_id, request_json, snapshot_json).await?;
+    }
     tx.commit().await.map_err(|e| e.to_string())?;
     Ok(Receipt {
         revision,
@@ -522,7 +544,7 @@ mod workspace_tests {
     }
 }
 
-async fn verify_workspace_assets(
+pub(crate) async fn verify_workspace_assets(
     tx: &mut sqlx::Transaction<'_, Sqlite>,
     snapshot: &str,
 ) -> Result<Vec<String>, String> {

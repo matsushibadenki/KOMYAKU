@@ -1,7 +1,29 @@
 import { parseStoryGraph, StoryGraphError } from "./schema.js";
 
 function clone(value) { return structuredClone(value); }
-function equal(left, right) { return JSON.stringify(left) === JSON.stringify(right); }
+const own = (record, key) => record && Object.hasOwn(record, key) ? record[key] : undefined;
+function put(record, key, value) {
+  Object.defineProperty(record, key, { value, enumerable: true, configurable: true, writable: true });
+}
+// JSON objects are unordered. Keep equality independent of insertion order,
+// matching the native evaluator and canonical snapshot encoding.
+function equal(left, right) {
+  if (left === right) return true;
+  if (left === null || right === null || typeof left !== 'object' || typeof right !== 'object') return false;
+  if (Array.isArray(left) !== Array.isArray(right)) return false;
+  const keys = Object.keys(left);
+  return keys.length === Object.keys(right).length
+    && keys.every(key => Object.hasOwn(right, key) && equal(left[key], right[key]));
+}
+
+function compareKeys(left, right) {
+  const a = [...left], b = [...right];
+  for (let i = 0; i < Math.min(a.length, b.length); i++) {
+    const difference = a[i].codePointAt(0) - b[i].codePointAt(0);
+    if (difference) return difference;
+  }
+  return a.length - b.length;
+}
 
 function createState(graph) {
   return new Map(graph.entities.map((entity) => [entity.id, clone(entity.initialState)]));
@@ -22,16 +44,17 @@ function matches(actual, condition) {
 
 function applyEffect(record, effect) {
   if (effect.operation === "unset") delete record[effect.key];
-  else if (effect.operation === "set") record[effect.key] = clone(effect.value);
+  else if (effect.operation === "set") put(record, effect.key, clone(effect.value));
   else {
-    const values = Array.isArray(record[effect.key]) ? [...record[effect.key]] : [];
+    const current = own(record, effect.key);
+    const values = Array.isArray(current) ? [...current] : [];
     if (effect.operation === "add" && !values.some((value) => equal(value, effect.value))) {
       values.push(clone(effect.value));
     } else if (effect.operation === "remove") {
-      record[effect.key] = values.filter((value) => !equal(value, effect.value));
+      put(record, effect.key, values.filter((value) => !equal(value, effect.value)));
       return;
     }
-    record[effect.key] = values;
+    put(record, effect.key, values);
   }
 }
 
@@ -47,11 +70,11 @@ function evaluateNodes(graph, nodeIds, initialState = createState(graph)) {
   for (const [index, nodeId] of nodeIds.entries()) {
     const node = byId.get(nodeId);
     const before = snapshotState(state);
-    for (const condition of node.preconditions) {
-      const actual = state.get(condition.entityId)?.[condition.key];
+    for (const [conditionIndex, condition] of node.preconditions.entries()) {
+      const actual = own(state.get(condition.entityId), condition.key);
       if (!matches(actual, condition)) issues.push(Object.freeze({
         code: "story_precondition_failed", severity: "conflict", pathIndex: index,
-        nodeId, entityId: condition.entityId, key: condition.key,
+        nodeId, conditionIndex, entityId: condition.entityId, key: condition.key,
         operator: condition.operator, expected: clone(condition.value), actual: clone(actual)
       }));
     }
@@ -77,7 +100,7 @@ export function readStoryState(input, { pathId, nodeId, entityId, key, phase = "
   const step = evaluation.steps.find((candidate) => candidate.nodeId === nodeId);
   if (!step) throw new StoryGraphError("story_node_not_in_path");
   if (!Object.hasOwn(step[phase], entityId)) throw new StoryGraphError("missing_story_entity_reference");
-  return clone(step[phase][entityId][key]);
+  return clone(own(step[phase][entityId], key));
 }
 
 export function characterKnowsFact(input, { pathId, nodeId, characterId, factId, phase = "before" }) {
@@ -105,8 +128,8 @@ function changedKeys(before, after) {
     const left = before[entityId] ?? {};
     const right = after[entityId] ?? {};
     for (const key of new Set([...Object.keys(left), ...Object.keys(right)])) {
-      if (!equal(left[key], right[key])) changed.set(`${entityId}\u0000${key}`,
-        { entityId, key, before: clone(left[key]), after: clone(right[key]) });
+      if (!equal(own(left, key), own(right, key))) changed.set(`${entityId}\u0000${key}`,
+        { entityId, key, before: clone(own(left, key)), after: clone(own(right, key)) });
     }
   }
   return changed;
@@ -138,7 +161,7 @@ export function compareStoryPathMerge(input, oursPathId, theirsPathId) {
       ours: oursChange.after, theirs: theirsChange.after
     }));
   }
-  conflicts.sort((left, right) => left.entityId.localeCompare(right.entityId) || left.key.localeCompare(right.key));
+  conflicts.sort((left, right) => compareKeys(left.entityId, right.entityId) || compareKeys(left.key, right.key));
   // Evaluate each complete route as written as well as the divergent state.
   // Preconditions on the shared suffix can succeed on one route and fail on the other.
   const issues = Object.freeze([

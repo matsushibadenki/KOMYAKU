@@ -15,7 +15,16 @@ const MermaidRendererHost = isMermaidRenderer
     })))
   : null;
 
-if (new URLSearchParams(window.location.search).get("mode") === "integration-ui-qa") {
+if (new URLSearchParams(window.location.search).get("mode") === "agent-editor-qa") {
+  void import("./services/packaged-agent-editor-qa.js").then(async ({ prepareAgentEditorQa }) => {
+    const props = await prepareAgentEditorQa();
+    ReactDOM.createRoot(document.getElementById("root")).render(
+      <I18nextProvider i18n={i18n}><App {...props} /></I18nextProvider>);
+  }).catch(error => { document.getElementById("root").textContent = `QA failed: ${error.message}`; });
+} else if (new URLSearchParams(window.location.search).get("mode") === "story-agent-qa") {
+  void import("./services/packaged-story-agent-qa.js").then(({ mountPackagedStoryAgentQa }) =>
+    mountPackagedStoryAgentQa(document.getElementById("root")));
+} else if (new URLSearchParams(window.location.search).get("mode") === "integration-ui-qa") {
   void import("./services/packaged-integration-ui-qa.js").then(async ({ prepareIntegrationUiQa }) => {
     const props = await prepareIntegrationUiQa();
     ReactDOM.createRoot(document.getElementById("root")).render(

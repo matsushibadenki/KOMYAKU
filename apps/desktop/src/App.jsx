@@ -13,6 +13,8 @@ import { ConversationImportPanel } from "./components/ConversationImportPanel.js
 import { PreviewQaRecoveryProbe } from "./components/PreviewQaRecoveryProbe.jsx";
 import { LocalDocumentLibrary } from "./components/LocalDocumentLibrary.jsx";
 import { LocalVersionHistory } from "./components/LocalVersionHistory.jsx";
+import { StoryAgentPanel } from "./components/StoryAgentPanel.jsx";
+import { prepareEditorStoryScope, stageStoryAgentReview, loadStoryAgentReview, attemptStoryAgentReview } from "./services/story-agent-reviews.js";
 import { runCheckpointedExport } from "./services/checkpointed-export.js";
 import { createLocalMutationGate } from "./services/local-mutation-gate.js";
 import { loadLocalDraft, saveLocalDraft } from "./services/local-database.js";
@@ -128,7 +130,7 @@ function localPersistenceErrorCode(error) {
   return codes.length > 0 ? codes.join("/") : "unexpected_local_persistence_error";
 }
 
-export function App({ initialDocument = null, integrationSaveOptions } = {}) {
+export function App({ initialDocument = null, integrationSaveOptions, agentOptions } = {}) {
   const { t, i18n } = useTranslation();
   const query = new URLSearchParams(window.location.search);
   const previewQa = query.get("previewQa") === "1";
@@ -143,6 +145,7 @@ export function App({ initialDocument = null, integrationSaveOptions } = {}) {
   const editGeneration = useRef(0);
   const mutationGeneration = useRef(0);
   const [mutationBusy, setMutationBusy] = useState(false);
+  const [agentPending, setAgentPending] = useState(false);
   const mutationFocus = useRef(null);
   const mutationGate = useRef(null);
   if (!mutationGate.current) mutationGate.current = createLocalMutationGate((busy) => {
@@ -422,6 +425,36 @@ export function App({ initialDocument = null, integrationSaveOptions } = {}) {
     return () => editSession.current === session && mutationGeneration.current === mutation
       && !mutationGate.current.busy && composingEditors.current.size === 0;
   }, []);
+
+  const stageAgentProposal = useCallback((operations) => runDocumentMutation(async () => {
+    if (editorWorkspace.mode !== 'local') throw new Error('story_agent_local_required');
+    const prepared = await prepareForDocumentTransition();
+    if (!prepared || !prepared.isCurrent()) throw new Error('local_save_required');
+    const scope = await prepareEditorStoryScope(prepared.checkpoint.document, agentOptions);
+    if (!prepared.isCurrent()) throw new Error('local_edit_changed');
+    return stageStoryAgentReview(scope, operations, agentOptions);
+  }), [runDocumentMutation, prepareForDocumentTransition, editorWorkspace.mode, agentOptions]);
+
+  const adoptAgentProposal = useCallback((review) => runDocumentMutation(async () => {
+    // Refresh durable status before saving: a committed response-loss retry must
+    // never autosave the old editor over the already-adopted document.
+    const savedReview = await loadStoryAgentReview(review.reviewId, agentOptions);
+    if (savedReview.before.document.id !== editSession.current?.documentId) throw new Error('story_review_document_changed');
+    if (savedReview.status === 'review' || savedReview.status === 'attempting') {
+      const prepared = await prepareForDocumentTransition();
+      if (!prepared || !prepared.isCurrent()) throw new Error('local_save_required');
+    } else {
+      if (checkpointTimer.current) window.clearTimeout(checkpointTimer.current);
+      checkpointTimer.current = null;
+      await editSession.current?.waitForIdle();
+    }
+    await attemptStoryAgentReview(review.reviewId, agentOptions);
+    const draft = await loadLocalDraft(savedReview.before.document.id);
+    if (!draft) throw new Error('story_review_editor_required');
+    replaceWorkingDocument(draft.content, draft.localRevision);
+    void refreshLocalDocuments();
+    return true;
+  }), [runDocumentMutation, prepareForDocumentTransition, replaceWorkingDocument, refreshLocalDocuments, agentOptions]);
 
   const exportDocument = async () => {
     if (editorWorkspace.mode !== "cloud") return;
@@ -856,7 +889,7 @@ export function App({ initialDocument = null, integrationSaveOptions } = {}) {
   return (
     <>
     {mutationBusy ? <p className="mutation-status" role="status">{t("documentWorkspace.applyingChange")}</p> : null}
-    <main className="app-shell" inert={mutationBusy ? true : undefined} aria-busy={mutationBusy}>
+    <main className="app-shell" inert={mutationBusy || agentPending ? true : undefined} aria-busy={mutationBusy || agentPending}>
       <header className="app-header">
         <div className="brand-block">
           <p className="wordmark">KOMYAKU <span aria-hidden="true">/</span> 稿脈</p>
@@ -1206,6 +1239,9 @@ export function App({ initialDocument = null, integrationSaveOptions } = {}) {
         ) : null}
       </footer>
     </main>
+    <StoryAgentPanel documentId={editSession.current?.documentId} native={editorWorkspace.mode === 'local'
+      && (agentOptions?.native ?? Boolean(window.__TAURI_INTERNALS__))} busy={mutationBusy} options={agentOptions}
+      onStage={stageAgentProposal} onAdopt={adoptAgentProposal} onPending={setAgentPending} />
     </>
   );
 }

@@ -1,0 +1,9 @@
+{
+  "productName": "KOMYAKU Agent Editor QA",
+  "identifier": "app.komyaku.desktop.agent-editor-qa",
+  "app": { "windows": [{
+    "label": "main", "title": "KOMYAKU Agent Editor QA",
+    "url": "/?mode=agent-editor-qa", "width": 1100, "height": 800,
+    "minWidth": 320, "minHeight": 568, "resizable": true
+  }] }
+}

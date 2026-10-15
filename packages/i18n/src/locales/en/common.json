@@ -412,5 +412,28 @@
       "connection_invalid": "Check the connection settings.",
       "request_failed": "The AI handoff could not be completed."
     }
+  },
+  "storyAgent": {
+    "title": "Agent reviews",
+    "hint": "Review suggestions before saving. Unfinished reviews are kept on this device.",
+    "refresh": "Refresh reviews",
+    "import": "Import Agent proposal",
+    "empty": "No pending reviews",
+    "proposal": "Proposal {{count}}",
+    "review": "Review proposal",
+    "before": "Before",
+    "after": "After",
+    "structure": "Structure changes",
+    "adopt": "Adopt",
+    "reject": "Reject",
+    "retry": "Retry adoption",
+    "status": {
+      "stale": "The manuscript changed. Reject this review and prepare a new proposal.",
+      "idle": "",
+      "review": "Ready for review",
+      "adopted": "Adopted",
+      "uncertain": "Save outcome pending. Retry to confirm.",
+      "error": "Unable to load or apply. Refresh the review."
+    }
   }
 }

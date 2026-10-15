@@ -1,0 +1,16 @@
+{
+  "productName": "KOMYAKU Story Agent QA",
+  "identifier": "app.komyaku.desktop.story-agent-qa",
+  "app": {
+    "windows": [{
+      "label": "main",
+      "title": "KOMYAKU Story Agent QA",
+      "url": "/?mode=story-agent-qa",
+      "width": 1000,
+      "height": 700,
+      "minWidth": 320,
+      "minHeight": 568,
+      "resizable": true
+    }]
+  }
+}

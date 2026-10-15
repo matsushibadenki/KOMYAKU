@@ -1,0 +1,1273 @@
+[
+  {
+    "name": "route-a-knows",
+    "query": {
+      "type": "state-at",
+      "pathId": "00000000-0000-4000-8000-000000000028",
+      "nodeId": "00000000-0000-4000-8000-000000000017",
+      "entityId": "00000000-0000-4000-8000-00000000000a",
+      "key": "knowledge",
+      "phase": "before"
+    },
+    "expected": {
+      "exists": true,
+      "value": [
+        "00000000-0000-4000-8000-00000000000b"
+      ],
+      "evidence": {
+        "initial": {
+          "exists": true,
+          "value": []
+        },
+        "effects": [
+          {
+            "nodeId": "00000000-0000-4000-8000-000000000015",
+            "effectIndex": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "route-b-does-not-know",
+    "query": {
+      "type": "state-at",
+      "pathId": "00000000-0000-4000-8000-000000000029",
+      "nodeId": "00000000-0000-4000-8000-000000000017",
+      "entityId": "00000000-0000-4000-8000-00000000000a",
+      "key": "knowledge",
+      "phase": "before"
+    },
+    "expected": {
+      "exists": true,
+      "value": [],
+      "evidence": {
+        "initial": {
+          "exists": true,
+          "value": []
+        },
+        "effects": []
+      }
+    }
+  },
+  {
+    "name": "before-learning",
+    "query": {
+      "type": "state-at",
+      "pathId": "00000000-0000-4000-8000-000000000028",
+      "nodeId": "00000000-0000-4000-8000-000000000015",
+      "entityId": "00000000-0000-4000-8000-00000000000a",
+      "key": "knowledge",
+      "phase": "before"
+    },
+    "expected": {
+      "exists": true,
+      "value": [],
+      "evidence": {
+        "initial": {
+          "exists": true,
+          "value": []
+        },
+        "effects": []
+      }
+    }
+  },
+  {
+    "name": "after-learning",
+    "query": {
+      "type": "state-at",
+      "pathId": "00000000-0000-4000-8000-000000000028",
+      "nodeId": "00000000-0000-4000-8000-000000000015",
+      "entityId": "00000000-0000-4000-8000-00000000000a",
+      "key": "knowledge",
+      "phase": "after"
+    },
+    "expected": {
+      "exists": true,
+      "value": [
+        "00000000-0000-4000-8000-00000000000b"
+      ],
+      "evidence": {
+        "initial": {
+          "exists": true,
+          "value": []
+        },
+        "effects": [
+          {
+            "nodeId": "00000000-0000-4000-8000-000000000015",
+            "effectIndex": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "missing-property",
+    "query": {
+      "type": "state-at",
+      "pathId": "00000000-0000-4000-8000-000000000028",
+      "nodeId": "00000000-0000-4000-8000-000000000014",
+      "entityId": "00000000-0000-4000-8000-00000000000a",
+      "key": "missing",
+      "phase": "before"
+    },
+    "expected": {
+      "exists": false,
+      "evidence": {
+        "initial": {
+          "exists": false
+        },
+        "effects": []
+      }
+    }
+  },
+  {
+    "name": "initial-property",
+    "query": {
+      "type": "state-at",
+      "pathId": "00000000-0000-4000-8000-000000000028",
+      "nodeId": "00000000-0000-4000-8000-000000000014",
+      "entityId": "00000000-0000-4000-8000-00000000000a",
+      "key": "location",
+      "phase": "before"
+    },
+    "expected": {
+      "exists": true,
+      "value": "Tokyo",
+      "evidence": {
+        "initial": {
+          "exists": true,
+          "value": "Tokyo"
+        },
+        "effects": []
+      }
+    }
+  },
+  {
+    "name": "consistency-all-routes",
+    "query": {
+      "type": "consistency",
+      "pathIds": [
+        "00000000-0000-4000-8000-000000000028",
+        "00000000-0000-4000-8000-000000000029"
+      ]
+    },
+    "expected": {
+      "consistent": false,
+      "issues": [
+        {
+          "code": "story_precondition_failed",
+          "severity": "conflict",
+          "pathIndex": 2,
+          "nodeId": "00000000-0000-4000-8000-000000000017",
+          "conditionIndex": 0,
+          "entityId": "00000000-0000-4000-8000-00000000000a",
+          "key": "knowledge",
+          "operator": "contains",
+          "expected": "00000000-0000-4000-8000-00000000000b",
+          "actual": [],
+          "pathId": "00000000-0000-4000-8000-000000000029"
+        }
+      ]
+    }
+  },
+  {
+    "name": "consistency-good-route",
+    "query": {
+      "type": "consistency",
+      "pathIds": [
+        "00000000-0000-4000-8000-000000000028"
+      ]
+    },
+    "expected": {
+      "consistent": true,
+      "issues": []
+    }
+  },
+  {
+    "name": "compare-conflicting-routes",
+    "query": {
+      "type": "compare-paths",
+      "oursPathId": "00000000-0000-4000-8000-000000000028",
+      "theirsPathId": "00000000-0000-4000-8000-000000000029"
+    },
+    "expected": {
+      "sharedPrefixNodeIds": [
+        "00000000-0000-4000-8000-000000000014"
+      ],
+      "sharedSuffixNodeIds": [
+        "00000000-0000-4000-8000-000000000017",
+        "00000000-0000-4000-8000-000000000018"
+      ],
+      "oursNodeIds": [
+        "00000000-0000-4000-8000-000000000015"
+      ],
+      "theirsNodeIds": [
+        "00000000-0000-4000-8000-000000000016"
+      ],
+      "conflicts": [
+        {
+          "entityId": "00000000-0000-4000-8000-00000000000a",
+          "key": "location",
+          "base": "Tokyo",
+          "ours": "Kyoto",
+          "theirs": "Osaka"
+        }
+      ],
+      "issues": [
+        {
+          "code": "story_precondition_failed",
+          "severity": "conflict",
+          "pathIndex": 2,
+          "nodeId": "00000000-0000-4000-8000-000000000017",
+          "conditionIndex": 0,
+          "entityId": "00000000-0000-4000-8000-00000000000a",
+          "key": "knowledge",
+          "operator": "contains",
+          "expected": "00000000-0000-4000-8000-00000000000b",
+          "actual": [],
+          "pathId": "00000000-0000-4000-8000-000000000029"
+        }
+      ],
+      "mergeable": false
+    }
+  },
+  {
+    "name": "impact-forward-and-reverse",
+    "query": {
+      "type": "impact",
+      "nodeIds": [
+        "00000000-0000-4000-8000-000000000015"
+      ]
+    },
+    "expected": {
+      "impacts": [
+        {
+          "nodeId": "00000000-0000-4000-8000-000000000017",
+          "viaNodeId": "00000000-0000-4000-8000-000000000015",
+          "reason": "merge",
+          "edgeId": "00000000-0000-4000-8000-000000000020"
+        },
+        {
+          "nodeId": "00000000-0000-4000-8000-000000000016",
+          "viaNodeId": "00000000-0000-4000-8000-000000000015",
+          "reason": "contradicts",
+          "edgeId": "00000000-0000-4000-8000-000000000023"
+        },
+        {
+          "nodeId": "00000000-0000-4000-8000-000000000018",
+          "viaNodeId": "00000000-0000-4000-8000-000000000017",
+          "reason": "sequence",
+          "edgeId": "00000000-0000-4000-8000-000000000022"
+        }
+      ]
+    }
+  },
+  {
+    "name": "impact-multiple-seeds",
+    "query": {
+      "type": "impact",
+      "nodeIds": [
+        "00000000-0000-4000-8000-000000000016",
+        "00000000-0000-4000-8000-000000000015"
+      ]
+    },
+    "expected": {
+      "impacts": [
+        {
+          "nodeId": "00000000-0000-4000-8000-000000000017",
+          "viaNodeId": "00000000-0000-4000-8000-000000000016",
+          "reason": "merge",
+          "edgeId": "00000000-0000-4000-8000-000000000021"
+        },
+        {
+          "nodeId": "00000000-0000-4000-8000-000000000018",
+          "viaNodeId": "00000000-0000-4000-8000-000000000017",
+          "reason": "sequence",
+          "edgeId": "00000000-0000-4000-8000-000000000022"
+        }
+      ]
+    }
+  },
+  {
+    "name": "impact-leaf",
+    "query": {
+      "type": "impact",
+      "nodeIds": [
+        "00000000-0000-4000-8000-000000000018"
+      ]
+    },
+    "expected": {
+      "impacts": []
+    }
+  },
+  {
+    "name": "missing-initial-state",
+    "query": {
+      "type": "state-at",
+      "pathId": "00000000-0000-4000-8000-000000000028",
+      "nodeId": "00000000-0000-4000-8000-000000000014",
+      "entityId": "00000000-0000-4000-8000-00000000000a",
+      "key": "knowledge",
+      "phase": "before"
+    },
+    "expected": {
+      "exists": false,
+      "evidence": {
+        "initial": {
+          "exists": false
+        },
+        "effects": []
+      }
+    },
+    "changes": [
+      {
+        "pointer": "/graph/entities/0/initialState",
+        "remove": true
+      }
+    ]
+  },
+  {
+    "name": "missing-initial-consistency",
+    "query": {
+      "type": "consistency",
+      "pathIds": [
+        "00000000-0000-4000-8000-000000000028"
+      ]
+    },
+    "expected": {
+      "consistent": true,
+      "issues": []
+    },
+    "changes": [
+      {
+        "pointer": "/graph/entities/0/initialState",
+        "remove": true
+      }
+    ]
+  },
+  {
+    "name": "null-is-present",
+    "query": {
+      "type": "state-at",
+      "pathId": "00000000-0000-4000-8000-000000000028",
+      "nodeId": "00000000-0000-4000-8000-000000000015",
+      "entityId": "00000000-0000-4000-8000-00000000000a",
+      "key": "nullable",
+      "phase": "after"
+    },
+    "expected": {
+      "exists": true,
+      "value": null,
+      "evidence": {
+        "initial": {
+          "exists": false
+        },
+        "effects": [
+          {
+            "nodeId": "00000000-0000-4000-8000-000000000015",
+            "effectIndex": 2
+          }
+        ]
+      }
+    },
+    "changes": [
+      {
+        "pointer": "/graph/nodes/1/effects",
+        "value": [
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "knowledge",
+            "operation": "add",
+            "value": "00000000-0000-4000-8000-00000000000b"
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "location",
+            "operation": "set",
+            "value": "Kyoto"
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "nullable",
+            "operation": "set",
+            "value": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "unset-removes-key",
+    "query": {
+      "type": "state-at",
+      "pathId": "00000000-0000-4000-8000-000000000028",
+      "nodeId": "00000000-0000-4000-8000-000000000015",
+      "entityId": "00000000-0000-4000-8000-00000000000a",
+      "key": "location",
+      "phase": "after"
+    },
+    "expected": {
+      "exists": false,
+      "evidence": {
+        "initial": {
+          "exists": true,
+          "value": "Tokyo"
+        },
+        "effects": [
+          {
+            "nodeId": "00000000-0000-4000-8000-000000000015",
+            "effectIndex": 1
+          },
+          {
+            "nodeId": "00000000-0000-4000-8000-000000000015",
+            "effectIndex": 2
+          }
+        ]
+      }
+    },
+    "changes": [
+      {
+        "pointer": "/graph/nodes/1/effects",
+        "value": [
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "knowledge",
+            "operation": "add",
+            "value": "00000000-0000-4000-8000-00000000000b"
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "location",
+            "operation": "set",
+            "value": "Kyoto"
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "location",
+            "operation": "unset"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "all-effect-operators",
+    "query": {
+      "type": "state-at",
+      "pathId": "00000000-0000-4000-8000-000000000028",
+      "nodeId": "00000000-0000-4000-8000-000000000015",
+      "entityId": "00000000-0000-4000-8000-00000000000a",
+      "key": "items",
+      "phase": "after"
+    },
+    "expected": {
+      "exists": true,
+      "value": [
+        "keep"
+      ],
+      "evidence": {
+        "initial": {
+          "exists": true,
+          "value": 0
+        },
+        "effects": [
+          {
+            "nodeId": "00000000-0000-4000-8000-000000000015",
+            "effectIndex": 2
+          },
+          {
+            "nodeId": "00000000-0000-4000-8000-000000000015",
+            "effectIndex": 3
+          },
+          {
+            "nodeId": "00000000-0000-4000-8000-000000000015",
+            "effectIndex": 4
+          },
+          {
+            "nodeId": "00000000-0000-4000-8000-000000000015",
+            "effectIndex": 5
+          }
+        ]
+      }
+    },
+    "changes": [
+      {
+        "pointer": "/graph/entities/0/initialState/items",
+        "value": 0
+      },
+      {
+        "pointer": "/graph/nodes/1/effects",
+        "value": [
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "knowledge",
+            "operation": "add",
+            "value": "00000000-0000-4000-8000-00000000000b"
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "location",
+            "operation": "set",
+            "value": "Kyoto"
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "items",
+            "operation": "add",
+            "value": {
+              "z": 1,
+              "a": 2
+            }
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "items",
+            "operation": "add",
+            "value": {
+              "a": 2,
+              "z": 1
+            }
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "items",
+            "operation": "add",
+            "value": "keep"
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "items",
+            "operation": "remove",
+            "value": {
+              "a": 2,
+              "z": 1
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "all-condition-operators",
+    "query": {
+      "type": "consistency",
+      "pathIds": [
+        "00000000-0000-4000-8000-000000000028"
+      ]
+    },
+    "expected": {
+      "consistent": false,
+      "issues": [
+        {
+          "code": "story_precondition_failed",
+          "severity": "conflict",
+          "pathIndex": 2,
+          "nodeId": "00000000-0000-4000-8000-000000000017",
+          "conditionIndex": 1,
+          "entityId": "00000000-0000-4000-8000-00000000000a",
+          "key": "object",
+          "operator": "not-equals",
+          "expected": {
+            "a": 2,
+            "z": 1
+          },
+          "actual": {
+            "z": 1,
+            "a": 2
+          },
+          "pathId": "00000000-0000-4000-8000-000000000028"
+        },
+        {
+          "code": "story_precondition_failed",
+          "severity": "conflict",
+          "pathIndex": 2,
+          "nodeId": "00000000-0000-4000-8000-000000000017",
+          "conditionIndex": 3,
+          "entityId": "00000000-0000-4000-8000-00000000000a",
+          "key": "knowledge",
+          "operator": "not-contains",
+          "expected": "00000000-0000-4000-8000-00000000000b",
+          "actual": [
+            "00000000-0000-4000-8000-00000000000b"
+          ],
+          "pathId": "00000000-0000-4000-8000-000000000028"
+        },
+        {
+          "code": "story_precondition_failed",
+          "severity": "conflict",
+          "pathIndex": 2,
+          "nodeId": "00000000-0000-4000-8000-000000000017",
+          "conditionIndex": 4,
+          "entityId": "00000000-0000-4000-8000-00000000000a",
+          "key": "missing",
+          "operator": "exists",
+          "pathId": "00000000-0000-4000-8000-000000000028"
+        },
+        {
+          "code": "story_precondition_failed",
+          "severity": "conflict",
+          "pathIndex": 2,
+          "nodeId": "00000000-0000-4000-8000-000000000017",
+          "conditionIndex": 5,
+          "entityId": "00000000-0000-4000-8000-00000000000a",
+          "key": "object",
+          "operator": "not-exists",
+          "actual": {
+            "z": 1,
+            "a": 2
+          },
+          "pathId": "00000000-0000-4000-8000-000000000028"
+        }
+      ]
+    },
+    "changes": [
+      {
+        "pointer": "/graph/entities/0/initialState/object",
+        "value": {
+          "z": 1,
+          "a": 2
+        }
+      },
+      {
+        "pointer": "/graph/nodes/3/preconditions",
+        "value": [
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "object",
+            "operator": "equals",
+            "value": {
+              "a": 2,
+              "z": 1
+            }
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "object",
+            "operator": "not-equals",
+            "value": {
+              "a": 2,
+              "z": 1
+            }
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "knowledge",
+            "operator": "contains",
+            "value": "00000000-0000-4000-8000-00000000000b"
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "knowledge",
+            "operator": "not-contains",
+            "value": "00000000-0000-4000-8000-00000000000b"
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "missing",
+            "operator": "exists"
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "object",
+            "operator": "not-exists"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "independent-routes",
+    "query": {
+      "type": "compare-paths",
+      "oursPathId": "00000000-0000-4000-8000-000000000028",
+      "theirsPathId": "00000000-0000-4000-8000-000000000029"
+    },
+    "expected": {
+      "sharedPrefixNodeIds": [
+        "00000000-0000-4000-8000-000000000014"
+      ],
+      "sharedSuffixNodeIds": [
+        "00000000-0000-4000-8000-000000000017",
+        "00000000-0000-4000-8000-000000000018"
+      ],
+      "oursNodeIds": [
+        "00000000-0000-4000-8000-000000000015"
+      ],
+      "theirsNodeIds": [
+        "00000000-0000-4000-8000-000000000016"
+      ],
+      "conflicts": [],
+      "issues": [],
+      "mergeable": true
+    },
+    "changes": [
+      {
+        "pointer": "/graph/nodes/1/effects",
+        "value": [
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "mood",
+            "operation": "set",
+            "value": "hopeful"
+          }
+        ]
+      },
+      {
+        "pointer": "/graph/nodes/3/preconditions",
+        "value": []
+      }
+    ]
+  },
+  {
+    "name": "unset-versus-set-conflict",
+    "query": {
+      "type": "compare-paths",
+      "oursPathId": "00000000-0000-4000-8000-000000000028",
+      "theirsPathId": "00000000-0000-4000-8000-000000000029"
+    },
+    "expected": {
+      "sharedPrefixNodeIds": [
+        "00000000-0000-4000-8000-000000000014"
+      ],
+      "sharedSuffixNodeIds": [
+        "00000000-0000-4000-8000-000000000017",
+        "00000000-0000-4000-8000-000000000018"
+      ],
+      "oursNodeIds": [
+        "00000000-0000-4000-8000-000000000015"
+      ],
+      "theirsNodeIds": [
+        "00000000-0000-4000-8000-000000000016"
+      ],
+      "conflicts": [
+        {
+          "entityId": "00000000-0000-4000-8000-00000000000a",
+          "key": "location",
+          "base": "Tokyo",
+          "theirs": "Osaka"
+        }
+      ],
+      "issues": [
+        {
+          "code": "story_precondition_failed",
+          "severity": "conflict",
+          "pathIndex": 2,
+          "nodeId": "00000000-0000-4000-8000-000000000017",
+          "conditionIndex": 0,
+          "entityId": "00000000-0000-4000-8000-00000000000a",
+          "key": "knowledge",
+          "operator": "contains",
+          "expected": "00000000-0000-4000-8000-00000000000b",
+          "actual": [],
+          "pathId": "00000000-0000-4000-8000-000000000028"
+        },
+        {
+          "code": "story_precondition_failed",
+          "severity": "conflict",
+          "pathIndex": 2,
+          "nodeId": "00000000-0000-4000-8000-000000000017",
+          "conditionIndex": 0,
+          "entityId": "00000000-0000-4000-8000-00000000000a",
+          "key": "knowledge",
+          "operator": "contains",
+          "expected": "00000000-0000-4000-8000-00000000000b",
+          "actual": [],
+          "pathId": "00000000-0000-4000-8000-000000000029"
+        }
+      ],
+      "mergeable": false
+    },
+    "changes": [
+      {
+        "pointer": "/graph/nodes/1/effects",
+        "value": [
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "location",
+            "operation": "unset"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "path-is-prefix",
+    "query": {
+      "type": "compare-paths",
+      "oursPathId": "00000000-0000-4000-8000-000000000028",
+      "theirsPathId": "00000000-0000-4000-8000-000000000029"
+    },
+    "expected": {
+      "sharedPrefixNodeIds": [
+        "00000000-0000-4000-8000-000000000014"
+      ],
+      "sharedSuffixNodeIds": [],
+      "oursNodeIds": [
+        "00000000-0000-4000-8000-000000000015",
+        "00000000-0000-4000-8000-000000000017",
+        "00000000-0000-4000-8000-000000000018"
+      ],
+      "theirsNodeIds": [],
+      "conflicts": [],
+      "issues": [],
+      "mergeable": true
+    },
+    "changes": [
+      {
+        "pointer": "/graph/paths/1/nodeIds",
+        "value": [
+          "00000000-0000-4000-8000-000000000014"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "state-dependency-without-flow",
+    "query": {
+      "type": "impact",
+      "nodeIds": [
+        "00000000-0000-4000-8000-000000000015"
+      ]
+    },
+    "expected": {
+      "impacts": [
+        {
+          "nodeId": "00000000-0000-4000-8000-000000000017",
+          "viaNodeId": "00000000-0000-4000-8000-000000000015",
+          "reason": "state-dependency",
+          "edgeId": null
+        }
+      ]
+    },
+    "changes": [
+      {
+        "pointer": "/graph/edges",
+        "value": []
+      },
+      {
+        "pointer": "/graph/paths",
+        "value": []
+      }
+    ]
+  },
+  {
+    "name": "semantic-reverse-and-cycle",
+    "query": {
+      "type": "impact",
+      "nodeIds": [
+        "00000000-0000-4000-8000-000000000015"
+      ]
+    },
+    "expected": {
+      "impacts": [
+        {
+          "nodeId": "00000000-0000-4000-8000-000000000016",
+          "viaNodeId": "00000000-0000-4000-8000-000000000015",
+          "reason": "requires",
+          "edgeId": "00000000-0000-4000-8000-000000000064"
+        },
+        {
+          "nodeId": "00000000-0000-4000-8000-000000000017",
+          "viaNodeId": "00000000-0000-4000-8000-000000000015",
+          "reason": "state-dependency",
+          "edgeId": null
+        },
+        {
+          "nodeId": "00000000-0000-4000-8000-000000000018",
+          "viaNodeId": "00000000-0000-4000-8000-000000000016",
+          "reason": "contradicts",
+          "edgeId": "00000000-0000-4000-8000-000000000067"
+        }
+      ]
+    },
+    "changes": [
+      {
+        "pointer": "/graph/edges",
+        "value": [
+          {
+            "id": "00000000-0000-4000-8000-000000000064",
+            "from": "00000000-0000-4000-8000-000000000016",
+            "to": "00000000-0000-4000-8000-000000000015",
+            "type": "requires",
+            "label": null,
+            "extensions": {}
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000065",
+            "from": "00000000-0000-4000-8000-000000000017",
+            "to": "00000000-0000-4000-8000-000000000016",
+            "type": "resolves",
+            "label": null,
+            "extensions": {}
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000066",
+            "from": "00000000-0000-4000-8000-000000000017",
+            "to": "00000000-0000-4000-8000-000000000018",
+            "type": "causes",
+            "label": null,
+            "extensions": {}
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000067",
+            "from": "00000000-0000-4000-8000-000000000018",
+            "to": "00000000-0000-4000-8000-000000000016",
+            "type": "contradicts",
+            "label": null,
+            "extensions": {}
+          }
+        ]
+      },
+      {
+        "pointer": "/graph/paths",
+        "value": []
+      }
+    ]
+  },
+  {
+    "name": "prototype-name-is-absent",
+    "query": {
+      "type": "state-at",
+      "pathId": "00000000-0000-4000-8000-000000000028",
+      "nodeId": "00000000-0000-4000-8000-000000000014",
+      "entityId": "00000000-0000-4000-8000-00000000000a",
+      "key": "constructor",
+      "phase": "before"
+    },
+    "expected": {
+      "exists": false,
+      "evidence": {
+        "initial": {
+          "exists": false
+        },
+        "effects": []
+      }
+    }
+  },
+  {
+    "name": "prototype-name-is-data",
+    "query": {
+      "type": "state-at",
+      "pathId": "00000000-0000-4000-8000-000000000028",
+      "nodeId": "00000000-0000-4000-8000-000000000015",
+      "entityId": "00000000-0000-4000-8000-00000000000a",
+      "key": "__proto__",
+      "phase": "after"
+    },
+    "expected": {
+      "exists": true,
+      "value": {
+        "known": true
+      },
+      "evidence": {
+        "initial": {
+          "exists": false
+        },
+        "effects": [
+          {
+            "nodeId": "00000000-0000-4000-8000-000000000015",
+            "effectIndex": 2
+          }
+        ]
+      }
+    },
+    "changes": [
+      {
+        "pointer": "/graph/nodes/1/effects",
+        "value": [
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "knowledge",
+            "operation": "add",
+            "value": "00000000-0000-4000-8000-00000000000b"
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "location",
+            "operation": "set",
+            "value": "Kyoto"
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "__proto__",
+            "operation": "set",
+            "value": {
+              "known": true
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "unicode-conflict-order",
+    "query": {
+      "type": "compare-paths",
+      "oursPathId": "00000000-0000-4000-8000-000000000028",
+      "theirsPathId": "00000000-0000-4000-8000-000000000029"
+    },
+    "expected": {
+      "sharedPrefixNodeIds": [
+        "00000000-0000-4000-8000-000000000014"
+      ],
+      "sharedSuffixNodeIds": [
+        "00000000-0000-4000-8000-000000000017",
+        "00000000-0000-4000-8000-000000000018"
+      ],
+      "oursNodeIds": [
+        "00000000-0000-4000-8000-000000000015"
+      ],
+      "theirsNodeIds": [
+        "00000000-0000-4000-8000-000000000016"
+      ],
+      "conflicts": [
+        {
+          "entityId": "00000000-0000-4000-8000-00000000000a",
+          "key": "A",
+          "ours": 1,
+          "theirs": 2
+        },
+        {
+          "entityId": "00000000-0000-4000-8000-00000000000a",
+          "key": "location",
+          "base": "Tokyo",
+          "ours": "Kyoto",
+          "theirs": "Osaka"
+        },
+        {
+          "entityId": "00000000-0000-4000-8000-00000000000a",
+          "key": "z",
+          "ours": 1,
+          "theirs": 2
+        },
+        {
+          "entityId": "00000000-0000-4000-8000-00000000000a",
+          "key": "設定",
+          "ours": 1,
+          "theirs": 2
+        },
+        {
+          "entityId": "00000000-0000-4000-8000-00000000000a",
+          "key": "设定",
+          "ours": 1,
+          "theirs": 2
+        },
+        {
+          "entityId": "00000000-0000-4000-8000-00000000000a",
+          "key": "",
+          "ours": 1,
+          "theirs": 2
+        },
+        {
+          "entityId": "00000000-0000-4000-8000-00000000000a",
+          "key": "😀",
+          "ours": 1,
+          "theirs": 2
+        }
+      ],
+      "issues": [
+        {
+          "code": "story_precondition_failed",
+          "severity": "conflict",
+          "pathIndex": 2,
+          "nodeId": "00000000-0000-4000-8000-000000000017",
+          "conditionIndex": 0,
+          "entityId": "00000000-0000-4000-8000-00000000000a",
+          "key": "knowledge",
+          "operator": "contains",
+          "expected": "00000000-0000-4000-8000-00000000000b",
+          "actual": [],
+          "pathId": "00000000-0000-4000-8000-000000000029"
+        }
+      ],
+      "mergeable": false
+    },
+    "changes": [
+      {
+        "pointer": "/graph/nodes/1/effects",
+        "value": [
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "knowledge",
+            "operation": "add",
+            "value": "00000000-0000-4000-8000-00000000000b"
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "location",
+            "operation": "set",
+            "value": "Kyoto"
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "z",
+            "operation": "set",
+            "value": 1
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "A",
+            "operation": "set",
+            "value": 1
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "設定",
+            "operation": "set",
+            "value": 1
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "设定",
+            "operation": "set",
+            "value": 1
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "😀",
+            "operation": "set",
+            "value": 1
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "",
+            "operation": "set",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "pointer": "/graph/nodes/2/effects",
+        "value": [
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "location",
+            "operation": "set",
+            "value": "Osaka"
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "z",
+            "operation": "set",
+            "value": 2
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "A",
+            "operation": "set",
+            "value": 2
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "設定",
+            "operation": "set",
+            "value": 2
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "设定",
+            "operation": "set",
+            "value": 2
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "😀",
+            "operation": "set",
+            "value": 2
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "",
+            "operation": "set",
+            "value": 2
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "repeated-conditions-keep-exact-index",
+    "query": {
+      "type": "consistency",
+      "pathIds": [
+        "00000000-0000-4000-8000-000000000028"
+      ]
+    },
+    "expected": {
+      "consistent": false,
+      "issues": [
+        {
+          "code": "story_precondition_failed",
+          "severity": "conflict",
+          "pathIndex": 2,
+          "nodeId": "00000000-0000-4000-8000-000000000017",
+          "conditionIndex": 0,
+          "entityId": "00000000-0000-4000-8000-00000000000a",
+          "key": "location",
+          "operator": "equals",
+          "expected": "Osaka",
+          "actual": "Kyoto",
+          "pathId": "00000000-0000-4000-8000-000000000028"
+        },
+        {
+          "code": "story_precondition_failed",
+          "severity": "conflict",
+          "pathIndex": 2,
+          "nodeId": "00000000-0000-4000-8000-000000000017",
+          "conditionIndex": 2,
+          "entityId": "00000000-0000-4000-8000-00000000000a",
+          "key": "location",
+          "operator": "equals",
+          "expected": "Tokyo",
+          "actual": "Kyoto",
+          "pathId": "00000000-0000-4000-8000-000000000028"
+        },
+        {
+          "code": "story_precondition_failed",
+          "severity": "conflict",
+          "pathIndex": 2,
+          "nodeId": "00000000-0000-4000-8000-000000000017",
+          "conditionIndex": 3,
+          "entityId": "00000000-0000-4000-8000-00000000000a",
+          "key": "location",
+          "operator": "equals",
+          "expected": "Osaka",
+          "actual": "Kyoto",
+          "pathId": "00000000-0000-4000-8000-000000000028"
+        }
+      ]
+    },
+    "changes": [
+      {
+        "pointer": "/graph/nodes/3/preconditions",
+        "value": [
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "location",
+            "operator": "equals",
+            "value": "Osaka"
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "location",
+            "operator": "equals",
+            "value": "Kyoto"
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "location",
+            "operator": "equals",
+            "value": "Tokyo"
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "location",
+            "operator": "equals",
+            "value": "Osaka"
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -183,10 +183,28 @@
           "markdownDescription": "Enables the acl_boundary_canary command without any pre-configured scope."
         },
         {
+          "description": "Enables the adopt_story_workspace_proposal command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-adopt-story-workspace-proposal",
+          "markdownDescription": "Enables the adopt_story_workspace_proposal command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the attempt_story_agent_review command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-attempt-story-agent-review",
+          "markdownDescription": "Enables the attempt_story_agent_review command without any pre-configured scope."
+        },
+        {
           "description": "Enables the capture_story_workspace_version command without any pre-configured scope.",
           "type": "string",
           "const": "allow-capture-story-workspace-version",
           "markdownDescription": "Enables the capture_story_workspace_version command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the checkpoint_story_agent_document command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-checkpoint-story-agent-document",
+          "markdownDescription": "Enables the checkpoint_story_agent_document command without any pre-configured scope."
         },
         {
           "description": "Enables the delete_cloud_session command without any pre-configured scope.",
@@ -249,6 +267,12 @@
           "markdownDescription": "Enables the list_quarantined_local_assets command without any pre-configured scope."
         },
         {
+          "description": "Enables the list_story_agent_reviews command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-list-story-agent-reviews",
+          "markdownDescription": "Enables the list_story_agent_reviews command without any pre-configured scope."
+        },
+        {
           "description": "Enables the list_story_workspaces command without any pre-configured scope.",
           "type": "string",
           "const": "allow-list-story-workspaces",
@@ -285,16 +309,40 @@
           "markdownDescription": "Enables the load_provider_credential command without any pre-configured scope."
         },
         {
+          "description": "Enables the load_story_agent_review command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-load-story-agent-review",
+          "markdownDescription": "Enables the load_story_agent_review command without any pre-configured scope."
+        },
+        {
           "description": "Enables the mutate_local_document_atomic command without any pre-configured scope.",
           "type": "string",
           "const": "allow-mutate-local-document-atomic",
           "markdownDescription": "Enables the mutate_local_document_atomic command without any pre-configured scope."
         },
         {
+          "description": "Enables the preview_story_workspace_proposal command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-preview-story-workspace-proposal",
+          "markdownDescription": "Enables the preview_story_workspace_proposal command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the query_story_workspace_version command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-query-story-workspace-version",
+          "markdownDescription": "Enables the query_story_workspace_version command without any pre-configured scope."
+        },
+        {
           "description": "Enables the read_story_workspace command without any pre-configured scope.",
           "type": "string",
           "const": "allow-read-story-workspace",
           "markdownDescription": "Enables the read_story_workspace command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the reject_story_agent_review command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-reject-story-agent-review",
+          "markdownDescription": "Enables the reject_story_agent_review command without any pre-configured scope."
         },
         {
           "description": "Enables the restore_story_workspace_version command without any pre-configured scope.",
@@ -321,6 +369,12 @@
           "markdownDescription": "Enables the save_local_version_atomic command without any pre-configured scope."
         },
         {
+          "description": "Enables the stage_story_agent_review command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stage-story-agent-review",
+          "markdownDescription": "Enables the stage_story_agent_review command without any pre-configured scope."
+        },
+        {
           "description": "Enables the store_cloud_session command without any pre-configured scope.",
           "type": "string",
           "const": "allow-store-cloud-session",
@@ -345,10 +399,28 @@
           "markdownDescription": "Denies the acl_boundary_canary command without any pre-configured scope."
         },
         {
+          "description": "Denies the adopt_story_workspace_proposal command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-adopt-story-workspace-proposal",
+          "markdownDescription": "Denies the adopt_story_workspace_proposal command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the attempt_story_agent_review command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-attempt-story-agent-review",
+          "markdownDescription": "Denies the attempt_story_agent_review command without any pre-configured scope."
+        },
+        {
           "description": "Denies the capture_story_workspace_version command without any pre-configured scope.",
           "type": "string",
           "const": "deny-capture-story-workspace-version",
           "markdownDescription": "Denies the capture_story_workspace_version command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the checkpoint_story_agent_document command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-checkpoint-story-agent-document",
+          "markdownDescription": "Denies the checkpoint_story_agent_document command without any pre-configured scope."
         },
         {
           "description": "Denies the delete_cloud_session command without any pre-configured scope.",
@@ -411,6 +483,12 @@
           "markdownDescription": "Denies the list_quarantined_local_assets command without any pre-configured scope."
         },
         {
+          "description": "Denies the list_story_agent_reviews command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-list-story-agent-reviews",
+          "markdownDescription": "Denies the list_story_agent_reviews command without any pre-configured scope."
+        },
+        {
           "description": "Denies the list_story_workspaces command without any pre-configured scope.",
           "type": "string",
           "const": "deny-list-story-workspaces",
@@ -447,16 +525,40 @@
           "markdownDescription": "Denies the load_provider_credential command without any pre-configured scope."
         },
         {
+          "description": "Denies the load_story_agent_review command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-load-story-agent-review",
+          "markdownDescription": "Denies the load_story_agent_review command without any pre-configured scope."
+        },
+        {
           "description": "Denies the mutate_local_document_atomic command without any pre-configured scope.",
           "type": "string",
           "const": "deny-mutate-local-document-atomic",
           "markdownDescription": "Denies the mutate_local_document_atomic command without any pre-configured scope."
         },
         {
+          "description": "Denies the preview_story_workspace_proposal command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-preview-story-workspace-proposal",
+          "markdownDescription": "Denies the preview_story_workspace_proposal command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the query_story_workspace_version command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-query-story-workspace-version",
+          "markdownDescription": "Denies the query_story_workspace_version command without any pre-configured scope."
+        },
+        {
           "description": "Denies the read_story_workspace command without any pre-configured scope.",
           "type": "string",
           "const": "deny-read-story-workspace",
           "markdownDescription": "Denies the read_story_workspace command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the reject_story_agent_review command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-reject-story-agent-review",
+          "markdownDescription": "Denies the reject_story_agent_review command without any pre-configured scope."
         },
         {
           "description": "Denies the restore_story_workspace_version command without any pre-configured scope.",
@@ -481,6 +583,12 @@
           "type": "string",
           "const": "deny-save-local-version-atomic",
           "markdownDescription": "Denies the save_local_version_atomic command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stage_story_agent_review command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stage-story-agent-review",
+          "markdownDescription": "Denies the stage_story_agent_review command without any pre-configured scope."
         },
         {
           "description": "Denies the store_cloud_session command without any pre-configured scope.",

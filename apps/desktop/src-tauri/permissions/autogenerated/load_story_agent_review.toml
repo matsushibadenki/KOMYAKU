@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-load-story-agent-review"
+description = "Enables the load_story_agent_review command without any pre-configured scope."
+commands.allow = ["load_story_agent_review"]
+
+[[permission]]
+identifier = "deny-load-story-agent-review"
+description = "Denies the load_story_agent_review command without any pre-configured scope."
+commands.deny = ["load_story_agent_review"]

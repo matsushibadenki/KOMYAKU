@@ -1320,3 +1320,18 @@ select:disabled,
 
 .integration-assets code { overflow-wrap: anywhere; word-break: break-all; }
 .integration-assets strong { overflow-wrap: anywhere; }
+
+.story-agent-panel { position: fixed; right: 16px; bottom: 16px; z-index: 70; width: min(420px, calc(100vw - 32px)); font-size: 13px; }
+.story-agent-toggle { display: block; margin-left: auto; padding: 8px 12px; border: 1px solid #c9c5b9; border-radius: 8px; background: #faf8f1; box-shadow: 0 2px 12px #29251a14; }
+.story-agent-content { margin-top: 6px; padding: 12px; max-height: 75vh; overflow: auto; border: 1px solid #c9c5b9; border-radius: 10px; background: #faf8f1; box-shadow: 0 8px 32px #29251a20; }
+.story-agent-content header, .story-agent-content footer { display: flex; align-items: center; gap: 8px; }
+.story-agent-content header strong { margin-right: auto; }
+.story-agent-content button { padding: 6px 10px; font-size: inherit; }
+.story-agent-content p { margin: 8px 0; }
+.story-agent-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.story-agent-diff { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0; }
+.story-agent-diff > div { min-width: 0; border-left: 2px solid #b8b7a3; padding-left: 8px; }
+.story-agent-content pre { max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.story-agent-content h4 { margin: 0 0 6px; }
+.story-agent-content footer { justify-content: flex-end; margin-top: 10px; }
+@media (max-width: 480px) { .story-agent-diff { grid-template-columns: 1fr; } }

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-query-story-workspace-version"
+description = "Enables the query_story_workspace_version command without any pre-configured scope."
+commands.allow = ["query_story_workspace_version"]
+
+[[permission]]
+identifier = "deny-query-story-workspace-version"
+description = "Denies the query_story_workspace_version command without any pre-configured scope."
+commands.deny = ["query_story_workspace_version"]

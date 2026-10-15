@@ -412,5 +412,28 @@
       "connection_invalid": "接続設定を確認してください。",
       "request_failed": "AI Handoffを完了できませんでした。"
     }
+  },
+  "storyAgent": {
+    "title": "Agentレビュー",
+    "hint": "提案を確認してから保存します。未完了のレビューはこの端末に保存されます。",
+    "refresh": "レビューを更新",
+    "import": "Agent提案を読み込む",
+    "empty": "未採用のレビューはありません",
+    "proposal": "提案 {{count}}",
+    "review": "提案の確認",
+    "before": "変更前",
+    "after": "変更後",
+    "structure": "構造の変更",
+    "adopt": "採用",
+    "reject": "却下",
+    "retry": "採用を再試行",
+    "status": {
+      "stale": "原稿が更新されています。この提案を却下し、新しい提案を用意してください。",
+      "idle": "",
+      "review": "確認待ち",
+      "adopted": "採用しました",
+      "uncertain": "保存結果を確認できません。再試行してください。",
+      "error": "読み込み・採用ができません。レビューを更新してください。"
+    }
   }
 }

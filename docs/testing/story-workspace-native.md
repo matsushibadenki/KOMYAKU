@@ -187,3 +187,89 @@ Verification: Rust **75 passed / 1 ignored**, Bun **618 passed / 25 PostgreSQL-d
 🟢 [Done] File-backed flow initializes a Markdown attachment plus Route A, removes the working attachment and changes to Route B, and saves a named Version. Restore reproduces the original raw Document/Graph/Path Snapshot and historical-only attachment under a new Version whose parent is the previously current head. Corrupt Snapshot hashes and attachment bytes refuse adoption; injected final receipt failure preserves state/selection/history/reference/receipt counts. Successful retry persists restore kind/source/label and retains both immutable attachment closures. A later Route C edit survives close/reopen and restore-request replay without another Version or rewind. Stale and missing-target requests fail.
 
 Verification: full Rust **76 passed / 1 ignored**, Bun **621 passed / 25 PostgreSQL-dependent skips**, Desktop build successful and `git diff --check` passed. ⭕️ [Pending] Actual packaged invocation and user-facing restore controls have not been verified. 🟠 [Next] Reviewed composite Merge, Agent orchestration and native Archive v3 recovery remain open. N3S is unfinished.
+
+## Version-bound Agent query API — 2026-10-15
+
+🟢 [Done] `query_story_workspace_version` is registered in Tauri, the command manifest and the generated main-window-only capability. `@komyaku/story-graph` exports strict portable query/result validators; the Desktop transport invokes native authority and rejects browser fallback. Queries name exact Workspace/Version identities, never resolve a moving Branch or accept caller snapshots. One scoped SQLite read bounds the Snapshot before transfer; Rust verifies its exact SHA-256, Document/Graph schema and reference closure before evaluation. Computation runs on the blocking executor, with at most two requests in flight. This is local read access, not external Agent authentication.
+
+🟢 [Done] Implement property state before/after a scene with initial/effect-index evidence; selected-Path consistency with exact condition indices; divergent-route state comparison including full-route shared-suffix failures; and conservative impact closure with edge/state witnesses. Results carry exact Snapshot hash, evaluator/schema versions and the entire query. Node/Path/reader indexes are disposable and rebuilt per request; no durable or cross-request cache is claimed. Point state evaluation touches only the requested property. Impact expands each Entity/property reader set once, avoiding the writer-reader cross product. Cumulative work/copy accounting, 1,000-record ceilings and the 1 MiB response limit reject incomplete answers instead of silently truncating them.
+
+🟢 [Done] A shared **27-case** query corpus is consumed independently by Rust and the JavaScript reference evaluator. It covers before/after knowledge on different routes, absent/null properties, all condition/effect operators, unset/set conflicts, prefix-only routes, compatible/divergent routes, reverse semantic edges/cycles, state-only dependencies, object-key-order equality, Unicode conflict ordering, prototype-named JSON properties and repeated conditions with distinct witness indices. The shared evaluator now uses structural JSON equality, own-property state access and locale-independent ordering; these semantics do not rewrite stored Snapshot bytes.
+
+🟢 [Done] File-backed native verification initializes the authoritative Workspace, queries its first immutable Version, edits the working knowledge effects, captures a second Version and fully closes/reopens SQLite. The first answer/hash stays identical; the second Version has different state/hash. `total_changes()` proves successful/missing/foreign-scope reads write nothing after reopening. Corrupt hashes and oversized stored blobs fail; request/schema/reference/missing-target checks refuse malformed inputs. Resource regressions verify oversized result and cumulative-work errors plus exactly 1,000 accepted impact records versus 1,001 rejected records. Desktop tests cover detached selectors, write-payload refusal, wrong-route responses and propagated native limits; existing ACL tests include the new registration and keep hidden renderers event-only.
+
+Verification: full Rust suite **80 passed / 1 ignored**, full Bun suite **655 passed / 25 PostgreSQL-dependent skips**, Desktop production build succeeds (existing large-chunk advisory). The corpus-storage refactor is additionally checked by the focused native/shared suites. No PostgreSQL result is inferred from the skips, and the ignored native performance fixture is unchanged.
+
+🟢 [Done] Real packaged WebView query invocation and the bounded local proposal workflow are now verified in the next section. 🟠 [Next] Ordinary editor/provider integration, reviewed composite Merge and transactional native Archive v3 import/export/restart gates remain open. N3S is unfinished. 🔴 [Later] Profile real workloads before adding disposable cross-request caches or changing Snapshot storage. See [ADR-079](../adr/ADR-079-version-bound-agent-queries.md) and [the query contract](../formats/story-query-v1.md).
+
+## Local Agent session and packaged IPC — 2026-10-15
+
+🟢 [Done] Add `openStoryAgentSession` with an Agent-facing read/propose object and a separate host-owned review/reject/adopt controller. The session binds the exact Version/Branch/revision/hash, rejects dirty working state as an immutable base, bounds pending proposals, detaches requests and refuses foreign/malformed preview/query responses. Rejection revokes review tokens; closing rejects in-flight previews. After an uncertain adoption, the same operation/new-Version IDs and label are retained for retry and switching candidates is blocked. Pending reviews are process-local; automatic pending-review recovery is not implemented.
+
+🟢 [Done] Add main-window-only `preview_story_workspace_proposal` and `adopt_story_workspace_proposal` IPC. Both reuse the native command parser/derivation implementation rather than a second edit engine. Rust preview validates the current/base composite, exact base hash and clean working bytes without writes. Adoption re-derives and hashes the reviewed candidate, derives author/time and the single parent, then uses existing atomic state/history/Asset/receipt persistence with revision/head/selection guards. Exact-receipt recovery precedes fresh-state checks, including an identical request racing with preview. Caller author/time/parents and arbitrary approval flags are rejected.
+
+🟢 [Done] Native tests inject final receipt failure and verify full rollback, compare-and-swap/review/base/selection guards, simultaneous identical requests yielding one adoption plus one replay, metadata attribution, subsequent editing, full database reopen and exact replay without rewind. Dirty drafts cannot masquerade as the queried Version. Host tests cover capability separation, fabricated tokens, caller mutation, duplicate adoption avoidance, exact uncertain retry, changed-label/switch refusal, rejection/closure, foreign base hash, preview corruption, proposal limits, ordinary-profile isolation and partial QA-profile refusal.
+
+### Actual macOS application evidence
+
+Bundle: `apps/desktop/src-tauri/target/debug/bundle/macos/KOMYAKU Story Agent QA.app`, identifier `app.komyaku.desktop.story-agent-qa`. Built with `bun run test:story-agent:package` from `apps/desktop`. The app opens `tauri://localhost/?mode=story-agent-qa` at a 1000 × 700 configured content size. Native CUA accessibility and screenshots were used; browser substitution/Playwright was not used for these IPC claims. No Browser skill was available; browser tooling would not substitute for the required Tauri IPC anyway.
+
+| Check | Observed result |
+| --- | --- |
+| Identity and nonblank rendering | Dedicated app/window and `tauri://localhost/?mode=story-agent-qa`; heading and status rendered |
+| Four native query types | State-at, consistency, route comparison and impact passed against the original Version |
+| Proposal review | `ready-for-review`; opened/closed the candidate disclosure; SQLite remained revision 1 / one Version / one receipt |
+| Explicit author action | Clicked `採用 / Adopt / 采纳`; real Rust transaction committed before the wrapper discarded its response |
+| Lost-response handling | `saved-response-lost-retry-required`; SQLite already held revision 2 / two Versions / two receipts / one parent edge |
+| Same-button retry | Clicked `再試行 / Retry / 重试`; `saved-replay-all-ipc-verified`; no duplicate Version or receipt |
+| Old/new state and stale proposals | Original Version kept empty Route B knowledge; adopted Version knew the fact and passed consistency/comparison; the old session's new proposal was rejected as stale |
+| Full process restart | Native app inventory confirmed `isRunning: false`, then relaunch displayed `recovered-all-ipc-verified` with the same adopted Snapshot hash |
+| Full persistence comparison | Read-only SQLite logical dump before retry and after restart was byte-identical; both stored Snapshot hashes independently matched exact UTF-8 bytes |
+| Rendering health | Native screenshots showed readable content and no blank/error-overlay state; all runner assertions completed. WebView console logs were not separately captured |
+
+Snapshot hashes:
+
+- Original Version `00000000-0000-4000-8000-0000000000c8`: `4a648602069b59fa7144666496e6e9051aaa44ae5e9eeb954b0daa10f3a0aa37`.
+- Adopted Version `00000000-0000-4000-8000-0000000000c9`: `805cac665fd617fb6d2d44a21f8f0474e1fbaf05ce83eb58862bea41261a267b`.
+- Logical dump SHA-256 before retry and after full restart: `80dc23469d350fb68a62a996b23f97664fb86a1a34d0eb50f159e9b8cdcbfd5a`.
+
+The verified relationship is adopted Version → original Version, on the same Branch. The recovery runner checks the complete expected Document/Graph/Paths, not just the changed property. The dedicated app was closed after verification. Its profile is retained at `~/Library/Application Support/app.komyaku.desktop.story-agent-qa/komyaku.db`; the ordinary product profile was not used. A mismatched identifier or partial/unexpected fixture refuses execution without resetting data. A later launch performs recovery checks only.
+
+Verification: full Rust **82 passed / 1 ignored**; full Bun **662 passed / 25 PostgreSQL-dependent skips**; dedicated debug macOS bundle and Desktop frontend build succeed. The ignored performance fixture and unavailable PostgreSQL integration coverage remain unchanged. Screenshots and temporary read-only dump evidence were kept outside repository source.
+
+🟢 [Done] Ordinary editor review controls and durable local review recovery are now verified below. 🟠 [Next] Provider-backed/authenticated external Agent bridges, ordinary composite history controls, two-parent composite Merge and native Archive v3 remain open. The original Story Agent fixture is deterministic, not an LLM/provider integration. Additional platform/release verification remains open. See [local session contract](../formats/story-agent-session-v1.md).
+
+## Ordinary editor and unadopted review recovery — 2026-10-15
+
+🟢 [Done] The ordinary `App` now mounts `StoryAgentPanel` for local native Documents. It imports `{operations}` proposal files, displays before/after prose and expandable structural operations, and provides explicit adoption/rejection. All strings support en/ja/简体中文. The mutation gate saves the current ordinary draft before staging and creates/checkpoints a matching Rust-owned composite Workspace. A Graph whose references cannot survive a prose replacement refuses the checkpoint instead of dropping declarations.
+
+🟢 [Done] Production migration 12 persists the native review journal and candidate Asset references. Review loads verify exact base/candidate hashes and native derivation. Active records are bounded by eight reviews / 64 MiB per Workspace and a 32-review Document listing. Before adoption, Rust durably records newly generated operation/Version IDs and exact request JSON. The existing adoption transaction then commits composite state/history/head/Asset closure/receipt, the ordinary editor draft/revision/metadata/Asset links and review completion together. Final-stage failure rolls back every adoption change; the earlier prepared request remains available after DB reopen. Rejecting a prepared review revokes a late in-flight adoption at that same writer gate.
+
+🟢 [Done] Native file-database tests stage a review, fully close/reopen SQLite and compare the exact candidate. An injected failure while marking the review `adopted` proves draft/history rollback with durable request retention. After another reopen, the identical request succeeds; retry after a newer ordinary draft edit cannot rewind text. Further tests cover changed-editor refusal, rejection, rejection of an already-prepared adoption, exact native editor-checkpoint replay and version/parent retention. A candidate-only attachment test proves a previously quarantined byte-verified Asset is reactivated and retained by the pending review, then transferred to immutable Version and ordinary draft links without a reference gap. Candidate schema/Asset admission uses the existing production verifier.
+
+### Native ordinary App interaction
+
+Built and ran `KOMYAKU Agent Editor QA.app`, identifier `app.komyaku.desktop.agent-editor-qa`, URL `tauri://localhost/?mode=agent-editor-qa`, configured at 1100 × 800. This mounts the ordinary App, not the earlier standalone diagnostic page. Its exact identifier is required before fixture creation or response-loss injection; the ordinary product profile is not used. CUA operated native controls and the macOS file picker.
+
+| Check | Observed result |
+| --- | --- |
+| Import/review | Opened the Agent panel, selected the proposal through the real file picker and saw original/proposed multilingual prose |
+| Pending persistence | Before quitting, one composite Version existed; review was `review` with null adoption request and a verified candidate hash |
+| Full exit/relaunch | App inventory confirmed process exit; relaunch automatically restored the pending-review list; reopening the review showed the same before/after prose |
+| Exact review comparison | Review ID, status, candidate bytes/hash and null adoption request were byte-identical before and after restart |
+| Adopt restored review | Clicked the ordinary panel's adoption button; wrapper discarded the response only after the real native call committed |
+| Uncertain outcome | Main editor became inert, panel displayed retry guidance, and SQLite already held adopted prose at editor revision 7 and two composite Versions |
+| Restart after response loss | Confirmed full exit/relaunch; ordinary editor loaded the adopted multilingual prose at revision 8 (normal startup autosave); pending-review badge cleared |
+| UI state | Readable native screenshots, no blank/framework-error state; native WebView console was not separately captured |
+
+The retained review ID is `9719cbb8-2bb5-44a1-91f8-bb9526a0e40e`, with candidate Snapshot SHA-256 `2aa050e6a43c1dafad37aedab26b865dc5bad6b46c0ac859cd8d187f2ac7d08a`. Evidence files under `/tmp` captured the exact pre-restart record and committed immutable rows. Read-only comparison after restart confirmed identical Version/parent/receipt/journal rows, with two Versions and two receipts; their combined JSON evidence SHA-256 was `93d9fa4523e80c5eca769606dc3cfcf3f0f6ac18e967e4ffa6b65c651c3d31c3`. Normal App startup advances ordinary draft revisions, so a whole-database dump is not expected to remain identical. The isolated QA profile is retained at `~/Library/Application Support/app.komyaku.desktop.agent-editor-qa/komyaku.db` without resetting it.
+
+### Browser checks and automated scope
+
+Browser plugin/skill unavailable; used the repository's existing Playwright/Chrome workflow against `http://127.0.0.1:1420`. The browser test substitutes native review transport and enables only the panel's native-visibility branch; the App, editor/checkpoint queue, panel and event handlers are real. Production reviews use SQLite, not browser storage. The native run above separately verifies actual IPC/persistence.
+
+Three Playwright tests pass: pending-review reload and exact adoption retry at **1100 × 850** and **390 × 850**, plus refusal of stale adoption after editing the recovered manuscript. They verify URL/title/nonblank content, no framework overlay, no relevant page/console errors, horizontal overflow absence, candidate disclosure and actual button-driven state changes. Screenshots at `/tmp/komyaku-agent-review-1100.png` and `/tmp/komyaku-agent-review-390.png` were visually inspected; narrow review columns stack and actions remain visible. A known stale-state error restores editing and asks for a fresh proposal, while unknown/response-loss errors preserve exact retry and block old-draft autosave.
+
+Verification: full Rust **87 passed / 1 ignored**, full Bun **662 passed / 25 PostgreSQL-dependent skips**, focused Playwright **3 passed**. Dedicated macOS debug packaging and Desktop frontend build succeed; the existing large-chunk advisory remains. PostgreSQL and the ignored performance fixture are not inferred to pass.
+
+🟠 [Next] Provider/authenticated Agent transport, ordinary composite history/Branch/restore controls, two-parent Merge and native Archive v3 remain open. Review-queue portability is not included in archives. Native macOS was verified with a simple multilingual prose proposal; native IME conversion, richer structural/media review UX, additional platforms and release packaging remain separate gates.

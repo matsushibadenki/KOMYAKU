@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-reject-story-agent-review"
+description = "Enables the reject_story_agent_review command without any pre-configured scope."
+commands.allow = ["reject_story_agent_review"]
+
+[[permission]]
+identifier = "deny-reject-story-agent-review"
+description = "Denies the reject_story_agent_review command without any pre-configured scope."
+commands.deny = ["reject_story_agent_review"]

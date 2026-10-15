@@ -1,0 +1,251 @@
+{
+  "schemaId": "https://komyaku.example/schemas/story-workspace/v1",
+  "schemaVersion": 1,
+  "document": {
+    "schemaId": "https://komyaku.example/schemas/document/v1",
+    "schemaVersion": 1,
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "document",
+    "attrs": {
+      "language": "und",
+      "direction": "auto",
+      "writingMode": "horizontal-tb"
+    },
+    "metadata": {},
+    "extensions": {},
+    "content": [
+      {
+        "id": "00000000-0000-4000-8000-000000000002",
+        "schemaVersion": 1,
+        "metadata": {},
+        "extensions": {},
+        "renderArtifacts": [],
+        "type": "paragraph",
+        "attrs": {
+          "lang": null,
+          "dir": "auto"
+        },
+        "content": []
+      }
+    ]
+  },
+  "graph": {
+    "schemaId": "https://komyaku.example/schemas/story-graph/v1",
+    "schemaVersion": 1,
+    "id": "00000000-0000-4000-8000-000000000003",
+    "documentId": "00000000-0000-4000-8000-000000000001",
+    "entities": [
+      {
+        "id": "00000000-0000-4000-8000-00000000000a",
+        "type": "character",
+        "name": "太郎",
+        "initialState": {
+          "knowledge": [],
+          "location": "Tokyo"
+        },
+        "metadata": {},
+        "extensions": {}
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000000b",
+        "type": "fact",
+        "name": "鍵の所在",
+        "initialState": {},
+        "metadata": {},
+        "extensions": {}
+      }
+    ],
+    "nodes": [
+      {
+        "id": "00000000-0000-4000-8000-000000000014",
+        "kind": "content",
+        "subtype": "chapter",
+        "title": "第1章",
+        "documentRefs": [
+          {
+            "nodeId": "00000000-0000-4000-8000-000000000002"
+          }
+        ],
+        "preconditions": [],
+        "effects": [],
+        "metadata": {},
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "extensions": {}
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000015",
+        "kind": "content",
+        "subtype": "scene",
+        "title": "Aルート",
+        "documentRefs": [],
+        "preconditions": [],
+        "effects": [
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "knowledge",
+            "operation": "add",
+            "value": "00000000-0000-4000-8000-00000000000b"
+          },
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "location",
+            "operation": "set",
+            "value": "Kyoto"
+          }
+        ],
+        "metadata": {},
+        "position": {
+          "x": 100,
+          "y": -50
+        },
+        "extensions": {}
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000016",
+        "kind": "content",
+        "subtype": "scene",
+        "title": "Bルート",
+        "documentRefs": [],
+        "preconditions": [],
+        "effects": [
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "location",
+            "operation": "set",
+            "value": "Osaka"
+          }
+        ],
+        "metadata": {},
+        "position": {
+          "x": 100,
+          "y": 50
+        },
+        "extensions": {}
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000017",
+        "kind": "logic",
+        "subtype": "merge",
+        "title": "合流",
+        "documentRefs": [],
+        "preconditions": [
+          {
+            "entityId": "00000000-0000-4000-8000-00000000000a",
+            "key": "knowledge",
+            "operator": "contains",
+            "value": "00000000-0000-4000-8000-00000000000b"
+          }
+        ],
+        "effects": [],
+        "metadata": {},
+        "position": {
+          "x": 200,
+          "y": 0
+        },
+        "extensions": {}
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000018",
+        "kind": "structure",
+        "subtype": "conclusion",
+        "title": "結末",
+        "documentRefs": [],
+        "preconditions": [],
+        "effects": [],
+        "metadata": {},
+        "position": {
+          "x": 300,
+          "y": 0
+        },
+        "extensions": {}
+      }
+    ],
+    "edges": [
+      {
+        "id": "00000000-0000-4000-8000-00000000001e",
+        "from": "00000000-0000-4000-8000-000000000014",
+        "to": "00000000-0000-4000-8000-000000000015",
+        "type": "alternative",
+        "label": null,
+        "extensions": {}
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000001f",
+        "from": "00000000-0000-4000-8000-000000000014",
+        "to": "00000000-0000-4000-8000-000000000016",
+        "type": "alternative",
+        "label": null,
+        "extensions": {}
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000020",
+        "from": "00000000-0000-4000-8000-000000000015",
+        "to": "00000000-0000-4000-8000-000000000017",
+        "type": "merge",
+        "label": null,
+        "extensions": {}
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000021",
+        "from": "00000000-0000-4000-8000-000000000016",
+        "to": "00000000-0000-4000-8000-000000000017",
+        "type": "merge",
+        "label": null,
+        "extensions": {}
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000022",
+        "from": "00000000-0000-4000-8000-000000000017",
+        "to": "00000000-0000-4000-8000-000000000018",
+        "type": "sequence",
+        "label": null,
+        "extensions": {}
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000023",
+        "from": "00000000-0000-4000-8000-000000000015",
+        "to": "00000000-0000-4000-8000-000000000016",
+        "type": "contradicts",
+        "label": null,
+        "extensions": {}
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000024",
+        "from": "00000000-0000-4000-8000-000000000016",
+        "to": "00000000-0000-4000-8000-000000000015",
+        "type": "reference",
+        "label": null,
+        "extensions": {}
+      }
+    ],
+    "paths": [
+      {
+        "id": "00000000-0000-4000-8000-000000000028",
+        "name": "A route",
+        "nodeIds": [
+          "00000000-0000-4000-8000-000000000014",
+          "00000000-0000-4000-8000-000000000015",
+          "00000000-0000-4000-8000-000000000017",
+          "00000000-0000-4000-8000-000000000018"
+        ],
+        "extensions": {}
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000029",
+        "name": "B route",
+        "nodeIds": [
+          "00000000-0000-4000-8000-000000000014",
+          "00000000-0000-4000-8000-000000000016",
+          "00000000-0000-4000-8000-000000000017",
+          "00000000-0000-4000-8000-000000000018"
+        ],
+        "extensions": {}
+      }
+    ],
+    "metadata": {},
+    "extensions": {}
+  }
+}

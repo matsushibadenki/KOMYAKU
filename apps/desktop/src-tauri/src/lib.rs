@@ -15,6 +15,9 @@ mod story_workspace_store;
 #[allow(dead_code)]
 mod story_workspace_history;
 mod story_workspace_runtime;
+mod story_workspace_query;
+mod story_workspace_proposal;
+mod story_agent_reviews;
 #[allow(dead_code)]
 mod story_workspace_author;
 
@@ -2473,6 +2476,120 @@ async fn restore_story_workspace_version(
     story_workspace_runtime::restore(&pool, input).await
 }
 
+#[tauri::command]
+async fn query_story_workspace_version(
+    db_instances: State<'_, DbInstances>, input: story_workspace_query::Request,
+) -> Result<serde_json::Value, String> {
+    let pool = {
+        let instances = db_instances.0.read().await;
+        match instances.get(LOCAL_DATABASE_URL) {
+            Some(DbPool::Sqlite(pool)) => pool.clone(),
+            _ => return Err("tauri_database_unavailable".into()),
+        }
+    };
+    story_workspace_query::query(&pool, input).await
+}
+
+#[tauri::command]
+async fn preview_story_workspace_proposal(
+    db_instances: State<'_, DbInstances>, input: story_workspace_proposal::Proposal,
+) -> Result<story_workspace_proposal::Preview, String> {
+    let pool = {
+        let instances = db_instances.0.read().await;
+        match instances.get(LOCAL_DATABASE_URL) {
+            Some(DbPool::Sqlite(pool)) => pool.clone(),
+            _ => return Err("tauri_database_unavailable".into()),
+        }
+    };
+    story_workspace_proposal::preview(&pool, &input).await
+}
+
+#[tauri::command]
+async fn adopt_story_workspace_proposal(
+    db_instances: State<'_, DbInstances>, input: story_workspace_proposal::Adoption,
+) -> Result<story_workspace_runtime::CaptureResult, String> {
+    let pool = {
+        let instances = db_instances.0.read().await;
+        match instances.get(LOCAL_DATABASE_URL) {
+            Some(DbPool::Sqlite(pool)) => pool.clone(),
+            _ => return Err("tauri_database_unavailable".into()),
+        }
+    };
+    story_workspace_proposal::adopt(&pool, input).await
+}
+
+#[tauri::command]
+async fn stage_story_agent_review(db_instances: State<'_, DbInstances>, input: story_agent_reviews::Stage) -> Result<story_agent_reviews::Review, String> {
+    let pool = {
+        let instances = db_instances.0.read().await;
+        match instances.get(LOCAL_DATABASE_URL) {
+            Some(DbPool::Sqlite(pool)) => pool.clone(),
+            _ => return Err("tauri_database_unavailable".into()),
+        }
+    };
+    story_agent_reviews::stage(&pool,input).await
+}
+
+#[tauri::command]
+async fn list_story_agent_reviews(db_instances: State<'_, DbInstances>, document_id: String) -> Result<Vec<serde_json::Value>, String> {
+    let pool = {
+        let instances = db_instances.0.read().await;
+        match instances.get(LOCAL_DATABASE_URL) {
+            Some(DbPool::Sqlite(pool)) => pool.clone(),
+            _ => return Err("tauri_database_unavailable".into()),
+        }
+    };
+    story_agent_reviews::list(&pool,&document_id).await
+}
+
+#[tauri::command]
+async fn load_story_agent_review(db_instances: State<'_, DbInstances>, review_id: String) -> Result<story_agent_reviews::Review, String> {
+    let pool = {
+        let instances = db_instances.0.read().await;
+        match instances.get(LOCAL_DATABASE_URL) {
+            Some(DbPool::Sqlite(pool)) => pool.clone(),
+            _ => return Err("tauri_database_unavailable".into()),
+        }
+    };
+    story_agent_reviews::load(&pool,&review_id).await
+}
+
+#[tauri::command]
+async fn attempt_story_agent_review(db_instances: State<'_, DbInstances>, review_id: String) -> Result<story_workspace_runtime::CaptureResult, String> {
+    let pool = {
+        let instances = db_instances.0.read().await;
+        match instances.get(LOCAL_DATABASE_URL) {
+            Some(DbPool::Sqlite(pool)) => pool.clone(),
+            _ => return Err("tauri_database_unavailable".into()),
+        }
+    };
+    story_agent_reviews::attempt(&pool,&review_id).await
+}
+
+#[tauri::command]
+async fn reject_story_agent_review(db_instances: State<'_, DbInstances>, review_id: String) -> Result<(), String> {
+    let pool = {
+        let instances = db_instances.0.read().await;
+        match instances.get(LOCAL_DATABASE_URL) {
+            Some(DbPool::Sqlite(pool)) => pool.clone(),
+            _ => return Err("tauri_database_unavailable".into()),
+        }
+    };
+    story_agent_reviews::reject(&pool,&review_id).await
+}
+
+#[tauri::command]
+async fn checkpoint_story_agent_document(db_instances: State<'_, DbInstances>, input: story_agent_reviews::Checkpoint) -> Result<story_workspace_runtime::CaptureResult, String> {
+    let pool = {
+        let instances = db_instances.0.read().await;
+        match instances.get(LOCAL_DATABASE_URL) {
+            Some(DbPool::Sqlite(pool)) => pool.clone(),
+            _ => return Err("tauri_database_unavailable".into()),
+        }
+    };
+    story_agent_reviews::checkpoint(&pool,input).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let migrations = vec![
@@ -2542,6 +2659,7 @@ pub fn run() {
             sql: include_str!("../migrations/0011_story_workspace_local_author.sql"),
             kind: MigrationKind::Up,
         },
+        Migration { version: 12, description: "create_story_agent_reviews", sql: story_agent_reviews::SCHEMA, kind: MigrationKind::Up },
     ];
 
     tauri::Builder::default()
@@ -2559,6 +2677,15 @@ pub fn run() {
             capture_story_workspace_version,
             restore_story_workspace_version,
             read_story_workspace,
+            query_story_workspace_version,
+            preview_story_workspace_proposal,
+            adopt_story_workspace_proposal,
+            stage_story_agent_review,
+            list_story_agent_reviews,
+            load_story_agent_review,
+            attempt_story_agent_review,
+            reject_story_agent_review,
+            checkpoint_story_agent_document,
             edit_story_workspace,
             initialize_story_workspace,
             load_local_version_snapshot,
@@ -2743,7 +2870,7 @@ mod tests {
         pool
     }
 
-    async fn migrate_test_pool(pool: &Pool<Sqlite>) {
+    pub(crate) async fn migrate_test_pool(pool: &Pool<Sqlite>) {
         sqlx::raw_sql(include_str!("../migrations/0001_local_foundation.sql"))
             .execute(pool)
             .await

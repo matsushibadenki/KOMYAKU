@@ -412,5 +412,28 @@
       "connection_invalid": "请检查连接设置。",
       "request_failed": "无法完成AI Handoff。"
     }
+  },
+  "storyAgent": {
+    "title": "Agent 审核",
+    "hint": "确认建议后再保存。未完成的审核保存在此设备上。",
+    "refresh": "刷新审核",
+    "import": "导入 Agent 建议",
+    "empty": "没有待采纳的审核",
+    "proposal": "建议 {{count}}",
+    "review": "审核建议",
+    "before": "修改前",
+    "after": "修改后",
+    "structure": "结构修改",
+    "adopt": "采纳",
+    "reject": "拒绝",
+    "retry": "重试采纳",
+    "status": {
+      "stale": "原稿已更新。请拒绝此审核并准备新的建议。",
+      "idle": "",
+      "review": "待审核",
+      "adopted": "已采纳",
+      "uncertain": "保存结果尚未确认，请重试。",
+      "error": "无法加载或采纳，请刷新审核。"
+    }
   }
 }

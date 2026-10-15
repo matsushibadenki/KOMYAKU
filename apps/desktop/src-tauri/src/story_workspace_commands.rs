@@ -7,10 +7,10 @@ use sqlx::{Pool, Sqlite};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct Command {
-    document_id: String,
-    graph_id: String,
-    expected_revision: i64,
+pub(crate) struct Command {
+    pub document_id: String,
+    pub graph_id: String,
+    pub expected_revision: i64,
     operations: Vec<Operation>,
 }
 #[derive(Deserialize)]
@@ -29,37 +29,7 @@ pub(crate) async fn execute(
     if !super::valid_lower_uuid(operation_id) || command_json.len() > 24 * 1024 * 1024 {
         return Err("invalid_story_command".into());
     }
-    let command: Command =
-        serde_json::from_str(command_json).map_err(|_| "invalid_story_command")?;
-    if !super::valid_lower_uuid(&command.document_id)
-        || !super::valid_lower_uuid(&command.graph_id)
-        || !(0..=9_007_199_254_740_990).contains(&command.expected_revision)
-        || command.operations.is_empty()
-        || command.operations.len() > 100
-    {
-        return Err("invalid_story_command".into());
-    }
-    for operation in &command.operations {
-        let (collection, id) = match operation {
-            Operation::ReplaceDocument { document } => {
-                super::story_document_validation::validate_document_subset(document)?;
-                if document["id"].as_str() != Some(&command.document_id) {
-                    return Err("story_command_workspace_mismatch".into());
-                }
-                continue;
-            }
-            Operation::Put { collection, value } => (
-                collection,
-                value["id"].as_str().ok_or("invalid_story_command")?,
-            ),
-            Operation::Remove { collection, id } => (collection, id.as_str()),
-        };
-        if !["nodes", "edges", "paths", "entities"].contains(&collection.as_str())
-            || !super::valid_lower_uuid(id)
-        {
-            return Err("invalid_story_command".into());
-        }
-    }
+    let command = parse(command_json)?;
     let value: Value = serde_json::from_str(command_json).map_err(|_| "invalid_story_command")?;
     let request =
         serde_json::to_string(&serde_json::json!({"operationId":operation_id,"command":value}))
@@ -98,6 +68,58 @@ pub(crate) async fn execute(
         )
         .await;
     }
+    let proposed = derive(&snapshot, &command)?;
+    // CAS at commit prevents applying the derived candidate over a concurrent edit.
+    commit(
+        pool,
+        &command.graph_id,
+        operation_id,
+        revision,
+        &request,
+        &proposed,
+    )
+    .await
+}
+
+pub(crate) fn parse(command_json: &str) -> Result<Command, String> {
+    if command_json.len() > 24 * 1024 * 1024 {
+        return Err("invalid_story_command".into());
+    }
+    let command: Command =
+        serde_json::from_str(command_json).map_err(|_| "invalid_story_command")?;
+    if !super::valid_lower_uuid(&command.document_id)
+        || !super::valid_lower_uuid(&command.graph_id)
+        || !(0..=9_007_199_254_740_990).contains(&command.expected_revision)
+        || command.operations.is_empty()
+        || command.operations.len() > 100
+    {
+        return Err("invalid_story_command".into());
+    }
+    for operation in &command.operations {
+        let (collection, id) = match operation {
+            Operation::ReplaceDocument { document } => {
+                super::story_document_validation::validate_document_subset(document)?;
+                if document["id"].as_str() != Some(&command.document_id) {
+                    return Err("story_command_workspace_mismatch".into());
+                }
+                continue;
+            }
+            Operation::Put { collection, value } => (
+                collection,
+                value["id"].as_str().ok_or("invalid_story_command")?,
+            ),
+            Operation::Remove { collection, id } => (collection, id.as_str()),
+        };
+        if !["nodes", "edges", "paths", "entities"].contains(&collection.as_str())
+            || !super::valid_lower_uuid(id)
+        {
+            return Err("invalid_story_command".into());
+        }
+    }
+    Ok(command)
+}
+
+pub(crate) fn derive(snapshot: &str, command: &Command) -> Result<String, String> {
     if snapshot.len() > 24 * 1024 * 1024 {
         return Err("invalid_stored_story_workspace".into());
     }
@@ -119,7 +141,7 @@ pub(crate) async fn execute(
     {
         return Err("story_command_workspace_mismatch".into());
     }
-    for operation in command.operations {
+    for operation in &command.operations {
         if let Operation::ReplaceDocument { document } = &operation {
             workspace["document"] = document.clone();
             continue;
@@ -129,9 +151,9 @@ pub(crate) async fn execute(
             Operation::Put { collection, value } => (
                 collection,
                 value["id"].as_str().unwrap().to_string(),
-                Some(value),
+                Some(value.clone()),
             ),
-            Operation::Remove { collection, id } => (collection, id, None),
+            Operation::Remove { collection, id } => (collection, id.clone(), None),
         };
         let items = workspace["graph"][&collection]
             .as_array_mut()
@@ -153,16 +175,7 @@ pub(crate) async fn execute(
     super::story_graph_validation::validate_graph_schema(&workspace["graph"], &canonical)
         .map_err(str::to_string)?;
     let proposed = serde_json::to_string(&workspace).map_err(|e| e.to_string())?;
-    // CAS at commit prevents applying the derived candidate over a concurrent edit.
-    commit(
-        pool,
-        &command.graph_id,
-        operation_id,
-        revision,
-        &request,
-        &proposed,
-    )
-    .await
+    Ok(proposed)
 }
 
 #[cfg(test)]
