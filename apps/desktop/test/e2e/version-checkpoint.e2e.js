@@ -411,7 +411,7 @@ test('integration requires final preview and explicit adoption; failed saves pre
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   await openHistory(page, false, true);
-  expect(page.url()).toContain('127.0.0.1:1420');
+  expect(new URL(page.url()).origin).toBe(new URL(test.info().project.use.baseURL).origin);
   await expect(page).toHaveTitle(/KOMYAKU/i);
   const panel = page.locator('.version-integration-review');
   await panel.getByRole('button', { name: '統合をプレビュー' }).click();

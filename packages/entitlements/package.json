@@ -9,6 +9,6 @@
     "check": "bun test"
   },
   "dependencies": {
-    "zod": "^4.1.5"
+    "zod": "4.4.3"
   }
 }

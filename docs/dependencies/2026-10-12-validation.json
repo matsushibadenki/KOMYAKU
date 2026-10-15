@@ -1,0 +1,35 @@
+{
+  "date": "2026-10-12",
+  "timezone": "Asia/Tokyo",
+  "bun_test": {
+    "passed": 622,
+    "skipped": 25,
+    "failed": 0
+  },
+  "bun_check": "passed",
+  "bun_build": "passed",
+  "desktop_cargo_check": "passed",
+  "desktop_cargo_test": {
+    "passed": 76,
+    "ignored": 1,
+    "failed": 0
+  },
+  "story_graph_check": {
+    "build": "passed",
+    "bun_passed": 61,
+    "rust_passed": 219,
+    "rust_ignored": 21,
+    "failed": 0
+  },
+  "chrome_e2e": {
+    "passed": 57,
+    "failed": 0,
+    "port": 1442,
+    "runner": "Node CLI"
+  },
+  "generated_acl_test": {
+    "passed": 9,
+    "failed": 0
+  },
+  "diff_check": "passed"
+}

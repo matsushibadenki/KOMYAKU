@@ -649,7 +649,7 @@ test("inserts a Cloud image only after decoder-backed inspection acceptance", as
       status: 200,
       headers: {
         "Content-Type": "image/png",
-        "Access-Control-Allow-Origin": "http://127.0.0.1:1420",
+        "Access-Control-Allow-Origin": new URL(test.info().project.use.baseURL).origin,
         "Access-Control-Expose-Headers": "X-KOMYAKU-Inspection-Policy, X-KOMYAKU-Image-Width, X-KOMYAKU-Image-Height",
         "X-KOMYAKU-Inspection-Policy": "decoder-backed-png-v1",
         "X-KOMYAKU-Image-Width": "1",

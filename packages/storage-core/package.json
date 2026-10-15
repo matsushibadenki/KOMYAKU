@@ -9,9 +9,9 @@
     "check": "bun test"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.883.0",
-    "@aws-sdk/s3-request-presigner": "^3.883.0",
-    "zod": "^4.1.5"
+    "@aws-sdk/client-s3": "^3.1149.0",
+    "@aws-sdk/s3-request-presigner": "^3.1149.0",
+    "zod": "4.4.3"
   }
 }
 

@@ -1,9 +1,9 @@
-import { expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 export const draftKey = 'komyaku:local-draft:00000000-0000-4000-8000-000000000001';
 const runtimeErrors = new WeakMap();
 export async function failDraftWrites(page) {
   await expect(page).toHaveTitle('KOMYAKU');
-  await expect(page).toHaveURL('http://127.0.0.1:1420/');
+  await expect(page).toHaveURL(new URL('/', test.info().project.use.baseURL).href);
   await expect(page.locator('vite-error-overlay')).toHaveCount(0);
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));

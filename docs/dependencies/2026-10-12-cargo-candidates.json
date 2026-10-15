@@ -1,0 +1,212 @@
+[
+  {
+    "name": "base64",
+    "latest": "0.23.1",
+    "rust_version": "1.71.0",
+    "repository": "https://github.com/marshallpierce/rust-base64"
+  },
+  {
+    "name": "bytemuck",
+    "latest": "1.25.2",
+    "rust_version": null,
+    "repository": "https://github.com/Lokathor/bytemuck"
+  },
+  {
+    "name": "chrono",
+    "latest": "0.4.45",
+    "rust_version": "1.62.0",
+    "repository": "https://github.com/chronotope/chrono"
+  },
+  {
+    "name": "cosmic-text",
+    "latest": "0.19.0",
+    "rust_version": "1.89",
+    "repository": "https://github.com/pop-os/cosmic-text"
+  },
+  {
+    "name": "flate2",
+    "latest": "1.1.10",
+    "rust_version": "1.67.0",
+    "repository": "https://github.com/rust-lang/flate2-rs"
+  },
+  {
+    "name": "futures",
+    "latest": "0.3.34",
+    "rust_version": "1.71",
+    "repository": "https://github.com/rust-lang/futures-rs"
+  },
+  {
+    "name": "image",
+    "latest": "0.25.10",
+    "rust_version": "1.88.0",
+    "repository": "https://github.com/image-rs/image"
+  },
+  {
+    "name": "keyring",
+    "latest": "4.2.0",
+    "rust_version": "1.88.0",
+    "repository": "https://github.com/open-source-cooperative/keyring-rs"
+  },
+  {
+    "name": "lopdf",
+    "latest": "0.45.0",
+    "rust_version": "1.88",
+    "repository": "https://github.com/J-F-Liu/lopdf.git"
+  },
+  {
+    "name": "objc2",
+    "latest": "0.6.5",
+    "rust_version": "1.71",
+    "repository": "https://github.com/madsmtm/objc2"
+  },
+  {
+    "name": "objc2-app-kit",
+    "latest": "0.3.2",
+    "rust_version": "1.71",
+    "repository": "https://github.com/madsmtm/objc2"
+  },
+  {
+    "name": "objc2-foundation",
+    "latest": "0.3.2",
+    "rust_version": "1.71",
+    "repository": "https://github.com/madsmtm/objc2"
+  },
+  {
+    "name": "pdf-writer",
+    "latest": "0.15.0",
+    "rust_version": null,
+    "repository": "https://github.com/typst/pdf-writer"
+  },
+  {
+    "name": "pollster",
+    "latest": "1.0.1",
+    "rust_version": "1.69",
+    "repository": "https://github.com/zesterer/pollster"
+  },
+  {
+    "name": "raw-window-handle",
+    "latest": "0.6.2",
+    "rust_version": "1.64",
+    "repository": "https://github.com/rust-windowing/raw-window-handle"
+  },
+  {
+    "name": "reqwest",
+    "latest": "0.13.5",
+    "rust_version": "1.85.0",
+    "repository": "https://github.com/seanmonstar/reqwest"
+  },
+  {
+    "name": "rfd",
+    "latest": "0.17.2",
+    "rust_version": null,
+    "repository": "https://github.com/PolyMeilex/rfd"
+  },
+  {
+    "name": "ring",
+    "latest": "0.17.14",
+    "rust_version": "1.66.0",
+    "repository": "https://github.com/briansmith/ring"
+  },
+  {
+    "name": "rustybuzz",
+    "latest": "0.20.1",
+    "rust_version": null,
+    "repository": "https://github.com/harfbuzz/rustybuzz"
+  },
+  {
+    "name": "serde",
+    "latest": "1.0.229",
+    "rust_version": "1.56",
+    "repository": "https://github.com/serde-rs/serde"
+  },
+  {
+    "name": "serde_json",
+    "latest": "1.0.154",
+    "rust_version": "1.71",
+    "repository": "https://github.com/serde-rs/json"
+  },
+  {
+    "name": "sha2",
+    "latest": "0.11.0",
+    "rust_version": "1.85",
+    "repository": "https://github.com/RustCrypto/hashes"
+  },
+  {
+    "name": "sqlx",
+    "latest": "0.9.0",
+    "rust_version": "1.94.0",
+    "repository": "https://github.com/launchbadge/sqlx"
+  },
+  {
+    "name": "svg2pdf",
+    "latest": "0.13.0",
+    "rust_version": null,
+    "repository": "https://github.com/typst/svg2pdf"
+  },
+  {
+    "name": "tauri",
+    "latest": "2.12.3",
+    "rust_version": "1.90",
+    "repository": "https://github.com/tauri-apps/tauri"
+  },
+  {
+    "name": "tauri-build",
+    "latest": "2.7.2",
+    "rust_version": "1.90",
+    "repository": "https://github.com/tauri-apps/tauri"
+  },
+  {
+    "name": "tauri-plugin-sql",
+    "latest": "2.5.0",
+    "rust_version": "1.90",
+    "repository": "https://github.com/tauri-apps/plugins-workspace"
+  },
+  {
+    "name": "tauri-runtime-wry",
+    "latest": "2.12.1",
+    "rust_version": "1.90",
+    "repository": "https://github.com/tauri-apps/tauri"
+  },
+  {
+    "name": "tempfile",
+    "latest": "3.27.0",
+    "rust_version": "1.63",
+    "repository": "https://github.com/Stebalien/tempfile"
+  },
+  {
+    "name": "thiserror",
+    "latest": "2.0.21",
+    "rust_version": "1.77",
+    "repository": "https://github.com/dtolnay/thiserror"
+  },
+  {
+    "name": "tokio",
+    "latest": "1.53.2",
+    "rust_version": "1.71",
+    "repository": "https://github.com/tokio-rs/tokio"
+  },
+  {
+    "name": "unicode-segmentation",
+    "latest": "1.13.3",
+    "rust_version": "1.85.0",
+    "repository": "https://github.com/unicode-rs/unicode-segmentation"
+  },
+  {
+    "name": "unicode-vo",
+    "latest": "0.1.0",
+    "rust_version": null,
+    "repository": "https://github.com/RazrFalcon/unicode-vo"
+  },
+  {
+    "name": "uuid",
+    "latest": "1.28.0",
+    "rust_version": "1.89.0",
+    "repository": "https://github.com/uuid-rs/uuid"
+  },
+  {
+    "name": "wgpu",
+    "latest": "30.0.1",
+    "rust_version": "1.87.0",
+    "repository": "https://github.com/gfx-rs/wgpu"
+  }
+]

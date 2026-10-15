@@ -9,8 +9,8 @@ unge-executor = { path = "../vendor/unge/crates/unge-executor" }
 unge-interaction = { path = "../vendor/unge/crates/unge-interaction" }
 unge-render = { path = "../vendor/unge/crates/unge-render" }
 unge-tauri = { path = "../vendor/unge/crates/unge-tauri" }
-tauri = { version = "=2.11.6", features = ["unstable"] }
-tauri-runtime-wry = "=2.11.4"
+tauri = { version = "=2.12.3", features = ["unstable"] }
+tauri-runtime-wry = "=2.12.1"
 pollster = "0.4"
 flate2 = "1"
 image = { version = "=0.25.10", default-features = false, features = ["png"] }
@@ -34,7 +34,7 @@ tauri-build = { version = "2", features = [] }
 lopdf = "=0.45.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2 = "=0.6.4"
+objc2 = "=0.6.5"
 objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSView", "NSGraphics"] }
 objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSGeometry", "NSObject"] }
 raw-window-handle = "=0.6.2"
