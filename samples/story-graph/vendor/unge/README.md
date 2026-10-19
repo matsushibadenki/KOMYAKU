@@ -6,3 +6,5 @@ Host-specific registry definitions live in `src-tauri/src/domain.rs`.
 Local integration change: `Engine::snapshot_with_summary()` atomically captures the host document and revision.
 Local renderer change: bounded `title` property is preferred over the type title.
 Upstream generic DAG rules are unchanged. Character relationships use two inbound person ports on relationship nodes. Semantic cycles therefore do not create execution cycles.
+
+Dependency maintenance (2026-10-19): local base64 requirement updated from 0.22 to 0.23.1 and pollster from 0.4 to 1.0.1. Source integration changes and both licenses are preserved; this is not a new upstream snapshot.

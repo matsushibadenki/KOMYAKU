@@ -1,0 +1,885 @@
+[
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "combine",
+    "before": [
+      "4.6.8"
+    ],
+    "after": [
+      "4.6.9"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "defmt",
+    "before": [
+      "1.1.1"
+    ],
+    "after": [
+      "1.2.0"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "defmt-macros",
+    "before": [
+      "1.1.1"
+    ],
+    "after": [
+      "1.2.0"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "defmt-parser",
+    "before": [
+      "1.0.0"
+    ],
+    "after": [
+      "1.1.0"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "deranged",
+    "before": [
+      "0.5.8"
+    ],
+    "after": [
+      "0.5.9"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "equivalent",
+    "before": [
+      "1.0.2"
+    ],
+    "after": [
+      "1.0.3"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "inout",
+    "before": [
+      "0.2.2"
+    ],
+    "after": [
+      "0.2.4"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "keyring-core",
+    "before": [
+      "1.0.0"
+    ],
+    "after": [
+      "1.0.1"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "libc",
+    "before": [
+      "0.2.190"
+    ],
+    "after": [
+      "0.2.191"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "redox_syscall",
+    "before": [
+      "0.5.18",
+      "0.9.4"
+    ],
+    "after": [
+      "0.5.18",
+      "0.9.5"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "schemars",
+    "before": [
+      "0.8.22",
+      "0.9.0",
+      "1.2.2"
+    ],
+    "after": [
+      "0.8.22",
+      "0.9.0",
+      "1.2.3"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "sha2",
+    "before": [
+      "0.10.9",
+      "0.11.0"
+    ],
+    "after": [
+      "0.10.9",
+      "0.11.1"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "static_vcruntime",
+    "before": [],
+    "after": [
+      "3.0.0"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "syn",
+    "before": [
+      "1.0.109",
+      "2.0.119",
+      "3.0.8"
+    ],
+    "after": [
+      "1.0.109",
+      "2.0.119",
+      "3.0.9"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "tauri",
+    "before": [
+      "2.12.3"
+    ],
+    "after": [
+      "2.12.4"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "tauri-build",
+    "before": [
+      "2.7.2"
+    ],
+    "after": [
+      "2.7.3"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "tauri-codegen",
+    "before": [
+      "2.7.2"
+    ],
+    "after": [
+      "2.7.3"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "tauri-macros",
+    "before": [
+      "2.7.2"
+    ],
+    "after": [
+      "2.7.3"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "tauri-plugin",
+    "before": [
+      "2.7.1"
+    ],
+    "after": [
+      "2.7.2"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "tauri-plugin-sql",
+    "before": [
+      "2.5.0"
+    ],
+    "after": [
+      "2.6.0"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "tauri-runtime",
+    "before": [
+      "2.12.1"
+    ],
+    "after": [
+      "2.12.2"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "tauri-runtime-wry",
+    "before": [
+      "2.12.1"
+    ],
+    "after": [
+      "2.12.2"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "tauri-utils",
+    "before": [
+      "2.10.1"
+    ],
+    "after": [
+      "2.10.2"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "tokio",
+    "before": [
+      "1.53.2"
+    ],
+    "after": [
+      "1.53.3"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "unicode-ident",
+    "before": [
+      "1.0.26"
+    ],
+    "after": [
+      "1.0.27"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "unicode-normalization",
+    "before": [
+      "0.1.25"
+    ],
+    "after": [
+      "0.1.26"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "zbus_names",
+    "before": [
+      "4.3.4"
+    ],
+    "after": [
+      "4.3.5"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "zerocopy",
+    "before": [
+      "0.8.62"
+    ],
+    "after": [
+      "0.8.63"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "zerocopy-derive",
+    "before": [
+      "0.8.62"
+    ],
+    "after": [
+      "0.8.63"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "zvariant",
+    "before": [
+      "5.15.0"
+    ],
+    "after": [
+      "5.15.1"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "zvariant_derive",
+    "before": [
+      "5.15.0"
+    ],
+    "after": [
+      "5.15.1"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "combine",
+    "before": [
+      "4.6.8"
+    ],
+    "after": [
+      "4.6.9"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "defmt",
+    "before": [
+      "1.1.1"
+    ],
+    "after": [
+      "1.2.0"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "defmt-macros",
+    "before": [
+      "1.1.1"
+    ],
+    "after": [
+      "1.2.0"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "defmt-parser",
+    "before": [
+      "1.0.0"
+    ],
+    "after": [
+      "1.1.0"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "deranged",
+    "before": [
+      "0.5.8"
+    ],
+    "after": [
+      "0.5.9"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "equivalent",
+    "before": [
+      "1.0.2"
+    ],
+    "after": [
+      "1.0.3"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "font-types",
+    "before": [
+      "0.10.1",
+      "0.11.3",
+      "0.12.6"
+    ],
+    "after": [
+      "0.10.1",
+      "0.11.3",
+      "0.12.7"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "inout",
+    "before": [
+      "0.2.2"
+    ],
+    "after": [
+      "0.2.4"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "libc",
+    "before": [
+      "0.2.190"
+    ],
+    "after": [
+      "0.2.191"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "litrs",
+    "before": [
+      "1.0.0"
+    ],
+    "after": [
+      "1.0.1"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "pollster",
+    "before": [
+      "0.4.0"
+    ],
+    "after": [
+      "0.4.0",
+      "1.0.1"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "rustls",
+    "before": [
+      "0.23.45"
+    ],
+    "after": [
+      "0.23.46"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "schemars",
+    "before": [
+      "0.8.22",
+      "0.9.0",
+      "1.2.2"
+    ],
+    "after": [
+      "0.8.22",
+      "0.9.0",
+      "1.2.3"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "sha2",
+    "before": [
+      "0.10.9",
+      "0.11.0"
+    ],
+    "after": [
+      "0.10.9",
+      "0.11.1"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "static_vcruntime",
+    "before": [],
+    "after": [
+      "3.0.0"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "syn",
+    "before": [
+      "1.0.109",
+      "2.0.119",
+      "3.0.8"
+    ],
+    "after": [
+      "1.0.109",
+      "2.0.119",
+      "3.0.9"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "tauri",
+    "before": [
+      "2.12.3"
+    ],
+    "after": [
+      "2.12.4"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "tauri-build",
+    "before": [
+      "2.7.2"
+    ],
+    "after": [
+      "2.7.3"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "tauri-codegen",
+    "before": [
+      "2.7.2"
+    ],
+    "after": [
+      "2.7.3"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "tauri-macros",
+    "before": [
+      "2.7.2"
+    ],
+    "after": [
+      "2.7.3"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "tauri-runtime",
+    "before": [
+      "2.12.1"
+    ],
+    "after": [
+      "2.12.2"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "tauri-runtime-wry",
+    "before": [
+      "2.12.1"
+    ],
+    "after": [
+      "2.12.2"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "tauri-utils",
+    "before": [
+      "2.10.1"
+    ],
+    "after": [
+      "2.10.2"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "tokio",
+    "before": [
+      "1.53.2"
+    ],
+    "after": [
+      "1.53.3"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "unicode-ident",
+    "before": [
+      "1.0.26"
+    ],
+    "after": [
+      "1.0.27"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "unicode-normalization",
+    "before": [
+      "0.1.25"
+    ],
+    "after": [
+      "0.1.26"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "zbus_names",
+    "before": [
+      "4.3.4"
+    ],
+    "after": [
+      "4.3.5"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "zerocopy",
+    "before": [
+      "0.8.62"
+    ],
+    "after": [
+      "0.8.63"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "zerocopy-derive",
+    "before": [
+      "0.8.62"
+    ],
+    "after": [
+      "0.8.63"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "zvariant",
+    "before": [
+      "5.15.0"
+    ],
+    "after": [
+      "5.15.1"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "zvariant_derive",
+    "before": [
+      "5.15.0"
+    ],
+    "after": [
+      "5.15.1"
+    ]
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/checksums",
+    "before": "3.1001.2",
+    "after": "3.1001.3"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/client-s3",
+    "before": "3.1149.0",
+    "after": "3.1152.0"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/core",
+    "before": "3.978.2",
+    "after": "3.978.3"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/credential-provider-env",
+    "before": "3.972.73",
+    "after": "3.972.74"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/credential-provider-http",
+    "before": "3.972.75",
+    "after": "3.972.76"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/credential-provider-ini",
+    "before": "3.973.18",
+    "after": "3.973.19"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/credential-provider-login",
+    "before": "3.972.80",
+    "after": "3.972.81"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/credential-provider-node",
+    "before": "3.972.85",
+    "after": "3.972.86"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/credential-provider-process",
+    "before": "3.972.73",
+    "after": "3.972.74"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/credential-provider-sso",
+    "before": "3.973.17",
+    "after": "3.973.18"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/credential-provider-web-identity",
+    "before": "3.972.79",
+    "after": "3.972.80"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/middleware-sdk-s3",
+    "before": "3.972.78",
+    "after": "3.972.79"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/nested-clients",
+    "before": "3.997.47",
+    "after": "3.997.48"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/s3-request-presigner",
+    "before": "3.1149.0",
+    "after": "3.1152.0"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/token-providers",
+    "before": "3.1149.0",
+    "after": "3.1150.0"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@playwright/test",
+    "before": "1.64.0",
+    "after": "1.64.1"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@tauri-apps/api",
+    "before": "2.12.3",
+    "after": "2.12.4"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@tauri-apps/cli",
+    "before": "2.12.2",
+    "after": "2.12.3"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@tauri-apps/cli-darwin-arm64",
+    "before": "2.12.2",
+    "after": "2.12.3"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@tauri-apps/cli-darwin-x64",
+    "before": "2.12.2",
+    "after": "2.12.3"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@tauri-apps/cli-linux-arm-gnueabihf",
+    "before": "2.12.2",
+    "after": "2.12.3"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@tauri-apps/cli-linux-arm64-gnu",
+    "before": "2.12.2",
+    "after": "2.12.3"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@tauri-apps/cli-linux-arm64-musl",
+    "before": "2.12.2",
+    "after": "2.12.3"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@tauri-apps/cli-linux-riscv64-gnu",
+    "before": "2.12.2",
+    "after": "2.12.3"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@tauri-apps/cli-linux-x64-gnu",
+    "before": "2.12.2",
+    "after": "2.12.3"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@tauri-apps/cli-linux-x64-musl",
+    "before": "2.12.2",
+    "after": "2.12.3"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@tauri-apps/cli-win32-arm64-msvc",
+    "before": "2.12.2",
+    "after": "2.12.3"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@tauri-apps/cli-win32-ia32-msvc",
+    "before": "2.12.2",
+    "after": "2.12.3"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@tauri-apps/cli-win32-x64-msvc",
+    "before": "2.12.2",
+    "after": "2.12.3"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@tauri-apps/plugin-sql",
+    "before": "2.5.0",
+    "after": "2.6.0"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "i18next",
+    "before": "26.4.3",
+    "after": "26.5.2"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "mermaid",
+    "before": "12.1.0",
+    "after": "12.2.0"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "mermaid/katex",
+    "before": "0.16.47",
+    "after": "0.18.11"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "mermaid/katex/commander",
+    "before": "8.3.0",
+    "after": null
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "nodemailer",
+    "before": "10.1.0",
+    "after": "10.1.7"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "playwright",
+    "before": "1.64.0",
+    "after": "1.64.1"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "playwright-core",
+    "before": "1.64.0",
+    "after": "1.64.1"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "react",
+    "before": "19.3.0",
+    "after": "19.3.1"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "react-dom",
+    "before": "19.3.0",
+    "after": "19.3.1"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "react-i18next",
+    "before": "17.0.16",
+    "after": "17.1.0"
+  }
+]

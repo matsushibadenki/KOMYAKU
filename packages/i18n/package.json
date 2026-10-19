@@ -9,7 +9,7 @@
     "check": "bun -e \"import('./src/index.js')\""
   },
   "dependencies": {
-    "i18next": "^26.4.3"
+    "i18next": "^26.5.2"
   }
 }
 

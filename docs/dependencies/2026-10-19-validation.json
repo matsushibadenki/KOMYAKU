@@ -1,0 +1,45 @@
+{
+  "date": "2026-10-19",
+  "timezone": "Asia/Tokyo",
+  "bun_test": {
+    "passed": 662,
+    "skipped": 25,
+    "failed": 0
+  },
+  "bun_check": "passed",
+  "bun_build": "passed",
+  "desktop_cargo_check": "passed",
+  "desktop_cargo_test": {
+    "passed": 87,
+    "ignored": 1,
+    "failed": 0
+  },
+  "story_graph": {
+    "build": "passed",
+    "bun_passed": 61,
+    "rust_passed": 219,
+    "rust_ignored": 21,
+    "failed": 0
+  },
+  "explicit_gpu": {
+    "passed": 4,
+    "failed": 0
+  },
+  "chrome_e2e": {
+    "passed": 60,
+    "failed": 0,
+    "port": 1442,
+    "runner": "Node CLI"
+  },
+  "acl_boundary": {
+    "passed": 9,
+    "failed": 0
+  },
+  "zod_trial": {
+    "version": "4.6.7",
+    "passed": 138,
+    "failed": 10,
+    "restored": "4.4.3"
+  },
+  "diff_check": "passed"
+}
