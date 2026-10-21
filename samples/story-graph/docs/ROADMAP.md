@@ -5,6 +5,14 @@
 - 🔴 [Later] planned, but not the closest next step
 - ⭕️ [Pending] Anything that can't be tested in the dev environment is on hold for now.
 
+## ルビの読み込み・表示 — 2026-10-21
+
+- 🟢 [Done] 青空文庫の `漢字《かんじ》` と `｜青い空《あおいそら》` を本文テキストとruby装飾のreadingへ分離。未知注記や未完の記法は本文に残す。Shift_JIS／UTF-8を継続対応。従来取り込んだ原記法の作品は、青空文庫ファイルを改めて読み込むとルビ付き作品になる（既存作品を自動改変しない）。
+- 🟢 [Done] 共通Canonical schema、ProseMirror変換、Rust正本の検証、共有Workspace側の受け入れにrubyを追加。親文字の本文位置に読み仮名を加算せず、読むモードのコピー／スクロール復元ではrtを除外。通常のルビ語の途中で仮想表示断片を切らない。
+- 🟢 [Done] 執筆・読むモードで横書きは上側、縦書きは右側へ読み仮名を表示。ルビ付き作品は書式エディタを使用し、本文編集でreadingを保持。Markdownと一般表のHTML投影にrubyを保持。標準／台本PDFのルビ組版は今回未実装（本文の親文字を出力）。
+- 🟢 [Done] アプリJS63 tests、共有schema／editor87 tests、青空文庫Rust4 tests、共有ホストruby検証1 test、Clippy、macOS bundle成功。隔離した実macOSで青空文庫取り込み→横書き執筆→追記→保存→縦書き執筆→縦書き読む→横書き読むを確認。checkpoint＋journalをchecksum照合して追記とreadingの永続化を確認。
+- ⭕️ [Pending] PDFのルビ組版、任意位置からのルビ追加／読み仮名変更UI、巨大な単一ルビ語の分割表示、他OSでの組版確認。
+
 ## ファイル操作の整理 — 2026-10-21
 
 - 🟢 [Done] ファイルメニューを新規／開く／保存、読み込み、書き出し、バックアップへ整理。書き出しは本文（txt／md／PDF標準・台本）、人物相関図、作品データへ分類。隣接サブメニューを同時に重ねず、マウスとキーボードで開ける。

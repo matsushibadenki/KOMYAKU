@@ -59,7 +59,7 @@ impl<'a> Walker<'a> {
                             Some("ruby") => {
                                 let reading = mark["reading"].as_str().ok_or("invalid_document")?;
                                 if reading.is_empty()
-                                    || reading.chars().count() > 256
+                                    || reading.encode_utf16().count() > 256
                                     || reading.chars().any(|c| c.is_control())
                                 {
                                     return Err("invalid_document".into());

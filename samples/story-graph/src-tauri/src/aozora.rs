@@ -138,7 +138,7 @@ fn ruby_content(text: &str) -> Vec<serde_json::Value> {
                 .map(|(i, _)| i)
         });
         if !reading.is_empty()
-            && reading.chars().count() <= 256
+            && reading.encode_utf16().count() <= 256
             && !reading.chars().any(|c| c.is_control())
             && let Some(start) = start
         {
