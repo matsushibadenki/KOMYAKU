@@ -2,7 +2,7 @@
 
 ![KOMYAKU document lineage: a manuscript evolving through branches of text, mathematics, diagrams, tables, images, code, and AI conversation](assets/readme/komyaku-document-lineage-hero.webp)
 
-![Story graph](assets/sample/story_graph.png)
+![Story graph](samples/story-graph/docs/images)
 
 KOMYAKU is a multilingual, local-first document evolution platform. It is designed to preserve not only the latest text, but also the complete lineage of drafts, named versions, branches, restorations, reviews, and AI-assisted continuations.
 
