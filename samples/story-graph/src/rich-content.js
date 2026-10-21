@@ -15,7 +15,7 @@ export function richInlineHtml(content,escape,start=0,end=Infinity){
  let offset=0;return content.map(inline=>{
   const text=richText(inline),from=Math.max(0,start-offset),to=Math.min(text.length,end-offset);offset+=text.length;
   if(to<=from)return '';let html=readingTextHtml(text.slice(from,to),escape);
-  for(const mark of inline.marks??[]){const tag={bold:'strong',italic:'em',underline:'u',strike:'s',code:'code'}[mark.type];if(tag)html=`<${tag}>${html}</${tag}>`;else if(mark.type==='link'&&/^(https?:|mailto:)/i.test(mark.href))html=`<a href="${escape(mark.href)}" rel="noopener noreferrer">${html}</a>`;}
+  for(const mark of inline.marks??[]){const tag={bold:'strong',italic:'em',underline:'u',strike:'s',code:'code'}[mark.type];if(tag)html=`<${tag}>${html}</${tag}>`;else if(mark.type==='ruby')html=`<ruby>${html}<rt>${escape(mark.reading)}</rt></ruby>`;else if(mark.type==='link'&&/^(https?:|mailto:)/i.test(mark.href))html=`<a href="${escape(mark.href)}" rel="noopener noreferrer">${html}</a>`;}
   return html;
  }).join('');
 }

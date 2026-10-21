@@ -1,4 +1,5 @@
 mod ai;
+mod aozora;
 mod archive;
 mod autosave;
 mod central_document;
@@ -1708,6 +1709,35 @@ async fn import_workspace(
     .await
     .map_err(|_| "backup_restore_failed".to_owned())?
 }
+#[tauri::command]
+async fn import_aozora(
+    window: tauri::WebviewWindow,
+    host: tauri::State<'_, Host>,
+    library: tauri::State<'_, library::Library>,
+    store: tauri::State<'_, preferences::Store>,
+) -> std::result::Result<bool, String> {
+    allowed(&window)?;
+    let root = library.root.clone();
+    let registry = host.registry.clone();
+    let mut settings = store.value.lock().map_err(|_| "state_unavailable")?.clone();
+    settings.left_panel_open = true;
+    settings.right_panel_open = false;
+    tauri::async_runtime::spawn_blocking(move || {
+        let title = match settings.language.as_str() {
+            "en" => "Import Aozora Bunko text",
+            "zh-CN" => "导入青空文库文本",
+            _ => "青空文庫のテキストを読み込む",
+        };
+        let Some(path) = rfd::FileDialog::new().set_title(title).add_filter("Aozora Bunko", &["txt"]).pick_file() else { return Ok(false); };
+        let doc = aozora::read(&path, &registry, &settings.language)?;
+        domain::Validator(registry).validate(&doc).map_err(|_| "aozora_invalid")?;
+        let title = doc.title.clone();
+        let library = library::Library { root };
+        let directory = library.restore_document(doc, title, settings)?;
+        launch_workspace(&directory, &library.root, true).map_err(|_| "backup_open_failed")?;
+        Ok(true)
+    }).await.map_err(|_| "aozora_invalid".to_owned())?
+}
 fn main() {
     tauri::Builder::default()
         .register_uri_scheme_protocol("portrait", |context, request| {
@@ -1764,6 +1794,7 @@ fn main() {
             saved_backups,
             restore_backup,
             import_workspace,
+            import_aozora,
             archive::export_archive,
             archive::import_archive,
             search::search_manuscript,

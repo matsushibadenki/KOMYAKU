@@ -338,6 +338,11 @@ fn rich_markdown(node: &serde_json::Value, doc: &serde_json::Value) -> String {
             if let Some(marks) = node["marks"].as_array() {
                 for mark in marks {
                     text = match mark["type"].as_str().unwrap_or("") {
+                        "ruby" => format!(
+                            "<ruby>{}<rt>{}</rt></ruby>",
+                            xml(node["text"].as_str().unwrap_or("")),
+                            xml(mark["reading"].as_str().unwrap_or(""))
+                        ),
                         "bold" => format!("**{text}**"),
                         "italic" => format!("*{text}*"),
                         "strike" => format!("~~{text}~~"),
@@ -428,6 +433,13 @@ fn rich_html(node: &serde_json::Value, doc: &serde_json::Value) -> String {
             let mut text = xml(node["text"].as_str().unwrap_or(""));
             for mark in node["marks"].as_array().into_iter().flatten() {
                 let tag = match mark["type"].as_str() {
+                    Some("ruby") => {
+                        text = format!(
+                            "<ruby>{text}<rt>{}</rt></ruby>",
+                            xml(mark["reading"].as_str().unwrap_or(""))
+                        );
+                        continue;
+                    }
                     Some("bold") => "strong",
                     Some("italic") => "em",
                     Some("underline") => "u",

@@ -10,7 +10,7 @@ import {
 function legacyMarks(marks = []) {
   return marks.map((mark) => mark.type === "link"
     ? { type: "link", href: mark.attrs?.href, title: mark.attrs?.title ?? null }
-    : { type: mark.type });
+    : mark.type === "ruby" ? {type:"ruby",reading:mark.attrs?.reading} : { type: mark.type });
 }
 
 export function migrateLegacyEditorDocument(input, { idFactory = createNodeId } = {}) {

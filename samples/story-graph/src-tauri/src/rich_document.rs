@@ -56,6 +56,15 @@ impl<'a> Walker<'a> {
                     for mark in marks {
                         match mark["type"].as_str() {
                             Some("bold" | "italic" | "underline" | "strike" | "code") => (),
+                            Some("ruby") => {
+                                let reading = mark["reading"].as_str().ok_or("invalid_document")?;
+                                if reading.is_empty()
+                                    || reading.chars().count() > 256
+                                    || reading.chars().any(|c| c.is_control())
+                                {
+                                    return Err("invalid_document".into());
+                                }
+                            }
                             Some("link") => {
                                 let href = mark["href"].as_str().ok_or("invalid_document")?;
                                 let url =

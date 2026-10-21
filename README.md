@@ -2,6 +2,8 @@
 
 ![KOMYAKU document lineage: a manuscript evolving through branches of text, mathematics, diagrams, tables, images, code, and AI conversation](assets/readme/komyaku-document-lineage-hero.webp)
 
+![Story graph](assets/sample/story_graph.png)
+
 KOMYAKU is a multilingual, local-first document evolution platform. It is designed to preserve not only the latest text, but also the complete lineage of drafts, named versions, branches, restorations, reviews, and AI-assisted continuations.
 
 The name 稿脈 can be read as the “lineage of drafts”: the path through which a piece of writing changes over time.
@@ -16,30 +18,30 @@ KOMYAKU is currently a foundation-stage project, not a production-ready end-user
 
 The repository already contains working infrastructure, schemas, security boundaries, persistence adapters, and tests. The full editor, Version Graph UI, sharing interface, cloud synchronization flow, and provider-specific AI integrations are still under development.
 
-| Area | Status | Current state |
-|---|---|---|
-| React + Tauri desktop shell | Implemented foundation | Builds and runs with a local SQLite database |
-| Japanese, English, Simplified Chinese UI | Implemented foundation | Initial i18n resources and locale switching |
-| Structured document model | Implemented foundation | Versioned Canonical Schema, stable Node IDs, first-class content nodes, migrations, and ProseMirror adapters |
-| Collaborative working state | Browser feasibility implemented | Independent Yjs replicas, State Vector reconnection, local undo boundary, Relative Position selection path, composition-safe checkpoints, and automated browser regression |
-| Local draft recovery | Implemented foundation | Validated Canonical autosave with monotonic revisions and atomic Rust-side SQLite persistence; restart recovery and Japanese IME passed in packaged macOS Tauri |
-| PostgreSQL cloud schema | Implemented foundation | Identity, workspace, conversation, job, and outbox tables |
-| Durable outbox dispatch | Implemented foundation | PostgreSQL leases and atomic, idempotent Outbox-to-Job publication |
-| Durable job execution | Implemented foundation | Registered handlers, attempt history, retries, dead letters, and raw archive verification |
-| Mutation idempotency | Implemented foundation | HMAC-protected keys, exact request fingerprints, and reference-only replay |
-| Dead-letter operations | Implemented internal boundary | Exact-job retry with preserved history and atomic operator audit; no public endpoint |
-| Plan catalog and entitlements | Implemented foundation | Provider-independent stable keys, typed limits, local core, and layered overrides |
-| Production configuration and logging | Implemented foundation | Fail-fast environment validation and redacted JSON Lines |
-| S3-compatible storage | Implemented foundation | Immutable writes, Workspace-scoped content addressing, verified deduplication, reference accounting, and MinIO development setup |
-| Identity and sessions | Implemented domain layer | Argon2id passwords, hashed sessions, revocation, verification/reset tokens |
-| Distributed authentication rate limits | Implemented domain layer | PostgreSQL-shared counters with HMAC-protected identifiers |
-| Conversation archive | Implemented foundation | Canonical DAG, generic JSON importer, immutable raw archive service |
-| Authenticated conversation import API | Implemented, gated | Idempotent raw JSON POST, membership-checked status GET, and Workspace-scoped deterministic Canonical identities |
-| AI handoff | Desktop and Cloud persistence foundation | Exact single-branch disclosure, masking, dual hashes, Local/BYOK setup, OS-secured API keys, bounded streaming, atomic local persistence, a metadata-only local library, and an authenticated idempotent Cloud completion API |
-| Public authentication endpoints | Implemented, disabled by default | SMTP delivery and rate-limited routes exist behind an explicit production feature gate |
-| Document editing UI and Version Graph | Local history workflow implemented; graph planned | Single-editor default, durable drafts, immutable versions, alternatives, compare, restore, and account-free export are implemented; the two-replica development workbench remains at `?workbench=1` |
-| Public/restricted/unlisted sharing | Designed | Database and policy model are planned; public APIs are not yet exposed |
-| Billing | Architecture only | No payment provider is connected |
+| Area                                     | Status                                            | Current state                                                                                                                                                                                                                 |
+| ---------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| React + Tauri desktop shell              | Implemented foundation                            | Builds and runs with a local SQLite database                                                                                                                                                                                  |
+| Japanese, English, Simplified Chinese UI | Implemented foundation                            | Initial i18n resources and locale switching                                                                                                                                                                                   |
+| Structured document model                | Implemented foundation                            | Versioned Canonical Schema, stable Node IDs, first-class content nodes, migrations, and ProseMirror adapters                                                                                                                  |
+| Collaborative working state              | Browser feasibility implemented                   | Independent Yjs replicas, State Vector reconnection, local undo boundary, Relative Position selection path, composition-safe checkpoints, and automated browser regression                                                    |
+| Local draft recovery                     | Implemented foundation                            | Validated Canonical autosave with monotonic revisions and atomic Rust-side SQLite persistence; restart recovery and Japanese IME passed in packaged macOS Tauri                                                               |
+| PostgreSQL cloud schema                  | Implemented foundation                            | Identity, workspace, conversation, job, and outbox tables                                                                                                                                                                     |
+| Durable outbox dispatch                  | Implemented foundation                            | PostgreSQL leases and atomic, idempotent Outbox-to-Job publication                                                                                                                                                            |
+| Durable job execution                    | Implemented foundation                            | Registered handlers, attempt history, retries, dead letters, and raw archive verification                                                                                                                                     |
+| Mutation idempotency                     | Implemented foundation                            | HMAC-protected keys, exact request fingerprints, and reference-only replay                                                                                                                                                    |
+| Dead-letter operations                   | Implemented internal boundary                     | Exact-job retry with preserved history and atomic operator audit; no public endpoint                                                                                                                                          |
+| Plan catalog and entitlements            | Implemented foundation                            | Provider-independent stable keys, typed limits, local core, and layered overrides                                                                                                                                             |
+| Production configuration and logging     | Implemented foundation                            | Fail-fast environment validation and redacted JSON Lines                                                                                                                                                                      |
+| S3-compatible storage                    | Implemented foundation                            | Immutable writes, Workspace-scoped content addressing, verified deduplication, reference accounting, and MinIO development setup                                                                                              |
+| Identity and sessions                    | Implemented domain layer                          | Argon2id passwords, hashed sessions, revocation, verification/reset tokens                                                                                                                                                    |
+| Distributed authentication rate limits   | Implemented domain layer                          | PostgreSQL-shared counters with HMAC-protected identifiers                                                                                                                                                                    |
+| Conversation archive                     | Implemented foundation                            | Canonical DAG, generic JSON importer, immutable raw archive service                                                                                                                                                           |
+| Authenticated conversation import API    | Implemented, gated                                | Idempotent raw JSON POST, membership-checked status GET, and Workspace-scoped deterministic Canonical identities                                                                                                              |
+| AI handoff                               | Desktop and Cloud persistence foundation          | Exact single-branch disclosure, masking, dual hashes, Local/BYOK setup, OS-secured API keys, bounded streaming, atomic local persistence, a metadata-only local library, and an authenticated idempotent Cloud completion API |
+| Public authentication endpoints          | Implemented, disabled by default                  | SMTP delivery and rate-limited routes exist behind an explicit production feature gate                                                                                                                                        |
+| Document editing UI and Version Graph    | Local history workflow implemented; graph planned | Single-editor default, durable drafts, immutable versions, alternatives, compare, restore, and account-free export are implemented; the two-replica development workbench remains at `?workbench=1`                           |
+| Public/restricted/unlisted sharing       | Designed                                          | Database and policy model are planned; public APIs are not yet exposed                                                                                                                                                        |
+| Billing                                  | Architecture only                                 | No payment provider is connected                                                                                                                                                                                              |
 
 The current delivery milestone is the **offline document-history workflow**. Reliable editing, saved versions and alternatives, readable comparison and restore, and account-free single-document export now work locally. The next work is native packaged regression coverage, undo/redo controls, a secondary branch graph, reviewed merge, and a new portable full-history Archive contract. Archive v1 remains a single-document snapshot rather than a complete history backup.
 
@@ -141,12 +143,12 @@ LaTeX and Mermaid source are preserved as authored source rather than being repl
 
 The design distinguishes four visibility modes:
 
-| Mode | Who can read it |
-|---|---|
-| `private` | Only authorized workspace members |
-| `restricted` | Explicitly authorized users or groups |
-| `unlisted` | Anyone possessing a valid secret URL token |
-| `public` | Anyone, but only through an explicitly published version |
+| Mode         | Who can read it                                          |
+| ------------ | -------------------------------------------------------- |
+| `private`    | Only authorized workspace members                        |
+| `restricted` | Explicitly authorized users or groups                    |
+| `unlisted`   | Anyone possessing a valid secret URL token               |
+| `public`     | Anyone, but only through an explicitly published version |
 
 Important invariants include:
 
@@ -376,10 +378,10 @@ docker compose ps
 
 Local services use these default addresses:
 
-| Service | Address |
-|---|---|
-| PostgreSQL | `127.0.0.1:5432` |
-| MinIO S3 API | `http://127.0.0.1:9000` |
+| Service       | Address                 |
+| ------------- | ----------------------- |
+| PostgreSQL    | `127.0.0.1:5432`        |
+| MinIO S3 API  | `http://127.0.0.1:9000` |
 | MinIO console | `http://127.0.0.1:9001` |
 
 ### 4. Apply database migrations
@@ -436,66 +438,66 @@ The current UI is a foundation shell, not the completed editor.
 
 The complete development example is in [.env.example](.env.example).
 
-| Variable | Purpose | Development default |
-|---|---|---|
-| `SERVER_HOST` | API bind address | `127.0.0.1` |
-| `SERVER_PORT` | API port | `3000` |
-| `NODE_ENV` | Runtime safety profile | `development` |
-| `LOG_LEVEL` | Structured log threshold | `debug` |
-| `SERVICE_NAME` | Structured log service identity | `komyaku-server` |
-| `CORS_ORIGINS` | Explicit comma-separated browser origins | Local Vite origins |
-| `DEPLOYMENT_MODE` | `single`, `api`, or `worker` runtime role | `single` |
-| `INSTANCE_ID` | Observable instance identity | Generated when empty |
-| `SHUTDOWN_GRACE_MS` | Graceful shutdown deadline | `10000` |
-| `DATABASE_POOL_MAX` | Maximum Bun SQL pool size | `10` |
-| `JOB_BACKEND` | Durable work backend | `postgres-outbox` |
-| `OUTBOX_BATCH_SIZE` | Events claimed in one dispatcher pass | `25` |
-| `OUTBOX_LEASE_SECONDS` | Time before another worker may reclaim processing | `30` |
-| `OUTBOX_POLL_INTERVAL_MS` | Idle polling interval | `1000` |
-| `OUTBOX_MAX_ATTEMPTS` | Attempts before an event is marked failed | `10` |
-| `JOB_BATCH_SIZE` | Jobs claimed per registered handler pass | `10` |
-| `JOB_LEASE_SECONDS` | Worker lease before crash recovery | `60` |
-| `JOB_POLL_INTERVAL_MS` | Idle Job Runner polling interval | `1000` |
-| `DATABASE_URL` | PostgreSQL connection string | Local development database |
-| `SESSION_TTL_SECONDS` | Lifetime of newly issued cloud sessions | `2592000` |
-| `PASSWORD_RESET_MIN_RESPONSE_MS` | Minimum reset-request response time to reduce enumeration timing | `250` |
-| `AUTH_RATE_LIMIT_SECRET` | HMAC key protecting stored rate-limit identifiers | Development-only example |
-| `IDEMPOTENCY_SECRET` | HMAC key protecting stored mutation keys | Development-only example |
-| `AUTH_ROUTES_ENABLED` | Mount public authentication routes | `false` |
-| `NOTIFICATION_WORKER_ENABLED` | Deliver encrypted notification Jobs in this process | `false` |
-| `NOTIFICATION_ENCRYPTION_KEY` | AES-256-GCM key encoded as 64 hexadecimal characters | Development-only example |
-| `PUBLIC_APP_ORIGIN` | Origin used for verification and reset links | `http://localhost:1420` |
-| `TRUSTED_PROXY_HOPS` | Controlled proxy hops trusted for client addresses | `0` |
-| `SMTP_HOST`, `SMTP_PORT` | SMTP delivery endpoint | Empty host, port `587` |
-| `SMTP_SECURE`, `SMTP_REQUIRE_TLS` | Implicit TLS or required STARTTLS policy | `false`, `true` |
-| `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | SMTP credentials and sender | Empty |
-| `OBJECT_STORAGE_ENDPOINT` | S3-compatible endpoint | `http://127.0.0.1:9000` |
-| `OBJECT_STORAGE_REGION` | S3 region | `us-east-1` |
-| `OBJECT_STORAGE_BUCKET` | Object bucket | `komyaku-local` |
-| `AI_TRAINING_DEFAULT` | Default AI training policy | `deny` |
-| `VITE_API_BASE_URL` | Frontend API base | `http://127.0.0.1:3000/api/v1` |
+| Variable                                  | Purpose                                                          | Development default            |
+| ----------------------------------------- | ---------------------------------------------------------------- | ------------------------------ |
+| `SERVER_HOST`                             | API bind address                                                 | `127.0.0.1`                    |
+| `SERVER_PORT`                             | API port                                                         | `3000`                         |
+| `NODE_ENV`                                | Runtime safety profile                                           | `development`                  |
+| `LOG_LEVEL`                               | Structured log threshold                                         | `debug`                        |
+| `SERVICE_NAME`                            | Structured log service identity                                  | `komyaku-server`               |
+| `CORS_ORIGINS`                            | Explicit comma-separated browser origins                         | Local Vite origins             |
+| `DEPLOYMENT_MODE`                         | `single`, `api`, or `worker` runtime role                        | `single`                       |
+| `INSTANCE_ID`                             | Observable instance identity                                     | Generated when empty           |
+| `SHUTDOWN_GRACE_MS`                       | Graceful shutdown deadline                                       | `10000`                        |
+| `DATABASE_POOL_MAX`                       | Maximum Bun SQL pool size                                        | `10`                           |
+| `JOB_BACKEND`                             | Durable work backend                                             | `postgres-outbox`              |
+| `OUTBOX_BATCH_SIZE`                       | Events claimed in one dispatcher pass                            | `25`                           |
+| `OUTBOX_LEASE_SECONDS`                    | Time before another worker may reclaim processing                | `30`                           |
+| `OUTBOX_POLL_INTERVAL_MS`                 | Idle polling interval                                            | `1000`                         |
+| `OUTBOX_MAX_ATTEMPTS`                     | Attempts before an event is marked failed                        | `10`                           |
+| `JOB_BATCH_SIZE`                          | Jobs claimed per registered handler pass                         | `10`                           |
+| `JOB_LEASE_SECONDS`                       | Worker lease before crash recovery                               | `60`                           |
+| `JOB_POLL_INTERVAL_MS`                    | Idle Job Runner polling interval                                 | `1000`                         |
+| `DATABASE_URL`                            | PostgreSQL connection string                                     | Local development database     |
+| `SESSION_TTL_SECONDS`                     | Lifetime of newly issued cloud sessions                          | `2592000`                      |
+| `PASSWORD_RESET_MIN_RESPONSE_MS`          | Minimum reset-request response time to reduce enumeration timing | `250`                          |
+| `AUTH_RATE_LIMIT_SECRET`                  | HMAC key protecting stored rate-limit identifiers                | Development-only example       |
+| `IDEMPOTENCY_SECRET`                      | HMAC key protecting stored mutation keys                         | Development-only example       |
+| `AUTH_ROUTES_ENABLED`                     | Mount public authentication routes                               | `false`                        |
+| `NOTIFICATION_WORKER_ENABLED`             | Deliver encrypted notification Jobs in this process              | `false`                        |
+| `NOTIFICATION_ENCRYPTION_KEY`             | AES-256-GCM key encoded as 64 hexadecimal characters             | Development-only example       |
+| `PUBLIC_APP_ORIGIN`                       | Origin used for verification and reset links                     | `http://localhost:1420`        |
+| `TRUSTED_PROXY_HOPS`                      | Controlled proxy hops trusted for client addresses               | `0`                            |
+| `SMTP_HOST`, `SMTP_PORT`                  | SMTP delivery endpoint                                           | Empty host, port `587`         |
+| `SMTP_SECURE`, `SMTP_REQUIRE_TLS`         | Implicit TLS or required STARTTLS policy                         | `false`, `true`                |
+| `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | SMTP credentials and sender                                      | Empty                          |
+| `OBJECT_STORAGE_ENDPOINT`                 | S3-compatible endpoint                                           | `http://127.0.0.1:9000`        |
+| `OBJECT_STORAGE_REGION`                   | S3 region                                                        | `us-east-1`                    |
+| `OBJECT_STORAGE_BUCKET`                   | Object bucket                                                    | `komyaku-local`                |
+| `AI_TRAINING_DEFAULT`                     | Default AI training policy                                       | `deny`                         |
+| `VITE_API_BASE_URL`                       | Frontend API base                                                | `http://127.0.0.1:3000/api/v1` |
 
 Production credentials must come from an appropriate secret manager. Never commit `.env`, object storage credentials, signing keys, provider API keys, raw session tokens, or notification tokens.
 
 ## Common commands
 
-| Command | Purpose |
-|---|---|
-| `bun run dev` | Start the Vite frontend |
-| `bun run dev:server` | Start the Hono API with file watching |
-| `bun run tauri dev` | Start the native Tauri development application |
-| `bun run db:migrate` | Apply pending PostgreSQL migrations |
-| `bun run storage:init` | Create the configured object storage bucket |
-| `bun run --filter @komyaku/server jobs:dead-letters list` | Inspect payload-free Dead Letter summaries |
-| `bun run --filter @komyaku/server maintenance:retention` | Preview retention candidates without deletion |
-| `bun run --filter @komyaku/server maintenance:assets --action reconcile --workspace UUID` | Reconcile one Workspace Asset prefix without deleting on discovery |
-| `bun run --filter @komyaku/server maintenance:assets --action inspect` | Run one bounded baseline Asset inspection batch |
-| `bun run --filter @komyaku/server test:auth-load` | Run the loopback authentication endpoint load regression |
-| `bun run --filter @komyaku/server test:auth-production-load` | Run the explicitly enabled isolated PostgreSQL/SMTP Stage 2 harness |
-| `bun test` | Run the default test suite |
-| `bun run check` | Run checks in every workspace |
-| `bun run build` | Build every workspace |
-| `cargo check` | Check the Rust application from `apps/desktop/src-tauri` |
+| Command                                                                                   | Purpose                                                             |
+| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `bun run dev`                                                                             | Start the Vite frontend                                             |
+| `bun run dev:server`                                                                      | Start the Hono API with file watching                               |
+| `bun run tauri dev`                                                                       | Start the native Tauri development application                      |
+| `bun run db:migrate`                                                                      | Apply pending PostgreSQL migrations                                 |
+| `bun run storage:init`                                                                    | Create the configured object storage bucket                         |
+| `bun run --filter @komyaku/server jobs:dead-letters list`                                 | Inspect payload-free Dead Letter summaries                          |
+| `bun run --filter @komyaku/server maintenance:retention`                                  | Preview retention candidates without deletion                       |
+| `bun run --filter @komyaku/server maintenance:assets --action reconcile --workspace UUID` | Reconcile one Workspace Asset prefix without deleting on discovery  |
+| `bun run --filter @komyaku/server maintenance:assets --action inspect`                    | Run one bounded baseline Asset inspection batch                     |
+| `bun run --filter @komyaku/server test:auth-load`                                         | Run the loopback authentication endpoint load regression            |
+| `bun run --filter @komyaku/server test:auth-production-load`                              | Run the explicitly enabled isolated PostgreSQL/SMTP Stage 2 harness |
+| `bun test`                                                                                | Run the default test suite                                          |
+| `bun run check`                                                                           | Run checks in every workspace                                       |
+| `bun run build`                                                                           | Build every workspace                                               |
+| `cargo check`                                                                             | Check the Rust application from `apps/desktop/src-tauri`            |
 
 ## Testing
 

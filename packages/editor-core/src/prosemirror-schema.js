@@ -167,6 +167,11 @@ export const komyakuSchema = new Schema({
     }
   },
   marks: {
+    ruby: {
+      inclusive:false, attrs:{reading:{}},
+      parseDOM:[{tag:'rt',ignore:true},{tag:'rp',ignore:true},{tag:'ruby',getAttrs:dom=>({reading:dom.getAttribute('data-reading')??dom.querySelector('rt')?.textContent??''})}],
+      toDOM:mark=>['ruby',{'data-reading':mark.attrs.reading},['span',{'data-ruby-base':''},0],['rt',{contenteditable:'false'},mark.attrs.reading]]
+    },
     bold: { parseDOM: [{ tag: "strong" }, { tag: "b" }], toDOM: () => ["strong", 0] },
     italic: { parseDOM: [{ tag: "em" }, { tag: "i" }], toDOM: () => ["em", 0] },
     underline: { parseDOM: [{ tag: "u" }], toDOM: () => ["u", 0] },

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 [dependencies]
+encoding_rs = "=0.8.42"
 unge-core = { path = "../vendor/unge/crates/unge-core" }
 unge-executor = { path = "../vendor/unge/crates/unge-executor" }
 unge-interaction = { path = "../vendor/unge/crates/unge-interaction" }

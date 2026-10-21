@@ -56,6 +56,7 @@ function safeLink(value) {
 }
 
 export const markSchema = z.discriminatedUnion("type", [
+  z.object({type:z.literal("ruby"),reading:z.string().min(1).max(256).refine(value=>!/[\r\n\u0000]/.test(value),"Invalid ruby reading")}).strict(),
   ...["bold", "italic", "underline", "strike", "code"].map((type) =>
     z.object({ type: z.literal(type) }).strict()),
   z.object({

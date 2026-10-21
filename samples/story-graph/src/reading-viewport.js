@@ -1,8 +1,9 @@
 import {canonicalPosition,graphemeCut,graphemeCuts} from './text-performance.js';
 import {estimatedExtent,estimatedDialogueExtent} from './manuscript-viewport.js';
 // Styled inline nodes share one logical text offset for scroll restoration.
+export function rubyBaseText(element){if(!element.querySelector?.('rt,rp'))return element.textContent;const copy=element.cloneNode(true);copy.querySelectorAll('rt,rp').forEach(node=>node.remove());return copy.textContent;}
 function textRange(element,index){
- const walker=document.createTreeWalker(element,NodeFilter.SHOW_TEXT);let node,remaining=index,last;
+ const walker=document.createTreeWalker(element,NodeFilter.SHOW_TEXT,{acceptNode:node=>node.parentElement?.closest('rt,rp')?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT});let node,remaining=index,last;
  while((node=walker.nextNode())){last=node;if(remaining<node.length){const range=document.createRange();range.setStart(node,remaining);range.setEnd(node,Math.min(remaining+1,node.length));return range;}remaining-=node.length;}
  if(last){const range=document.createRange();range.setStart(last,last.length);range.collapse(true);return range;}return null;
 }
@@ -39,7 +40,7 @@ export class ReadingViewport {
    const first=paragraph(selection.anchorNode),last=paragraph(selection.focusNode);
    if(!first?.dataset.readingBlock||!last?.dataset.readingBlock)return;
    const source=blocks.find(block=>block.id===first.dataset.readingBlock);if(!source)return;
-   const position=(element,node,offset)=>{const range=document.createRange();range.selectNodeContents(element);range.setEnd(node,offset);const start=Number(element.dataset.readingStart),part=blocks.find(block=>block.id===element.dataset.readingBlock&&(block.kind!=='paragraph'||(block.sourceStart??0)===start));const text=element.dataset.readingCell!==undefined?part.texts[Number(element.dataset.readingCell)]:part.text;return start+canonicalPosition(element.dataset.readingTableCell!==undefined?text.slice(start):text,range.toString().length);};
+   const position=(element,node,offset)=>{const range=document.createRange();range.selectNodeContents(element);range.setEnd(node,offset);const start=Number(element.dataset.readingStart),part=blocks.find(block=>block.id===element.dataset.readingBlock&&(block.kind!=='paragraph'||(block.sourceStart??0)===start));const text=element.dataset.readingCell!==undefined?part.texts[Number(element.dataset.readingCell)]:part.text;return start+canonicalPosition(element.dataset.readingTableCell!==undefined?text.slice(start):text,rubyBaseText(range.cloneContents()).length);};
    const anchor=position(first,selection.anchorNode,selection.anchorOffset),focus=position(last,selection.focusNode,selection.focusOffset);
    const text=readingSelectionText(blocks,{id:first.dataset.readingBlock,offset:anchor},{id:last.dataset.readingBlock,offset:focus});
    if(text===null)return;event.preventDefault();event.clipboardData.setData('text/plain',text);
@@ -57,7 +58,7 @@ export class ReadingViewport {
    const rect=node.getBoundingClientRect();if(!(this.vertical?rect.left<bounds.right&&rect.right>bounds.left:rect.top<bounds.bottom&&rect.bottom>bounds.top))continue;
    for(const element of node.querySelectorAll?.('[data-reading-block]')??[]){
     const visible=element.getBoundingClientRect();if(!(this.vertical?visible.left<bounds.right&&visible.right>bounds.left:visible.top<bounds.bottom&&visible.bottom>bounds.top))continue;
-    const text=element.textContent;if(!text.length)continue;
+    const text=rubyBaseText(element);if(!text.length)continue;
     let low=0,high=text.length-1;
     const coordinate=index=>{const range=textRange(element,index);const rect=range.getBoundingClientRect();range.detach();return rect;};
     while(low<high){const middle=(low+high)>>1,r=coordinate(middle);if(this.vertical?r.left>=bounds.right:r.bottom<=bounds.top)low=middle+1;else high=middle;}
@@ -100,6 +101,7 @@ export function measuredReadingCut(length,coordinate,vertical) {
  }
  return low||length;
 }
+export function rubySafeCut(content,position,minimum=0){let offset=0;for(const node of content??[]){const length=node.type==='text'?node.text.length:node.type==='hard_break'?1:0;if(position>offset&&position<offset+length&&node.marks?.some(mark=>mark.type==='ruby')&&offset>minimum)return offset;offset+=length;}return position;}
 export async function boundedReadingBlocks(blocks,{article,vertical,span,signal}) {
  const result=[],probe=document.createElement('p');probe.className='reading-layout-probe';
  Object.assign(probe.style,{position:'fixed',visibility:'hidden',pointerEvents:'none',margin:'0',left:'0',top:'0',whiteSpace:'pre-wrap',writingMode:vertical?'vertical-rl':'horizontal-tb',textOrientation:'mixed',width:vertical?'max-content':`${span}px`,height:vertical?`${span}px`:'auto'});
@@ -115,7 +117,7 @@ export async function boundedReadingBlocks(blocks,{article,vertical,span,signal}
     const sample=block.text.slice(start,end);probe.textContent=sample;
     let count=sample.length;
     if(end<block.text.length){const text=probe.firstChild,range=document.createRange();count=measuredReadingCut(sample.length,index=>{range.setStart(text,index);range.setEnd(text,index+1);const bounds=range.getBoundingClientRect();return vertical?bounds.left:bounds.top;},vertical);range.detach();}
-    count=graphemeCut(sample,count);
+    count=graphemeCut(sample,count);count=rubySafeCut(block.node?.content,start+count,start)-start;
     result.push({...block,text:sample.slice(0,count),sourceText:block.text,sourceStart:start,continuation:start>0});start+=count;
     // Yield between bounded layouts, allowing typing, closing and mode changes.
     await new Promise(resolve=>requestAnimationFrame(resolve));

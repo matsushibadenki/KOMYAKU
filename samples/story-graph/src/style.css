@@ -529,3 +529,13 @@ body[data-panel-window=history] main>.writing {display:flex!important;height:100
 
 .reading-list-item::before {content:attr(data-marker);margin-inline-end:.6em;}
 .reading-quote {border-inline-start:2px solid var(--line);padding-inline-start:.8em;}
+
+.menu-popup>hr {border:0;border-top:1px solid var(--line);margin:4px 6px;}
+.file-menu-info {display:flex;align-items:center;gap:2px;}
+.file-menu-info>button {flex:1;}
+.file-info {flex:none;margin-right:8px;font-size:13px;color:var(--muted);cursor:help;}
+.file-info:focus-visible {outline:2px solid var(--blue);outline-offset:2px;}
+
+/* Native ruby positioning follows the surrounding writing mode. */
+.rich-editor ruby,.reading ruby {ruby-position:over;ruby-align:center;}
+.rich-editor rt,.reading rt {font-size:.5em;line-height:1;font-weight:400;user-select:none;}

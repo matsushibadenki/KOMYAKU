@@ -28,7 +28,7 @@ function identityToEditor(node) {
 function marksToEditor(marks) {
   return marks.map((mark) => mark.type === "link"
     ? { type: "link", attrs: { href: mark.href, title: mark.title ?? null } }
-    : { type: mark.type });
+    : mark.type === "ruby" ? {type:"ruby",attrs:{reading:mark.reading}} : { type: mark.type });
 }
 
 function inlineToEditor(node) {
@@ -100,7 +100,7 @@ function identityFromEditor(node, idFactory) {
 function marksFromEditor(marks = []) {
   return marks.map((mark) => mark.type === "link"
     ? { type: "link", href: mark.attrs?.href, title: mark.attrs?.title ?? null }
-    : { type: mark.type });
+    : mark.type === "ruby" ? {type:"ruby",reading:mark.attrs?.reading} : { type: mark.type });
 }
 
 function inlineFromEditor(node, idFactory) {

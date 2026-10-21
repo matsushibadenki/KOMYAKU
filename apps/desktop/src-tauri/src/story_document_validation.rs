@@ -384,6 +384,10 @@ fn validate_marks(value: &Value) -> Result<(), String> {
                 return Err("unsafe_story_document_link".into());
             }
             format!("link:{href}")
+        } else if kind == "ruby" {
+            fields(mark, &["type", "reading"])?;
+            if !bounded_string(&mark["reading"],1,256,false) || mark["reading"].as_str().is_none_or(|reading|reading.chars().any(|c|c.is_control())) {return Err("invalid_story_document".into());}
+            kind.to_string()
         } else {
             if !["bold", "italic", "underline", "strike", "code"].contains(&kind) {
                 return Err("unsupported_story_document_mark".into());
@@ -624,6 +628,13 @@ pub(crate) mod tests {
         json!({"schemaId":"https://komyaku.example/schemas/document/v1","schemaVersion":1,
         "id":"00000000-0000-4000-8000-000000000001","type":"document","attrs":{"language":"ja","direction":"auto","writingMode":"horizontal-tb"},
         "metadata":{},"extensions":{},"content":[{"id":"00000000-0000-4000-8000-000000000002","schemaVersion":1,"type":"paragraph","attrs":{"lang":null,"dir":"auto"},"content":[],"metadata":{},"extensions":{},"renderArtifacts":[]}]})
+    }
+    #[test]
+    fn validates_ruby_marks() {
+        assert!(validate_marks(&serde_json::json!([{"type":"ruby","reading":"かんじ"}])).is_ok());
+        for mark in [serde_json::json!({"type":"ruby","reading":""}),serde_json::json!({"type":"ruby","reading":"a\nb"}),serde_json::json!({"type":"ruby","reading":"かな","extra":true})] {
+            assert!(validate_marks(&serde_json::json!([mark])).is_err());
+        }
     }
     #[test]
     fn rejects_unsupported_and_invalid_fields() {
