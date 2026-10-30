@@ -1111,6 +1111,12 @@ PaletteはLaTeX SourceをCanonicalとして編集し、TemplateのPlaceholder、
 
 詳細は`docs/adr/ADR-075-compact-math-input-and-handwriting-recognition.md`と`docs/design/compact-math-input.md`を正本とする。
 
+### 25.1.1a Local Mathematical Computation / Symbio
+
+LaTeX正本と派生Previewの分離を維持し、明示的な計算操作をSymbioのGUI独立Rustカーネルへ渡す。計算結果を原文へ自動上書きせず、前提条件・精度・Symbolic/Approximate状態を別表示する。既存Equationの編集はStable Node IDとYjs Transactionを維持し、Canonical Checkpointへ流す。原文変更が競合した場合は適用を拒否する。
+
+選択式と明示した前提条件だけを`.symbio`へ書き出し、同形式の選択式を確認可能なDraftとして読み込む。全Document、Version/Branch履歴、Asset、AI Promptの暗黙Exportや自動Mergeは行わない。数学的操作と表示は既存の隔離境界を通し、Cloud送信を伴わない。対応構文、資源上限、IPC権限、ビルド配置は`docs/adr/ADR-080-symbio-local-math-kernel.md`を正本とする。
+
 ### 25.1.2 Academic Submission Export
 
 数学・物理・研究文書は、利用者が明示的に選択した一つのDocument VersionとBranchから、論文投稿用のLaTeX Source BundleまたはReview PDF Packageへ変換できるようにする。投稿サイト固有要件はVersioned Export Profileとして分離し、Canonical Documentへ埋め込まない。

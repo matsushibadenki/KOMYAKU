@@ -848,6 +848,7 @@ export function App({ initialDocument = null, integrationSaveOptions, agentOptio
     }).format(checkpoint.createdAt)
     : "—";
   const previewLabels = useMemo(() => ({
+    mathEdit: t("symbioMath.title"),
     title: t("structuredPreview.mermaidTitle"),
     loading: t("structuredPreview.loading"),
     unavailable: t("structuredPreview.unavailable"),

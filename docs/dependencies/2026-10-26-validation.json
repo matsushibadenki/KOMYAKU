@@ -1,0 +1,65 @@
+{
+  "date": "2026-10-26",
+  "timezone": "Asia/Tokyo",
+  "verification_context": "Snapshot of dirty working tree including untracked Symbio integration and copied local path dependency; source hashes checked before application.",
+  "bun_test": {
+    "passed": 673,
+    "skipped": 25,
+    "failed": 0
+  },
+  "bun_check": "passed",
+  "bun_build": "passed",
+  "desktop_cargo_check": "passed",
+  "desktop_cargo_test": {
+    "passed": 89,
+    "failed": 0,
+    "ignored": 1
+  },
+  "story_graph": {
+    "build": "passed",
+    "bun_passed": 63,
+    "rust_passed": 223,
+    "rust_failed": 0,
+    "rust_ignored": 21
+  },
+  "chrome_e2e": {
+    "passed": 60,
+    "failed": 0,
+    "port": 1442
+  },
+  "explicit_gpu": "not rerun",
+  "zod": "4.4.3 retained; candidate unchanged at 4.6.7; no repeated failed-version trial",
+  "application": {
+    "source_guard": "passed",
+    "existing_dirty_sources": "preserved",
+    "files": [
+      "apps/desktop/package.json",
+      "apps/desktop/src-tauri/Cargo.lock",
+      "apps/server/package.json",
+      "bun.lock",
+      "packages/editor-core/package.json",
+      "packages/i18n/package.json",
+      "packages/preview-core/package.json",
+      "packages/storage-core/package.json",
+      "samples/story-graph/Cargo.lock",
+      "samples/story-graph/src-tauri/Cargo.toml"
+    ],
+    "post_install_verification": {
+      "frozen_install": "passed",
+      "bun_passed": 673,
+      "bun_skipped": 25,
+      "bun_failed": 0,
+      "original_non_dependency_source_hashes": "unchanged after application"
+    }
+  },
+  "toolchain": {
+    "installed_bun": "1.4.3",
+    "node": "26.12.1",
+    "rustc": "1.99.1",
+    "cargo": "1.99.1",
+    "project_pinned_bun": "1.4.0",
+    "pinned_bun_test_check_build": "passed",
+    "system_toolchain_changed": false
+  },
+  "diff_check": "passed"
+}

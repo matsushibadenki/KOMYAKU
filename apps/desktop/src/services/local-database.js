@@ -132,6 +132,16 @@ export async function loadLocalDraft(documentId, { backend = runtimeBackend() } 
   return parseLocalDraftRecord(await backend.load(documentId), documentId);
 }
 
+// Canonical checkpoints sort opaque metadata keys. JSON object key order is not content.
+function sameJsonValue(left, right) {
+  if (left === right) return true;
+  if (!left || !right || typeof left !== "object" || typeof right !== "object"
+    || Array.isArray(left) !== Array.isArray(right)) return false;
+  const keys = Object.keys(left);
+  return keys.length === Object.keys(right).length
+    && keys.every((key) => Object.hasOwn(right, key) && sameJsonValue(left[key], right[key]));
+}
+
 export async function saveLocalDraft({
   documentId,
   schemaVersion,
@@ -151,7 +161,7 @@ export async function saveLocalDraft({
   } catch (error) {
     throw new LocalDraftPersistenceError("invalid_local_draft_json", undefined, { cause: error });
   }
-  if (JSON.stringify(storedCanonical) !== JSON.stringify(canonical)) {
+  if (!sameJsonValue(storedCanonical, canonical)) {
     throw new LocalDraftPersistenceError("local_draft_content_mismatch");
   }
   const record = {

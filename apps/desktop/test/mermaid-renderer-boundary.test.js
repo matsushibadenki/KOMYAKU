@@ -51,7 +51,8 @@ describe("Mermaid renderer privilege boundary", () => {
     const build = await Bun.file(new URL("build.rs", tauriRoot)).text();
     const source = await Bun.file(new URL("src/lib.rs", tauriRoot)).text();
     const commands = source.match(/\.invoke_handler\(tauri::generate_handler!\[([\s\S]*?)\]\)/)?.[1]
-      .split(",").map((value) => value.trim()).filter(Boolean);
+      .split(",").map((value) => value.trim()).filter(Boolean)
+      .map((value) => value.split("::").at(-1));
     const manifestCommands = [...build.matchAll(/"([a-z_]+)"/g)].map((match) => match[1]);
     expect(commands).toBeDefined();
     expect(new Set(manifestCommands)).toEqual(new Set(commands));
@@ -112,4 +113,16 @@ describe("Mermaid renderer privilege boundary", () => {
     expect(await verifyMermaidRendererSqlBoundary(async () => "sqlite:komyaku.db")).toBe(false);
     expect(await verifyMermaidRendererSqlBoundary(null)).toBe(false);
   });
+});
+
+
+test("Symbio mathematical commands remain unavailable to the renderer", async () => {
+  const main = await json("capabilities/default.json");
+  const renderer = await json("capabilities/mermaid-renderer.json");
+  const source = await Bun.file(new URL("src/symbio_math.rs", tauriRoot)).text();
+  for (const command of ["compute", "export", "import"]) {
+    expect(main.permissions).toContain(`allow-${command}-symbio-math`);
+    expect(renderer.permissions).not.toContain(`allow-${command}-symbio-math`);
+  }
+  expect(source).toContain('window.label() == "main"');
 });

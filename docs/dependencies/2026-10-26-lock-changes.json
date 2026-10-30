@@ -1,0 +1,1049 @@
+[
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "brotli",
+    "before": [
+      "9.0.0"
+    ],
+    "after": [
+      "9.1.0"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "brotli-decompressor",
+    "before": [
+      "6.0.1"
+    ],
+    "after": [
+      "6.2.0"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "cc",
+    "before": [
+      "1.8.0"
+    ],
+    "after": [
+      "1.10.0"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "crc32fast",
+    "before": [
+      "1.5.2"
+    ],
+    "after": [
+      "1.5.3"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "ctutils",
+    "before": [
+      "0.4.3"
+    ],
+    "after": [
+      "0.4.6"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "erased-serde",
+    "before": [
+      "0.4.10"
+    ],
+    "after": [
+      "0.4.11"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "find-msvc-tools",
+    "before": [
+      "0.1.14"
+    ],
+    "after": [
+      "0.1.15"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "ico",
+    "before": [
+      "0.5.0"
+    ],
+    "after": [
+      "0.6.0"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "icu_collections",
+    "before": [
+      "2.3.0"
+    ],
+    "after": [
+      "2.4.0"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "icu_locale_core",
+    "before": [
+      "2.3.0"
+    ],
+    "after": [
+      "2.4.0"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "icu_normalizer",
+    "before": [
+      "2.3.0"
+    ],
+    "after": [
+      "2.4.0"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "icu_normalizer_data",
+    "before": [
+      "2.3.0"
+    ],
+    "after": [
+      "2.4.0"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "icu_properties",
+    "before": [
+      "2.3.0"
+    ],
+    "after": [
+      "2.4.0"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "icu_properties_data",
+    "before": [
+      "2.3.0"
+    ],
+    "after": [
+      "2.4.0"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "icu_provider",
+    "before": [
+      "2.3.1"
+    ],
+    "after": [
+      "2.4.0"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "inout",
+    "before": [
+      "0.2.4"
+    ],
+    "after": [
+      "0.2.5"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "plist",
+    "before": [
+      "1.10.1"
+    ],
+    "after": [
+      "1.10.3"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "png",
+    "before": [
+      "0.17.16",
+      "0.18.1"
+    ],
+    "after": [
+      "0.18.1"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "smallvec",
+    "before": [
+      "1.16.3"
+    ],
+    "after": [
+      "1.16.4"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "tao",
+    "before": [
+      "0.37.1"
+    ],
+    "after": [
+      "0.37.2"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "tauri",
+    "before": [
+      "2.12.4"
+    ],
+    "after": [
+      "2.12.5"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "tauri-build",
+    "before": [
+      "2.7.3"
+    ],
+    "after": [
+      "2.7.4"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "tauri-codegen",
+    "before": [
+      "2.7.3"
+    ],
+    "after": [
+      "2.7.4"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "tauri-macros",
+    "before": [
+      "2.7.3"
+    ],
+    "after": [
+      "2.7.4"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "tauri-runtime-wry",
+    "before": [
+      "2.12.2"
+    ],
+    "after": [
+      "2.12.3"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "tauri-winres",
+    "before": [
+      "0.3.6"
+    ],
+    "after": [
+      "0.3.7"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "tinystr",
+    "before": [
+      "0.8.4"
+    ],
+    "after": [
+      "0.8.5"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "tokio",
+    "before": [
+      "1.53.3"
+    ],
+    "after": [
+      "1.54.1"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "uuid",
+    "before": [
+      "1.28.0"
+    ],
+    "after": [
+      "1.29.0"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "wry",
+    "before": [
+      "0.57.0"
+    ],
+    "after": [
+      "0.57.1"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "yoke",
+    "before": [
+      "0.8.3"
+    ],
+    "after": [
+      "0.8.4"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "zerovec",
+    "before": [
+      "0.11.8"
+    ],
+    "after": [
+      "0.11.9"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "zerovec-derive",
+    "before": [
+      "0.11.6"
+    ],
+    "after": [
+      "0.11.7"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "brotli",
+    "before": [
+      "9.0.0"
+    ],
+    "after": [
+      "9.1.0"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "brotli-decompressor",
+    "before": [
+      "5.0.3",
+      "6.0.1"
+    ],
+    "after": [
+      "5.0.3",
+      "6.2.0"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "cc",
+    "before": [
+      "1.8.0"
+    ],
+    "after": [
+      "1.10.0"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "crc32fast",
+    "before": [
+      "1.5.2"
+    ],
+    "after": [
+      "1.5.3"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "erased-serde",
+    "before": [
+      "0.4.10"
+    ],
+    "after": [
+      "0.4.11"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "find-msvc-tools",
+    "before": [
+      "0.1.14"
+    ],
+    "after": [
+      "0.1.15"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "ico",
+    "before": [
+      "0.5.0"
+    ],
+    "after": [
+      "0.6.0"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "icu_collections",
+    "before": [
+      "2.3.0"
+    ],
+    "after": [
+      "2.4.0"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "icu_locale_core",
+    "before": [
+      "2.3.0"
+    ],
+    "after": [
+      "2.4.0"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "icu_normalizer",
+    "before": [
+      "2.3.0"
+    ],
+    "after": [
+      "2.4.0"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "icu_normalizer_data",
+    "before": [
+      "2.3.0"
+    ],
+    "after": [
+      "2.4.0"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "icu_properties",
+    "before": [
+      "2.3.0"
+    ],
+    "after": [
+      "2.4.0"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "icu_properties_data",
+    "before": [
+      "2.3.0"
+    ],
+    "after": [
+      "2.4.0"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "icu_provider",
+    "before": [
+      "2.3.1"
+    ],
+    "after": [
+      "2.4.0"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "inout",
+    "before": [
+      "0.2.4"
+    ],
+    "after": [
+      "0.2.5"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "lopdf",
+    "before": [
+      "0.45.0"
+    ],
+    "after": [
+      "0.46.0"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "memmap2",
+    "before": [
+      "0.9.11"
+    ],
+    "after": [
+      "0.9.12"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "ordered-float",
+    "before": [
+      "5.5.0"
+    ],
+    "after": [
+      "5.5.1"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "plist",
+    "before": [
+      "1.10.1"
+    ],
+    "after": [
+      "1.10.3"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "rustls-webpki",
+    "before": [
+      "0.103.15"
+    ],
+    "after": [
+      "0.103.16"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "smallvec",
+    "before": [
+      "1.16.3"
+    ],
+    "after": [
+      "1.16.4"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "tao",
+    "before": [
+      "0.37.1"
+    ],
+    "after": [
+      "0.37.2"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "tauri",
+    "before": [
+      "2.12.4"
+    ],
+    "after": [
+      "2.12.5"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "tauri-build",
+    "before": [
+      "2.7.3"
+    ],
+    "after": [
+      "2.7.4"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "tauri-codegen",
+    "before": [
+      "2.7.3"
+    ],
+    "after": [
+      "2.7.4"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "tauri-macros",
+    "before": [
+      "2.7.3"
+    ],
+    "after": [
+      "2.7.4"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "tauri-runtime-wry",
+    "before": [
+      "2.12.2"
+    ],
+    "after": [
+      "2.12.3"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "tauri-winres",
+    "before": [
+      "0.3.6"
+    ],
+    "after": [
+      "0.3.7"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "tinystr",
+    "before": [
+      "0.8.4"
+    ],
+    "after": [
+      "0.8.5"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "tokio",
+    "before": [
+      "1.53.3"
+    ],
+    "after": [
+      "1.54.1"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "uuid",
+    "before": [
+      "1.28.0"
+    ],
+    "after": [
+      "1.29.0"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "webpki-roots",
+    "before": [
+      "1.0.9"
+    ],
+    "after": [
+      "1.0.11"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "wry",
+    "before": [
+      "0.57.0"
+    ],
+    "after": [
+      "0.57.1"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "yoke",
+    "before": [
+      "0.8.3"
+    ],
+    "after": [
+      "0.8.4"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "zerovec",
+    "before": [
+      "0.11.8"
+    ],
+    "after": [
+      "0.11.9"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "zerovec-derive",
+    "before": [
+      "0.11.6"
+    ],
+    "after": [
+      "0.11.7"
+    ]
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/checksums",
+    "before": "3.1001.3",
+    "after": "3.1001.5"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/client-s3",
+    "before": "3.1152.0",
+    "after": "3.1156.0"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/core",
+    "before": "3.978.3",
+    "after": "3.978.5"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/credential-provider-env",
+    "before": "3.972.74",
+    "after": "3.972.76"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/credential-provider-http",
+    "before": "3.972.76",
+    "after": "3.972.78"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/credential-provider-ini",
+    "before": "3.973.19",
+    "after": "3.973.21"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/credential-provider-login",
+    "before": "3.972.81",
+    "after": "3.972.83"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/credential-provider-node",
+    "before": "3.972.86",
+    "after": "3.972.88"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/credential-provider-process",
+    "before": "3.972.74",
+    "after": "3.972.76"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/credential-provider-sso",
+    "before": "3.973.18",
+    "after": "3.973.20"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/credential-provider-web-identity",
+    "before": "3.972.80",
+    "after": "3.972.82"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/middleware-sdk-s3",
+    "before": "3.972.79",
+    "after": "3.972.81"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/nested-clients",
+    "before": "3.997.48",
+    "after": "3.997.50"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/s3-request-presigner",
+    "before": "3.1152.0",
+    "after": "3.1156.0"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/signature-v4-multi-region",
+    "before": "3.996.48",
+    "after": "3.996.49"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/token-providers",
+    "before": "3.1150.0",
+    "after": "3.1155.0"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/types",
+    "before": "3.974.6",
+    "after": "3.975.0"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@oxc-project/types",
+    "before": "0.153.0",
+    "after": "0.155.0"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@rolldown/binding-android-arm-eabi",
+    "before": "1.2.13",
+    "after": "1.2.15"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@rolldown/binding-android-arm64",
+    "before": "1.2.13",
+    "after": "1.2.15"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@rolldown/binding-darwin-arm64",
+    "before": "1.2.13",
+    "after": "1.2.15"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@rolldown/binding-darwin-x64",
+    "before": "1.2.13",
+    "after": "1.2.15"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@rolldown/binding-freebsd-x64",
+    "before": "1.2.13",
+    "after": "1.2.15"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@rolldown/binding-linux-arm-gnueabihf",
+    "before": "1.2.13",
+    "after": "1.2.15"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@rolldown/binding-linux-arm64-gnu",
+    "before": "1.2.13",
+    "after": "1.2.15"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@rolldown/binding-linux-arm64-musl",
+    "before": "1.2.13",
+    "after": "1.2.15"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@rolldown/binding-linux-ppc64-gnu",
+    "before": "1.2.13",
+    "after": "1.2.15"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@rolldown/binding-linux-s390x-gnu",
+    "before": "1.2.13",
+    "after": "1.2.15"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@rolldown/binding-linux-x64-gnu",
+    "before": "1.2.13",
+    "after": "1.2.15"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@rolldown/binding-linux-x64-musl",
+    "before": "1.2.13",
+    "after": "1.2.15"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@rolldown/binding-openharmony-arm64",
+    "before": "1.2.13",
+    "after": "1.2.15"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@rolldown/binding-win32-arm64-msvc",
+    "before": "1.2.13",
+    "after": "1.2.15"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@rolldown/binding-win32-x64-msvc",
+    "before": "1.2.13",
+    "after": "1.2.15"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@smithy/core",
+    "before": "3.35.2",
+    "after": "3.36.2"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@smithy/credential-provider-imds/@smithy/core",
+    "before": null,
+    "after": "3.35.2"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@smithy/fetch-http-handler/@smithy/core",
+    "before": null,
+    "after": "3.35.2"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@smithy/node-http-handler/@smithy/core",
+    "before": null,
+    "after": "3.35.2"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@smithy/signature-v4/@smithy/core",
+    "before": null,
+    "after": "3.35.2"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@tauri-apps/cli",
+    "before": "2.12.3",
+    "after": "2.12.4"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@tauri-apps/cli-darwin-arm64",
+    "before": "2.12.3",
+    "after": "2.12.4"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@tauri-apps/cli-darwin-x64",
+    "before": "2.12.3",
+    "after": "2.12.4"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@tauri-apps/cli-linux-arm-gnueabihf",
+    "before": "2.12.3",
+    "after": "2.12.4"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@tauri-apps/cli-linux-arm64-gnu",
+    "before": "2.12.3",
+    "after": "2.12.4"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@tauri-apps/cli-linux-arm64-musl",
+    "before": "2.12.3",
+    "after": "2.12.4"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@tauri-apps/cli-linux-riscv64-gnu",
+    "before": "2.12.3",
+    "after": "2.12.4"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@tauri-apps/cli-linux-x64-gnu",
+    "before": "2.12.3",
+    "after": "2.12.4"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@tauri-apps/cli-linux-x64-musl",
+    "before": "2.12.3",
+    "after": "2.12.4"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@tauri-apps/cli-win32-arm64-msvc",
+    "before": "2.12.3",
+    "after": "2.12.4"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@tauri-apps/cli-win32-ia32-msvc",
+    "before": "2.12.3",
+    "after": "2.12.4"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@tauri-apps/cli-win32-x64-msvc",
+    "before": "2.12.3",
+    "after": "2.12.4"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "hono",
+    "before": "4.13.13",
+    "after": "4.13.14"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "i18next",
+    "before": "26.5.2",
+    "after": "26.5.11"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "katex",
+    "before": "0.19.0",
+    "after": "0.19.1"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "nodemailer",
+    "before": "10.1.7",
+    "after": "10.2.1"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "postcss",
+    "before": "8.5.29",
+    "after": "8.5.31"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "prosemirror-view",
+    "before": "1.42.6",
+    "after": "1.42.8"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "react-i18next",
+    "before": "17.1.0",
+    "after": "17.1.9"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "rolldown",
+    "before": "1.2.13",
+    "after": "1.2.15"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "vite",
+    "before": "8.3.4",
+    "after": "8.3.5"
+  }
+]

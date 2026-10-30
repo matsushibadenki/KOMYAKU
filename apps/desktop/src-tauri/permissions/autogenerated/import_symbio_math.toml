@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-import-symbio-math"
+description = "Enables the import_symbio_math command without any pre-configured scope."
+commands.allow = ["import_symbio_math"]
+
+[[permission]]
+identifier = "deny-import-symbio-math"
+description = "Denies the import_symbio_math command without any pre-configured scope."
+commands.deny = ["import_symbio_math"]

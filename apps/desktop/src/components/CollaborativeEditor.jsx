@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { SymbioMathPanel } from "./SymbioMathPanel.jsx";
 import {
   captureCollaborativeSelection,
   createCollaborativeEditorView,
@@ -45,6 +47,9 @@ export function CollaborativeEditor({
   captureInsertionGuard = defaultInsertionGuard,
   historyLabels
 }) {
+  const { t } = useTranslation();
+  const [mathSelection, setMathSelection] = useState(null);
+  const [mathOpen, setMathOpen] = useState(false);
   const mountRef = useRef(null);
   const viewRef = useRef(null);
   const fileRef = useRef(null);
@@ -63,6 +68,8 @@ export function CollaborativeEditor({
     setFileInsertionStatus("idle");
     setAltText("");
     setSelectedImage(null);
+    setMathOpen(false);
+    setMathSelection(null);
   }, [document, workspace]);
 
   useEffect(() => {
@@ -74,6 +81,7 @@ export function CollaborativeEditor({
         language,
         labels: previewLabels,
         resolveImagePreview,
+        onSelectMath: (attrs) => { setMathSelection(attrs); setMathOpen(true); },
         onSelectImage: enableImageAccessibilityEditing ? (attrs) => {
           setSelectedImage({
             nodeId: attrs.nodeId,
@@ -234,6 +242,11 @@ export function CollaborativeEditor({
     : localImageInsertionAvailable());
   return (
     <>
+      <div className="symbio-math-toggle"><button type="button" aria-expanded={mathOpen}
+        title={t("symbioMath.title")} onClick={() => { setMathSelection(null); setMathOpen(!mathOpen); }}>∑ <span>{t("symbioMath.title")}</span></button></div>
+      {mathOpen ? <SymbioMathPanel key={`${editorId}-${mathSelection?.nodeId ?? "new"}`} selection={mathSelection}
+        viewRef={viewRef} language={language} captureInsertionGuard={captureInsertionGuard}
+        isComposing={() => composingRef.current} onClose={() => setMathOpen(false)} /> : null}
       {showHistoryControls ? (
         <div className="editor-history-controls" aria-label={historyLabels.label}>
           <button type="button" onClick={() => undoCollaborativeEdit(viewRef.current)}>{historyLabels.undo}</button>

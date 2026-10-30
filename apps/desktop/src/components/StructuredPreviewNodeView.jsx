@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { renderLatexPreview } from "@komyaku/preview-core";
 import { createRoot } from "react-dom/client";
 import { SandboxedStaticPreview } from "./SandboxedStaticPreview.jsx";
 import { renderMermaidInIsolatedWebview } from "../services/mermaid-renderer.js";
@@ -70,9 +71,32 @@ export function createStructuredPreviewNodeViews({
   language,
   labels,
   resolveImagePreview = resolveLocalPngPreview,
-  onSelectImage = () => {}
+  onSelectImage = () => {},
+  onSelectMath = () => {}
 }) {
+  const mathNodeView = (node) => {
+    const dom = document.createElement(node.type.name === "math_inline" ? "span" : "figure");
+    dom.className = "komyaku-math-node"; dom.contentEditable = "false";
+    const source = document.createElement("code"), button = document.createElement("button"), mount = document.createElement("div");
+    button.type = "button"; button.textContent = "∑"; button.title = labels.mathEdit ?? "Symbio";
+    button.setAttribute("aria-label", button.title);
+    const root = createRoot(mount); let current = node;
+    const select = () => onSelectMath({ ...current.attrs }); button.addEventListener("click", select);
+    dom.append(source, button, mount);
+    function render(next) {
+      current = next; source.textContent = next.attrs.source;
+      let descriptor;
+      try { descriptor = renderLatexPreview(next.attrs.source, { language, displayMode: next.type.name === "math_block" }); }
+      catch { descriptor = null; }
+      root.render(descriptor ? <SandboxedStaticPreview descriptor={descriptor} title={labels.mathEdit ?? "Math"} className="sandboxed-preview symbio-formula" /> : null);
+    }
+    render(node);
+    return { dom, update(next) { if (next.type !== current.type) return false; render(next); return true; },
+      stopEvent: () => true, destroy() { button.removeEventListener("click", select); queueMicrotask(() => root.unmount()); } };
+  };
   return {
+    math_block: mathNodeView,
+    math_inline: mathNodeView,
     diagram(node) {
       const dom = document.createElement("figure");
       dom.className = "komyaku-source-node structured-diagram-node";

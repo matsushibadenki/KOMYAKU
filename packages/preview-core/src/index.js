@@ -326,3 +326,38 @@ export function unsupportedPreview(kind) {
     sourceMustRemainVisible: true
   });
 }
+
+
+const MATH_NAMESPACE = "http://www.w3.org/1998/Math/MathML";
+const MATH_ELEMENTS = new Set(["math", "mrow", "mn", "mi", "mo", "mfrac", "msqrt", "msup", "msub", "msubsup", "munderover", "mtable", "mtr", "mtd", "mtext", "mspace"]);
+const MATH_ATTRIBUTES = new Set(["display", "mathvariant", "stretchy", "largeop", "columnspacing", "rowspacing", "width"]);
+export function renderSymbioMathml(source, { language = "und" } = {}) {
+  if (typeof source !== "string" || byteLength(source) > PREVIEW_LIMITS.maxDocumentBytes
+    || /<!|<\?/u.test(source)) throw new PreviewError("invalid_mathml");
+  const errors = [];
+  let parsed;
+  try { parsed = new DOMParser({ onError(level) { errors.push(level); } }).parseFromString(source, "application/xml"); }
+  catch { throw new PreviewError("invalid_mathml"); }
+  if (errors.length || parsed.documentElement?.localName !== "math"
+    || parsed.documentElement.namespaceURI !== MATH_NAMESPACE) throw new PreviewError("invalid_mathml");
+  const output = new DOMImplementation().createDocument(MATH_NAMESPACE, "math", null);
+  let count = 0;
+  function copy(node, depth) {
+    if (++count > 16_000 || depth > 96) throw new PreviewError("invalid_mathml");
+    if (node.nodeType === 3) return output.createTextNode(node.data);
+    if (node.nodeType !== 1 || node.namespaceURI !== MATH_NAMESPACE || !MATH_ELEMENTS.has(node.localName)) throw new PreviewError("invalid_mathml");
+    const target = output.createElementNS(MATH_NAMESPACE, node.localName);
+    for (let i = 0; i < node.attributes.length; i++) {
+      const attr = node.attributes.item(i);
+      if (attr.name === "xmlns" && attr.value === MATH_NAMESPACE) continue;
+      if (!MATH_ATTRIBUTES.has(attr.name) || !/^[A-Za-z0-9. -]{1,40}$/u.test(attr.value)) throw new PreviewError("invalid_mathml");
+      target.setAttribute(attr.name, attr.value);
+    }
+    for (let child = node.firstChild; child; child = child.nextSibling) target.appendChild(copy(child, depth + 1));
+    return target;
+  }
+  output.replaceChild(copy(parsed.documentElement, 0), output.documentElement);
+  return Object.freeze({ kind: "static-html", sandbox: "", allow: "", referrerPolicy: "no-referrer",
+    document: createStaticPreviewDocument({ title: "Symbio", language,
+      bodyHtml: '<style>body{overflow-x:auto}math{font-size:1.8rem;margin:1rem auto}mtd{padding:.25em .4em}</style>' + new XMLSerializer().serializeToString(output) }) });
+}

@@ -1,3 +1,4 @@
+mod symbio_math;
 mod editing_qa_gate;
 #[allow(dead_code)]
 mod story_document_validation;
@@ -2664,6 +2665,9 @@ pub fn run() {
 
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
+            symbio_math::compute_symbio_math,
+            symbio_math::export_symbio_math,
+            symbio_math::import_symbio_math,
             save_local_draft_atomic,
             store_local_png_preview_atomic,
             list_quarantined_local_assets,

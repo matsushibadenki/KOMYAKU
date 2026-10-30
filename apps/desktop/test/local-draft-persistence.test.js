@@ -90,3 +90,22 @@ describe("local Canonical draft persistence", () => {
     expect((await loadLocalDraft(DOCUMENT_ID, { backend })).localRevision).toBe(2);
   });
 });
+
+test("checkpoint persistence ignores opaque JSON object order but rejects content changes", async () => {
+  const { createCanonicalCheckpoint, createCollaborativeWorkingState } = await import("@komyaku/editor-core");
+  const content = fixture();
+  content.content[0].extensions = { "dev.symbio.math": {
+    assumptions: { x: { domain: "real", nonzero: false, dimension: null } }, variable: "x"
+  } };
+  const checkpoint = await createCanonicalCheckpoint(createCollaborativeWorkingState(content));
+  const backend = createBrowserLocalDraftBackend(memoryStorage());
+  const input = { documentId: DOCUMENT_ID, schemaVersion: 1, content: checkpoint.document,
+    contentJson: checkpoint.json, localRevision: 1 };
+  await saveLocalDraft(input, { backend });
+  expect((await loadLocalDraft(DOCUMENT_ID, { backend })).content.content[0].extensions).toEqual(content.content[0].extensions);
+  const changed = JSON.parse(checkpoint.json);
+  changed.content[0].extensions["dev.symbio.math"].assumptions.x.nonzero = true;
+  await expect(saveLocalDraft({ ...input, localRevision: 2, contentJson: JSON.stringify(changed) }, { backend }))
+    .rejects.toMatchObject({ code: "local_draft_content_mismatch" });
+  expect((await loadLocalDraft(DOCUMENT_ID, { backend })).localRevision).toBe(1);
+});

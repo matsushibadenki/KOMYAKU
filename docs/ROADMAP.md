@@ -387,3 +387,15 @@ Stage status: 🟢 [Done] Identity engineering complete; production launch gates
 - 🟢 [Done] File-backed SQLite close/reopen regression for completed AI Handoff recovery, with metadata and Canonical Branch verification
 - 🔴 [Later] Interactive OS access required: packaged-app quit/relaunch and native credential-store QA on macOS, Windows, and Linux; use `docs/testing/ai-handoff-restart-recovery.md`
 - 🔴 [Later] Managed AI credits and Workspace AI connections
+
+## Symbio local mathematical integration · 2026-10-23
+
+- 🟢 [Done] Share the Rust SEG/calculation kernel with Symbio through a bounded, main-window-only local adapter.
+- 🟢 [Done] Contextual equation editing, eight templates, placeholder navigation, source-preserving Canonical/Yjs transactions and stable Node IDs.
+- 🟢 [Done] Isolated source and result MathML previews; integral/matrix/real-quadratic calculations; explicit symbolic versus approximate trust.
+- 🟢 [Done] Explicit single-equation `.symbio` source exchange, selected-cell import review and assumption preservation.
+- 🟠 [Next] Expand compact palette categories and equation-specific accessibility; add durable computation records bound to immutable Versions if required.
+- 🔴 [Later] Full-history synchronization, semantic merge, mature CAS adapters, formal proof and certified numerical engines.
+- ⭕️ [Pending] Windows/Linux native exchange/rendering; native 200% zoom/high-contrast/IME pressure testing.
+
+See [ADR-080](adr/ADR-080-symbio-local-math-kernel.md). Existing Archive versions and Canonical schema are unchanged.

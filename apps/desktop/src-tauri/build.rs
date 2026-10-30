@@ -1,5 +1,8 @@
 fn main() {
     const APP_COMMANDS: &[&str] = &[
+        "compute_symbio_math",
+        "export_symbio_math",
+        "import_symbio_math",
         "save_local_draft_atomic",
         "save_local_version_atomic",
         "list_local_version_history",

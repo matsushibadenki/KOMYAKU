@@ -1335,3 +1335,21 @@ select:disabled,
 .story-agent-content h4 { margin: 0 0 6px; }
 .story-agent-content footer { justify-content: flex-end; margin-top: 10px; }
 @media (max-width: 480px) { .story-agent-diff { grid-template-columns: 1fr; } }
+
+/* Symbio source remains Canonical; computation and sandbox previews are derived. */
+.symbio-math-toggle { margin-block: .5rem; }
+.symbio-math-panel { border: 1px solid var(--color-rule); padding: 1rem; margin-block: .5rem; min-width: 0; }
+.symbio-math-panel header, .symbio-math-panel footer, .symbio-math-actions, .symbio-math-keys { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+.symbio-math-panel header { margin-bottom: .5rem; }.symbio-math-panel header strong { flex: 1; }
+.symbio-math-panel button { min-width: 44px; min-height: 44px; }
+.symbio-math-panel textarea { width: 100%; box-sizing: border-box; min-height: 4rem; resize: vertical; font: .9rem ui-monospace, monospace; padding: .5rem; border: 1px solid var(--color-rule); }
+.symbio-math-panel label { display: grid; gap: .3rem; margin-block: .5rem; }
+.symbio-math-panel input { min-width: 0; max-width: 100%; }
+.symbio-math-panel details { margin-block: .7rem; }.symbio-math-panel p { overflow-wrap: anywhere; }
+.symbio-formula { display: block; width: 100%; height: 140px; border: 0; background: white; }
+.symbio-math-result { border-inline-start: 2px solid var(--color-accent); padding: .6rem; margin-block: .5rem; background: var(--color-surface); }
+.symbio-math-result output { display: block; font: 2rem serif; padding: 1rem; }.symbio-math-result ul { font-size: .8rem; }
+.komyaku-math-node { display: block; margin: .5rem 0; padding: .5rem; border: 1px solid var(--color-rule); }
+.komyaku-math-node code { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .75rem; }
+.komyaku-math-node > button { float: right; min-height: 44px; min-width: 44px; }
+@media (max-width: 640px) { .symbio-math-panel { padding: .5rem; } .symbio-formula { height: 160px; } }

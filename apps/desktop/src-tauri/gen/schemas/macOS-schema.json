@@ -207,6 +207,12 @@
           "markdownDescription": "Enables the checkpoint_story_agent_document command without any pre-configured scope."
         },
         {
+          "description": "Enables the compute_symbio_math command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-compute-symbio-math",
+          "markdownDescription": "Enables the compute_symbio_math command without any pre-configured scope."
+        },
+        {
           "description": "Enables the delete_cloud_session command without any pre-configured scope.",
           "type": "string",
           "const": "allow-delete-cloud-session",
@@ -225,6 +231,12 @@
           "markdownDescription": "Enables the edit_story_workspace command without any pre-configured scope."
         },
         {
+          "description": "Enables the export_symbio_math command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-export-symbio-math",
+          "markdownDescription": "Enables the export_symbio_math command without any pre-configured scope."
+        },
+        {
           "description": "Enables the import_local_history_archive_atomic command without any pre-configured scope.",
           "type": "string",
           "const": "allow-import-local-history-archive-atomic",
@@ -235,6 +247,12 @@
           "type": "string",
           "const": "allow-import-local-komyaku-archive-atomic",
           "markdownDescription": "Enables the import_local_komyaku_archive_atomic command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the import_symbio_math command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-import-symbio-math",
+          "markdownDescription": "Enables the import_symbio_math command without any pre-configured scope."
         },
         {
           "description": "Enables the initialize_story_workspace command without any pre-configured scope.",
@@ -423,6 +441,12 @@
           "markdownDescription": "Denies the checkpoint_story_agent_document command without any pre-configured scope."
         },
         {
+          "description": "Denies the compute_symbio_math command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-compute-symbio-math",
+          "markdownDescription": "Denies the compute_symbio_math command without any pre-configured scope."
+        },
+        {
           "description": "Denies the delete_cloud_session command without any pre-configured scope.",
           "type": "string",
           "const": "deny-delete-cloud-session",
@@ -441,6 +465,12 @@
           "markdownDescription": "Denies the edit_story_workspace command without any pre-configured scope."
         },
         {
+          "description": "Denies the export_symbio_math command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-export-symbio-math",
+          "markdownDescription": "Denies the export_symbio_math command without any pre-configured scope."
+        },
+        {
           "description": "Denies the import_local_history_archive_atomic command without any pre-configured scope.",
           "type": "string",
           "const": "deny-import-local-history-archive-atomic",
@@ -451,6 +481,12 @@
           "type": "string",
           "const": "deny-import-local-komyaku-archive-atomic",
           "markdownDescription": "Denies the import_local_komyaku_archive_atomic command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the import_symbio_math command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-import-symbio-math",
+          "markdownDescription": "Denies the import_symbio_math command without any pre-configured scope."
         },
         {
           "description": "Denies the initialize_story_workspace command without any pre-configured scope.",

@@ -49,6 +49,16 @@ The current delivery milestone is the **offline document-history workflow**. Rel
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the authoritative implementation status and [the document-history assessment](docs/product/document-git-strategy.md) for the revised scope, evidence, and acceptance gates.
 
+## Symbio mathematical workbench
+
+The desktop editor now offers **∑ Math · Symbio**. Insert a LaTeX template, fill its slots with Tab / Shift+Tab, and compute integrals, matrices or real quadratic equations locally with the same Rust kernel as Symbio. Click ∑ on an existing equation to edit it while retaining its stable Canonical Node ID. English, Japanese and Simplified Chinese labels are included.
+
+**Apply source** commits LaTeX through the existing Yjs checkpoint and autosave flow. Results are transient derived data, with explicit symbolic/approximate status. Source previews retain KOMYAKU's isolated renderer; computation is limited to 2048 UTF-8 bytes and the supported mathematical subset.
+
+Use **↗ .symbio** to download only the current equation and assumptions, then open that document in Symbio (`--project /absolute/path/equation.symbio`). **↙ .symbio** reads the selected equation from the active Symbio branch into a reviewable source draft; applying it is a separate action. These controls require the packaged desktop app. Build with sibling source directories `Tauri/KOMYAKU` and `Tauri/Symbio`; no other runtime is needed by the compiled app.
+
+[Design and boundaries](docs/adr/ADR-080-symbio-local-math-kernel.md)
+
 ## Why KOMYAKU exists
 
 Most editors treat history as a secondary recovery feature. KOMYAKU treats history as first-class product data.
