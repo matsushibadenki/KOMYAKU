@@ -362,6 +362,8 @@ fn rich_markdown(node: &serde_json::Value, doc: &serde_json::Value) -> String {
             }
             text
         }
+        "math_inline" => format!("${}$", node["source"].as_str().unwrap_or("")),
+        "math_block" => format!("$$\n{}\n$$", node["source"].as_str().unwrap_or("")),
         "hard_break" => "  \n".into(),
         "paragraph" => children().join(""),
         "heading" => format!(

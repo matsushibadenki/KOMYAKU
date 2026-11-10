@@ -8,3 +8,5 @@ Local renderer change: bounded `title` property is preferred over the type title
 Upstream generic DAG rules are unchanged. Character relationships use two inbound person ports on relationship nodes. Semantic cycles therefore do not create execution cycles.
 
 Dependency maintenance (2026-10-19): local base64 requirement updated from 0.22 to 0.23.1 and pollster from 0.4 to 1.0.1. Source integration changes and both licenses are preserved; this is not a new upstream snapshot.
+
+Dependency maintenance (2026-11-02): cosmic-text 0.15.0 → 0.19.0. Applied the lazy Buffer setter migration from the local upstream renderer (HEAD 364b729ba894bec23ca3f18552a1653971059f88) without replacing the upstream snapshot. Explicit shaping before glyph caching, local font weights, sRGB handling, clipping, image export, and both licenses are retained. Three native GPU tests, including English/Japanese/Simplified Chinese text at two pixel densities, passed.

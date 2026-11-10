@@ -1,1 +1,1 @@
-export default { build: { rollupOptions: { input: { app: 'index.html', graphRail: 'graph-rail.html', graphInspector: 'graph-inspector.html' } } } };
+export default { optimizeDeps: { exclude: ["prosemirror-state","prosemirror-model","prosemirror-view","prosemirror-transform","prosemirror-commands","prosemirror-keymap","prosemirror-schema-list"] }, build: { rollupOptions: { input: { app: 'index.html', graphRail: 'graph-rail.html', graphInspector: 'graph-inspector.html' } } } };

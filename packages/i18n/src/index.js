@@ -10,6 +10,7 @@ export const i18n = i18next.createInstance();
 void i18n.init({
   lng: "ja",
   fallbackLng: "en",
+  returnEmptyString: true,
   supportedLngs: supportedLocales,
   nonExplicitSupportedLngs: false,
   interpolation: { escapeValue: false },

@@ -1,0 +1,58 @@
+// Copied from Symbio/scripts/math-keyboard.test.mjs; only import paths adapted.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {editSelection,eraseSelection,DraftHistory} from '../src/vendor/symbio/math-keyboard-edit.js';
+import {referenceKeys} from '../src/vendor/symbio/math-keyboard-data.js';
+
+test('fraction wraps the selected sum and selects its denominator',()=>{
+ const out=editSelection('x+1',0,3,{template:'fraction'});
+ assert.deepEqual(out,{value:'(x+1)/(1)',start:7,end:8});
+ const filled=editSelection(out.value,out.start,out.end,{code:'2'});
+ assert.equal(filled.value,'(x+1)/(2)');
+});
+test('root and power preserve selected compound expression',()=>{
+ assert.equal(editSelection('1+x+2',2,5,{wrap:'sqrt($)'}).value,'1+sqrt(x+2)');
+ const power=editSelection('x+1',0,3,{template:'power'});
+ assert.equal(power.value,'(x+1)^(2)');
+ assert.equal(power.value.slice(power.start,power.end),'2');
+});
+test('empty root places the caret on an editable kernel-compatible argument',()=>{
+ assert.deepEqual(editSelection('',0,0,{wrap:'sqrt($)'}),{value:'sqrt(x)',start:5,end:6});
+});
+test('original fraction and integral data preserve LaTeX placeholders',()=>{
+ const fraction=referenceKeys.find(k=>k.s==='a⁄b');
+ const result=editSelection('x+1',0,3,{code:fraction.c},'latex');
+ assert.equal(result.value,'\\frac{x+1}{□}');
+ assert.equal(result.value.slice(result.start,result.end),'□');
+ const integral=editSelection('',0,0,{code:referenceKeys.find(k=>k.s==='∫').c},'latex');
+ assert.equal(integral.value,'\\int_{□}^{□} ');
+ assert.equal(integral.start,6);
+});
+test('LaTeX powers retain the selected base and literal dollar text',()=>{
+ assert.equal(editSelection('x',0,1,{code:'^{}'},'latex').value,'x^{□}');
+ const power=editSelection('x+1',0,3,{code:'^{}'},'latex');
+ assert.equal(power.value,'\\left(x+1\\right)^{□}');
+ assert.equal(power.value.slice(power.start,power.end),'□');
+ assert.equal(editSelection('$&',0,2,{code:'\\sqrt{}'},'latex').value,'\\sqrt{$&}');
+});
+test('delete and backspace handle selection, Unicode and boundaries',()=>{
+ assert.deepEqual(eraseSelection('a𝛼b',1,3,false),{value:'ab',start:1,end:1});
+ assert.deepEqual(eraseSelection('a𝛼b',3,3,true),{value:'ab',start:1,end:1});
+ assert.equal(eraseSelection('abc',0,0,true).value,'abc');
+ assert.equal(eraseSelection('abc',3,3,false).value,'abc');
+});
+test('draft undo branches and is bounded independently of document history',()=>{
+ const h=new DraftHistory('x');h.record('sqrt(x)');h.record('sqrt(2)');
+ assert.equal(h.move(-1),'sqrt(x)');assert.equal(h.move(1),'sqrt(2)');
+ h.move(-1);h.record('cos(x)');assert.equal(h.move(1),'cos(x)');
+ for(let i=0;i<100;i++)h.record(String(i));assert.equal(h.entries.length,32);
+});
+
+test('matrix placeholders advance by Tab without damaging row separators',async()=>{
+ const {nextPlaceholder}=await import('../src/vendor/symbio/math-keyboard-edit.js');
+ const {computationalLatexGroups}=await import('../src/vendor/symbio/math-keyboard-layout.js');
+ const matrix=computationalLatexGroups.matrices.find(k=>k.s==='2×2');
+ let out=editSelection('',0,0,{code:matrix.c},'latex');
+ for(const value of ['1','2','3','4']){out=editSelection(out.value,out.start,out.end,{code:value},'latex');const range=nextPlaceholder(out.value,out.start,out.end);if(range)out={value:out.value,...range};}
+ assert.equal(out.value,'\\begin{bmatrix}1 & 2 \\\\ 3 & 4\\end{bmatrix}');assert.equal(nextPlaceholder(out.value,0,0),null);
+});

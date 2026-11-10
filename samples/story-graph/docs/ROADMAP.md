@@ -5,6 +5,16 @@
 - 🔴 [Later] planned, but not the closest next step
 - ⭕️ [Pending] Anything that can't be tested in the dev environment is on hold for now.
 
+## Symbio数式入力 — 2026-11-10
+
+- 🟢 [Done] Symbioから数式キーボード・編集規則・記号データ・分類・翻訳・CSSと同梱MathLiveを実コピー。無改変ファイルの原本パス／SHA-256とMIT／MathLiveライセンスを保持。コピー元の編集ルールテストもimportパスのみ調整して実行。
+- 🟢 [Done] 本文ツールバーの∑、書式ツールバーの数式からLaTeX入力・記号キーボード・プレビュー・本文内／独立数式を挿入。分数・累乗・根号・積分・行列・ギリシャ文字、入力Undo／Redo・枠移動に対応。挿入済み数式はダブルクリックまたはEnterで再編集。日本語・英語・简体中文。
+- 🟢 [Done] Rust正本のCanonical math_inline／math_blockの検証・保存へ接続（LaTeX 4KiB上限）。読む表示にもMathMLを投影。表示は横組みを保ち、LaTeX原文を保存。Markdownは$／$$、プレーンテキストと既存PDFはLaTeX原文として保持する。
+- 🟢 [Done] ブラウザ統合画面で分数・累乗のプレビュー→本文挿入→根号へ再編集→独立行列→読む表示を確認。開発時のProseMirror依存の二重評価を抑制。コピー元一致・Canonical往復・Rust検証・実ファイル保存／復元をテスト。JS73 tests、Rustのrich_documentテスト3件、Clippy全target成功、macOSアプリbundle生成成功。
+- ⭕️ [Pending] 数式を組版したPDF出力、実macOS WebViewでの数式ダイアログ操作、長文中に多数の数式を配置した負荷試験。CAS計算と手書き認識は今回の対象外。
+
+コピー元とライセンス：[Symbioコピー記録](../src/vendor/symbio/README.md)。
+
 ## ルビの読み込み・表示 — 2026-10-21
 
 - 🟢 [Done] 青空文庫の `漢字《かんじ》` と `｜青い空《あおいそら》` を本文テキストとruby装飾のreadingへ分離。未知注記や未完の記法は本文に残す。Shift_JIS／UTF-8を継続対応。従来取り込んだ原記法の作品は、青空文庫ファイルを改めて読み込むとルビ付き作品になる（既存作品を自動改変しない）。

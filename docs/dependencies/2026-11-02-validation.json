@@ -1,0 +1,82 @@
+{
+  "date": "2026-11-02",
+  "timezone": "Asia/Tokyo",
+  "baseline": "clean",
+  "source_scope_guard": "passed",
+  "changed_tracked_files": [
+    "apps/desktop/package.json",
+    "apps/desktop/src-tauri/Cargo.lock",
+    "apps/server/package.json",
+    "bun.lock",
+    "packages/editor-core/package.json",
+    "packages/i18n/package.json",
+    "packages/storage-core/package.json",
+    "samples/story-graph/Cargo.lock",
+    "samples/story-graph/src-tauri/Cargo.toml",
+    "samples/story-graph/vendor/unge/README.md",
+    "samples/story-graph/vendor/unge/crates/unge-render/Cargo.toml",
+    "samples/story-graph/vendor/unge/crates/unge-render/src/text.rs"
+  ],
+  "bun_test": {
+    "passed": 673,
+    "skipped": 25,
+    "failed": 0
+  },
+  "bun_check": "passed",
+  "bun_build": "passed",
+  "project_pinned_bun": {
+    "version": "1.4.0",
+    "integrity": "official npm SHA-512 verified",
+    "tests_passed": 673,
+    "skipped": 25,
+    "failed": 0,
+    "check": "passed",
+    "build": "passed"
+  },
+  "desktop_cargo_check": "passed",
+  "desktop_cargo_test": {
+    "passed": 89,
+    "failed": 0,
+    "ignored": 1
+  },
+  "story_graph": {
+    "build": "passed",
+    "js_passed": 63,
+    "rust_passed": 223,
+    "rust_failed": 0,
+    "rust_ignored": 21
+  },
+  "native_gpu": {
+    "passed": 3,
+    "failed": 0,
+    "coverage": [
+      "portrait atlas refresh",
+      "rendered pixels and validation",
+      "English/Japanese/Simplified Chinese text clipping and stacking at 1x/2x"
+    ],
+    "benchmarks": "excluded"
+  },
+  "chrome_e2e": {
+    "passed": 60,
+    "failed": 0,
+    "port": 1442
+  },
+  "cosmic_text": {
+    "before": "0.15.0",
+    "after": "0.19.0",
+    "lazy_setters_migrated": true,
+    "font_weights_and_srgb": "preserved"
+  },
+  "zod": "4.4.3 retained; latest 4.6.7 has unchanged known contract blocker",
+  "cargo_resources": {
+    "temporary_target": true,
+    "debug_symbols": 0,
+    "incremental": false,
+    "jobs": 4,
+    "disk_guard_gib": 5,
+    "disk_guard_triggered": false
+  },
+  "frozen_install": "passed, no changes",
+  "diff_check": "passed",
+  "push_or_deploy": false
+}

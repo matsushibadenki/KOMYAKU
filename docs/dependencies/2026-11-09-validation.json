@@ -1,0 +1,114 @@
+{
+  "date": "2026-11-09",
+  "timezone": "Asia/Tokyo",
+  "baseline": "Prior 2026-11-02 dependency changes and records uncommitted; preserved in isolated source snapshot",
+  "bun_test": {
+    "passed": 676,
+    "skipped": 25,
+    "failed": 0
+  },
+  "bun_check": "passed",
+  "bun_build": "passed",
+  "pinned_bun": {
+    "version": "1.4.0",
+    "integrity": "official npm SHA-512 verified",
+    "tests_passed": 676,
+    "skipped": 25,
+    "failed": 0,
+    "check": "passed",
+    "build": "passed",
+    "sample_build": "passed",
+    "sample_js_passed": 63
+  },
+  "desktop_cargo_check": "passed",
+  "desktop_cargo_test": {
+    "passed": 89,
+    "failed": 0,
+    "ignored": 1
+  },
+  "story_graph": {
+    "build": "passed",
+    "js_passed": 63,
+    "rust_passed": 229,
+    "rust_failed": 0,
+    "rust_ignored": 21
+  },
+  "tls_regression_tests": {
+    "passed": 6,
+    "failed": 0,
+    "real_loopback_tls": true,
+    "test_ca_trusted_in_production": false,
+    "accept_read_write_bounded": true
+  },
+  "i18next_regression": {
+    "before_fix_failed": 3,
+    "after_fix_passed": 3,
+    "behavior": "idle status remains empty in ja/en/zh-Hans"
+  },
+  "chrome_e2e": {
+    "passed": 60,
+    "failed": 0,
+    "port": 1442,
+    "final_after_i18next_fix": true
+  },
+  "rust_build": {
+    "debug_symbols": 0,
+    "incremental": false,
+    "jobs": 4,
+    "disk_guard_gib": 5,
+    "disk_guard_triggered": false
+  },
+  "application": {
+    "original_project_source_guard": "passed",
+    "original_symbio_source_guard": "passed",
+    "existing_uncommitted_work": "preserved",
+    "changed_files": [
+      "apps/desktop/package.json",
+      "apps/desktop/src-tauri/Cargo.lock",
+      "apps/server/package.json",
+      "bun.lock",
+      "packages/editor-core/package.json",
+      "packages/i18n/package.json",
+      "packages/i18n/src/index.js",
+      "packages/preview-core/package.json",
+      "packages/storage-core/package.json",
+      "samples/story-graph/Cargo.lock",
+      "samples/story-graph/src-tauri/Cargo.toml",
+      "samples/story-graph/src-tauri/src/ai.rs",
+      "samples/story-graph/src-tauri/src/chatgpt.rs",
+      "samples/story-graph/src-tauri/src/main.rs",
+      "README.md",
+      "docs/guides/development-setup.md"
+    ],
+    "new_files": [
+      "packages/i18n/test/empty-status.test.js",
+      "samples/story-graph/src-tauri/src/http_client.rs",
+      "samples/story-graph/src-tauri/test/fixtures/http-tls/server.der",
+      "samples/story-graph/src-tauri/test/fixtures/http-tls/README.md",
+      "samples/story-graph/src-tauri/test/fixtures/http-tls/ca.der",
+      "samples/story-graph/src-tauri/test/fixtures/http-tls/server-key.der",
+      "docs/dependencies/2026-11-09-lock-changes.json",
+      "docs/dependencies/2026-11-09-candidates.json",
+      "docs/dependencies/2026-11-09-stable-update.md",
+      "docs/dependencies/2026-11-09-validation.json"
+    ],
+    "post_install": {
+      "frozen_install": "passed",
+      "bun_passed": 676,
+      "bun_failed": 0,
+      "bun_skipped": 25
+    },
+    "post_apply_source_guard": "passed; unrelated original sources and earlier uncommitted work preserved"
+  },
+  "push_or_deploy": false,
+  "frontend_node_minimum": "22.12",
+  "toolchain": {
+    "installed_bun": "1.4.4",
+    "project_pinned_bun": "1.4.0",
+    "node": "26.12.1",
+    "rustc": "1.99.1",
+    "cargo": "1.99.1",
+    "system_toolchain_changed": false
+  },
+  "diff_check": "passed"
+}

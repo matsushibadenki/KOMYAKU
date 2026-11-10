@@ -16,6 +16,7 @@ mod history_diff;
 mod history_graph;
 mod history_merge;
 mod history_structure;
+mod http_client;
 mod input;
 mod journal;
 mod layout;

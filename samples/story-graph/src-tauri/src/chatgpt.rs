@@ -42,9 +42,8 @@ fn random() -> Result<String> {
     Ok(B64.encode(bytes))
 }
 fn client() -> Result<Client> {
-    Client::builder()
-        .timeout(Duration::from_secs(20))
-        .redirect(reqwest::redirect::Policy::none())
+    super::http_client::blocking()
+        .map_err(|_| failure())?
         .build()
         .map_err(|_| failure())
 }

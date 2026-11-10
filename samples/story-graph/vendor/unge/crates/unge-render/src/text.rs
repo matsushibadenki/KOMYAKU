@@ -253,9 +253,8 @@ impl TextRenderer {
             &mut self.fonts,
             Metrics::new(label.font_size, label.font_size * 1.3),
         );
-        buffer.set_wrap(&mut self.fonts, Wrap::None);
+        buffer.set_wrap(Wrap::None);
         buffer.set_text(
-            &mut self.fonts,
             &label.text,
             &Attrs::new().weight(if label.font_size >= 14. {
                 cosmic_text::Weight::SEMIBOLD
@@ -265,6 +264,7 @@ impl TextRenderer {
             Shaping::Advanced,
             None,
         );
+        // cosmic-text setters defer shaping; finish layout before caching glyphs.
         buffer.shape_until_scroll(&mut self.fonts, false);
         let line = Arc::new(
             buffer

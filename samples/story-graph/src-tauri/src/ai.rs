@@ -8,7 +8,6 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
-    time::Duration,
 };
 use tauri::Manager;
 use unge_core::Id;
@@ -151,11 +150,8 @@ fn credentials(
     }
 }
 fn http() -> Result<reqwest::Client> {
-    reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(15))
-        .read_timeout(Duration::from_secs(30))
-        .timeout(Duration::from_secs(180))
-        .redirect(reqwest::redirect::Policy::none())
+    super::http_client::asynchronous()
+        .map_err(|_| "ai_network_error".to_owned())?
         .build()
         .map_err(|_| "ai_network_error".into())
 }

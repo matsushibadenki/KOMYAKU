@@ -1,0 +1,577 @@
+[
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "brotli",
+    "before": [
+      "9.1.0"
+    ],
+    "after": [
+      "9.1.1"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "crc32fast",
+    "before": [
+      "1.5.3"
+    ],
+    "after": [
+      "1.5.4"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "ctutils",
+    "before": [
+      "0.4.6"
+    ],
+    "after": [
+      "0.4.7"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "js-sys",
+    "before": [
+      "0.3.106"
+    ],
+    "after": [
+      "0.3.107"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "log",
+    "before": [
+      "0.4.34"
+    ],
+    "after": [
+      "0.4.35"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "rustix",
+    "before": [
+      "1.1.5"
+    ],
+    "after": [
+      "1.1.6"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "unicode-properties",
+    "before": [
+      "0.1.4"
+    ],
+    "after": [
+      "0.1.5"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "utf8_iter",
+    "before": [
+      "1.0.4"
+    ],
+    "after": [
+      "1.1.0"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "utf_types",
+    "before": [],
+    "after": [
+      "1.0.0"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "wasm-bindgen",
+    "before": [
+      "0.2.129"
+    ],
+    "after": [
+      "0.2.130"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "wasm-bindgen-futures",
+    "before": [
+      "0.4.79"
+    ],
+    "after": [
+      "0.4.80"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "wasm-bindgen-macro",
+    "before": [
+      "0.2.129"
+    ],
+    "after": [
+      "0.2.130"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "wasm-bindgen-macro-support",
+    "before": [
+      "0.2.129"
+    ],
+    "after": [
+      "0.2.130"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "wasm-bindgen-shared",
+    "before": [
+      "0.2.129"
+    ],
+    "after": [
+      "0.2.130"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "web-sys",
+    "before": [
+      "0.3.106"
+    ],
+    "after": [
+      "0.3.107"
+    ]
+  },
+  {
+    "lockfile": "apps/desktop/src-tauri/Cargo.lock",
+    "name": "zcheapstr",
+    "before": [
+      "1.1.0"
+    ],
+    "after": [
+      "1.2.0"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "brotli",
+    "before": [
+      "9.1.0"
+    ],
+    "after": [
+      "9.1.1"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "cosmic-text",
+    "before": [
+      "0.15.0"
+    ],
+    "after": [
+      "0.19.0"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "crc32fast",
+    "before": [
+      "1.5.3"
+    ],
+    "after": [
+      "1.5.4"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "encoding_rs",
+    "before": [
+      "0.8.42"
+    ],
+    "after": [
+      "0.8.44"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "font-types",
+    "before": [
+      "0.10.1",
+      "0.11.3",
+      "0.12.7"
+    ],
+    "after": [
+      "0.11.3",
+      "0.12.7"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "harfrust",
+    "before": [
+      "0.3.2"
+    ],
+    "after": [
+      "0.5.2"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "js-sys",
+    "before": [
+      "0.3.106"
+    ],
+    "after": [
+      "0.3.107"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "log",
+    "before": [
+      "0.4.34"
+    ],
+    "after": [
+      "0.4.35"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "read-fonts",
+    "before": [
+      "0.35.0",
+      "0.39.2",
+      "0.41.0"
+    ],
+    "after": [
+      "0.37.0",
+      "0.39.2",
+      "0.41.0"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "rustix",
+    "before": [
+      "1.1.5"
+    ],
+    "after": [
+      "1.1.6"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "skrifa",
+    "before": [
+      "0.37.0",
+      "0.42.1",
+      "0.44.0"
+    ],
+    "after": [
+      "0.40.0",
+      "0.42.1",
+      "0.44.0"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "smol_str",
+    "before": [
+      "0.2.2"
+    ],
+    "after": [
+      "0.3.7"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "unicode-properties",
+    "before": [
+      "0.1.4"
+    ],
+    "after": [
+      "0.1.5"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "unicode-width",
+    "before": [
+      "0.2.2"
+    ],
+    "after": [
+      "0.2.3"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "utf8_iter",
+    "before": [
+      "1.0.4"
+    ],
+    "after": [
+      "1.1.0"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "utf_types",
+    "before": [],
+    "after": [
+      "1.0.0"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "wasm-bindgen",
+    "before": [
+      "0.2.129"
+    ],
+    "after": [
+      "0.2.130"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "wasm-bindgen-futures",
+    "before": [
+      "0.4.79"
+    ],
+    "after": [
+      "0.4.80"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "wasm-bindgen-macro",
+    "before": [
+      "0.2.129"
+    ],
+    "after": [
+      "0.2.130"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "wasm-bindgen-macro-support",
+    "before": [
+      "0.2.129"
+    ],
+    "after": [
+      "0.2.130"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "wasm-bindgen-shared",
+    "before": [
+      "0.2.129"
+    ],
+    "after": [
+      "0.2.130"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "web-sys",
+    "before": [
+      "0.3.106"
+    ],
+    "after": [
+      "0.3.107"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "yazi",
+    "before": [
+      "0.2.1"
+    ],
+    "after": [
+      "0.2.2"
+    ]
+  },
+  {
+    "lockfile": "samples/story-graph/Cargo.lock",
+    "name": "zcheapstr",
+    "before": [
+      "1.1.0"
+    ],
+    "after": [
+      "1.2.0"
+    ]
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/checksums",
+    "before": "3.1001.5",
+    "after": "3.1002.1"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/client-s3",
+    "before": "3.1156.0",
+    "after": "3.1161.0"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/core",
+    "before": "3.978.5",
+    "after": "3.979.1"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/credential-provider-env",
+    "before": "3.972.76",
+    "after": "3.972.80"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/credential-provider-http",
+    "before": "3.972.78",
+    "after": "3.972.82"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/credential-provider-ini",
+    "before": "3.973.21",
+    "after": "3.973.25"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/credential-provider-login",
+    "before": "3.972.83",
+    "after": "3.972.87"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/credential-provider-node",
+    "before": "3.972.88",
+    "after": "3.972.92"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/credential-provider-process",
+    "before": "3.972.76",
+    "after": "3.972.80"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/credential-provider-sso",
+    "before": "3.973.20",
+    "after": "3.973.24"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/credential-provider-web-identity",
+    "before": "3.972.82",
+    "after": "3.972.86"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/middleware-sdk-s3",
+    "before": "3.972.81",
+    "after": "3.972.85"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/nested-clients",
+    "before": "3.997.50",
+    "after": "3.997.54"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/s3-request-presigner",
+    "before": "3.1156.0",
+    "after": "3.1161.0"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/signature-v4-multi-region",
+    "before": "3.996.49",
+    "after": "3.996.51"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/token-providers",
+    "before": "3.1155.0",
+    "after": "3.1161.0"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@aws-sdk/xml-builder",
+    "before": "3.972.41",
+    "after": "3.972.42"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@smithy/core",
+    "before": "3.36.2",
+    "after": "3.38.1"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@smithy/node-http-handler",
+    "before": "4.12.1",
+    "after": "4.14.1"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@smithy/node-http-handler/@smithy/core",
+    "before": "3.35.2",
+    "after": null
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@smithy/signature-v4",
+    "before": "5.7.4",
+    "after": "5.7.5"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "@smithy/signature-v4/@smithy/core",
+    "before": "3.35.2",
+    "after": null
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "hono",
+    "before": "4.13.14",
+    "after": "4.13.16"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "i18next",
+    "before": "26.5.11",
+    "after": "26.7.1"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "nodemailer",
+    "before": "10.2.1",
+    "after": "10.3.1"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "prosemirror-schema-list",
+    "before": "1.5.1",
+    "after": "1.6.0"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "prosemirror-view",
+    "before": "1.42.8",
+    "after": "1.42.9"
+  },
+  {
+    "lockfile": "bun.lock",
+    "name": "react-i18next",
+    "before": "17.1.9",
+    "after": "17.1.11"
+  }
+]

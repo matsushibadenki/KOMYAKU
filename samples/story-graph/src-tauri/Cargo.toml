@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 [dependencies]
-encoding_rs = "=0.8.42"
+encoding_rs = "=0.8.44"
 unge-core = { path = "../vendor/unge/crates/unge-core" }
 unge-executor = { path = "../vendor/unge/crates/unge-executor" }
 unge-interaction = { path = "../vendor/unge/crates/unge-interaction" }
@@ -18,9 +18,11 @@ image = { version = "=0.25.10", default-features = false, features = ["png"] }
 futures = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["blocking", "json", "form", "rustls-no-provider"] }
 base64 = "0.23.1"
 ring = "0.17"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "1"
 rfd = "=0.16.0"
 svg2pdf = { version = "=0.13.0", default-features = false, features = ["text", "image"] }
 pdf-writer = "=0.12.1"
@@ -32,7 +34,7 @@ tokio = { version = "1", features = ["time", "sync", "macros"] }
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 [dev-dependencies]
-lopdf = "=0.46.0"
+lopdf = "=0.47.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "=0.6.5"

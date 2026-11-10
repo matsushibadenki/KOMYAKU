@@ -1,0 +1,42 @@
+[
+  {
+    "source": "/Users/Shared/Program/Tauri/Symbio/apps/desktop/ui/math-keyboard.js",
+    "copy": "math-keyboard.js",
+    "sha256": "04c0090fc3923f69e636db22a6d648f0c486e2bf65905358903c1022981edafc"
+  },
+  {
+    "source": "/Users/Shared/Program/Tauri/Symbio/apps/desktop/ui/math-keyboard-edit.js",
+    "copy": "math-keyboard-edit.js",
+    "sha256": "0f816bc218791c6ae0b32a2da841dcea0744cc422c49d659e82e7455bffafbbf"
+  },
+  {
+    "source": "/Users/Shared/Program/Tauri/Symbio/apps/desktop/ui/math-keyboard-data.js",
+    "copy": "math-keyboard-data.js",
+    "sha256": "c973cab0d34d77e591126350594c4f399ab923c45295552f3f428694b7f1579d"
+  },
+  {
+    "source": "/Users/Shared/Program/Tauri/Symbio/apps/desktop/ui/math-keyboard-layout.js",
+    "copy": "math-keyboard-layout.js",
+    "sha256": "89ae79802c4a9585f965002098d8e9dfd8e194e86619d0b60ad1308b4c88aee9"
+  },
+  {
+    "source": "/Users/Shared/Program/Tauri/Symbio/apps/desktop/ui/i18n.js",
+    "copy": "i18n.js",
+    "sha256": "32dc1463cb10cd71d10eac89b9ba42a1e1c06c5d50201e36bae9145fbcac64c0"
+  },
+  {
+    "source": "/Users/Shared/Program/Tauri/Symbio/apps/desktop/ui/vendor/mathlive/mathlive.min.mjs",
+    "copy": "samples/story-graph/public/symbio/mathlive/mathlive.min.mjs",
+    "sha256": "d2baa5ce0b8b6f75f3dc337085d5fbe0e376671768e982134ceb52fde760aa60"
+  },
+  {
+    "source": "/Users/Shared/Program/Tauri/Symbio/apps/desktop/ui/vendor/mathlive/LICENSE.txt",
+    "copy": "samples/story-graph/public/symbio/mathlive/LICENSE.txt",
+    "sha256": "3caebd18611959ca725ab976a004d408017eb1d7093d6c9b9b09c5a4790eaff8"
+  },
+  {
+    "source": "/Users/Shared/Program/Tauri/Symbio/apps/desktop/ui/vendor/mathlive/KaTeX-LICENSE.txt",
+    "copy": "samples/story-graph/public/symbio/mathlive/KaTeX-LICENSE.txt",
+    "sha256": "766ccc1f306c885aa45542a9846bbd0a505b27a0374f146778171c2254ce18e3"
+  }
+]

@@ -1,7 +1,8 @@
+import {renderMathWithin} from './math-input.js';
 import {canonicalPosition,graphemeCut,graphemeCuts} from './text-performance.js';
 import {estimatedExtent,estimatedDialogueExtent} from './manuscript-viewport.js';
 // Styled inline nodes share one logical text offset for scroll restoration.
-export function rubyBaseText(element){if(!element.querySelector?.('rt,rp'))return element.textContent;const copy=element.cloneNode(true);copy.querySelectorAll('rt,rp').forEach(node=>node.remove());return copy.textContent;}
+export function rubyBaseText(element){if(!element.querySelector?.('rt,rp,[data-math-source]'))return element.textContent;const copy=element.cloneNode(true);copy.querySelectorAll('rt,rp').forEach(node=>node.remove());copy.querySelectorAll('[data-math-source]').forEach(node=>node.replaceWith(copy.ownerDocument.createTextNode(node.dataset.mathSource)));return copy.textContent;}
 function textRange(element,index){
  const walker=document.createTreeWalker(element,NodeFilter.SHOW_TEXT,{acceptNode:node=>node.parentElement?.closest('rt,rp')?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT});let node,remaining=index,last;
  while((node=walker.nextNode())){last=node;if(remaining<node.length){const range=document.createRange();range.setStart(node,remaining);range.setEnd(node,Math.min(remaining+1,node.length));return range;}remaining-=node.length;}
@@ -49,7 +50,7 @@ export class ReadingViewport {
  }
  estimate(blocks){const options=this.options();return blocks.reduce((sum,block)=>sum+(block.kind==='dialogue'?estimatedDialogueExtent(block.texts,{...options,actorWidth:block.actorWidth}):estimatedExtent(block.text??'',{...options,fontSize:block.size??options.fontSize}))+ (block.kind==='heading'?24:0),0);}
  placeholder(node,entry){node.classList.add('reading-placeholder');node.style[this.vertical?'width':'height']=`${Math.max(1,entry.extent)}px`;}
- mount(node,entry){if(node.firstElementChild)return;node.innerHTML=entry.blocks.map(this.markup).join('');node.classList.remove('reading-placeholder');node.style[this.vertical?'width':'height']='';this.measure(node);entry.extent=Math.max(1,this.vertical?node.getBoundingClientRect().width:node.getBoundingClientRect().height);}
+ mount(node,entry){if(node.firstElementChild)return;node.innerHTML=entry.blocks.map(this.markup).join('');renderMathWithin(node);node.classList.remove('reading-placeholder');node.style[this.vertical?'width':'height']='';this.measure(node);entry.extent=Math.max(1,this.vertical?node.getBoundingClientRect().width:node.getBoundingClientRect().height);}
  unmount(node,entry){if(!node.firstElementChild)return;const selection=window.getSelection();if(selection&&!selection.isCollapsed&&(node.contains(selection.anchorNode)||node.contains(selection.focusNode)))return;node.replaceChildren();this.placeholder(node,entry);}
  resize(){const span=this.options().span;if(Math.abs(span-this.span)>1&&this.reflow){const anchor=this.lastAnchor??this.anchor();this.span=span;this.reflow(anchor);return;}for(const [node,entry]of this.entries){if(node.firstElementChild){this.measure(node);entry.extent=Math.max(1,this.vertical?node.getBoundingClientRect().width:node.getBoundingClientRect().height);}else{entry.extent=this.estimate(entry.blocks);this.placeholder(node,entry);}}}
  anchor(){
@@ -59,6 +60,7 @@ export class ReadingViewport {
    for(const element of node.querySelectorAll?.('[data-reading-block]')??[]){
     const visible=element.getBoundingClientRect();if(!(this.vertical?visible.left<bounds.right&&visible.right>bounds.left:visible.top<bounds.bottom&&visible.bottom>bounds.top))continue;
     const text=rubyBaseText(element);if(!text.length)continue;
+    if(element.querySelector?.('[data-math-source]'))return {id:element.dataset.readingBlock,start:Number(element.dataset.readingStart),offset:this.vertical?visible.right-bounds.right:visible.top-bounds.top};
     let low=0,high=text.length-1;
     const coordinate=index=>{const range=textRange(element,index);const rect=range.getBoundingClientRect();range.detach();return rect;};
     while(low<high){const middle=(low+high)>>1,r=coordinate(middle);if(this.vertical?r.left>=bounds.right:r.bottom<=bounds.top)low=middle+1;else high=middle;}

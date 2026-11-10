@@ -6,6 +6,7 @@ export function needsRichEditor(doc){return doc.content.some(node=>{
 export function richText(node){
  if(node.type==='text')return node.text;
  if(node.type==='hard_break')return '\n';
+ if(node.type==='math_inline'||node.type==='math_block')return node.source;
  if(node.type==='code_block')return node.source;
  if(node.type==='image')return node.altText+node.caption.map(richText).join('');
  const separator=['paragraph','heading'].includes(node.type)?'':node.type==='table_row'?'\t':'\n';
@@ -14,6 +15,7 @@ export function richText(node){
 export function richInlineHtml(content,escape,start=0,end=Infinity){
  let offset=0;return content.map(inline=>{
   const text=richText(inline),from=Math.max(0,start-offset),to=Math.min(text.length,end-offset);offset+=text.length;
+  if(inline.type==='math_inline')return `<span class="manuscript-math" data-math-source="${escape(inline.source)}">${escape(inline.source)}</span>`;
   if(to<=from)return '';let html=readingTextHtml(text.slice(from,to),escape);
   for(const mark of inline.marks??[]){const tag={bold:'strong',italic:'em',underline:'u',strike:'s',code:'code'}[mark.type];if(tag)html=`<${tag}>${html}</${tag}>`;else if(mark.type==='ruby')html=`<ruby>${html}<rt>${escape(mark.reading)}</rt></ruby>`;else if(mark.type==='link'&&/^(https?:|mailto:)/i.test(mark.href))html=`<a href="${escape(mark.href)}" rel="noopener noreferrer">${html}</a>`;}
   return html;

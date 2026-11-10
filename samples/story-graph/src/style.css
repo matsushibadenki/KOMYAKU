@@ -539,3 +539,12 @@ body[data-panel-window=history] main>.writing {display:flex!important;height:100
 /* Native ruby positioning follows the surrounding writing mode. */
 .rich-editor ruby,.reading ruby {ruby-position:over;ruby-align:center;}
 .rich-editor rt,.reading rt {font-size:.5em;line-height:1;font-weight:400;user-select:none;}
+
+.math-input-dialog {width:min(560px,calc(100vw - 32px));max-height:calc(100vh - 32px);overflow:auto;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);--color-line:var(--line);--color-panel:var(--surface);--color-paper:var(--surface);--color-selected:var(--selected);--color-accent:var(--blue);--color-error:#b33;--font-math:serif;}
+.math-input-dialog::backdrop {background:#0004;}
+.math-input-head {display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;}
+.math-input-dialog textarea {box-sizing:border-box;width:100%;font:14px monospace;resize:vertical;}
+.math-input-preview {min-height:64px;display:grid;place-items:center;overflow:auto;padding:8px;font-size:24px;}
+.manuscript-math {display:inline-block;writing-mode:horizontal-tb;text-orientation:mixed;vertical-align:middle;max-width:100%;overflow:auto;padding:2px 4px;}
+div.manuscript-math {display:block;text-align:center;margin:8px 0;}
+.math-input-head label {display:flex;align-items:center;gap:4px;}

@@ -359,6 +359,7 @@ The implemented Canonical Document JSON contract is specified in [docs/formats/c
 ## Requirements
 
 - Bun 1.4.0
+- Node.js 22.12 or later for frontend development tools
 - Rust 1.93 or later
 - Docker Desktop or Docker Engine with Compose
 - Platform prerequisites required by Tauri 2

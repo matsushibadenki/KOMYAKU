@@ -44,9 +44,25 @@ impl<'a> Walker<'a> {
         }
         Ok(())
     }
+    fn math(&mut self, node: &'a Value) -> Result<(), String> {
+        let source = node["source"].as_str().ok_or("invalid_document")?;
+        if node["sourceType"] != "latex"
+            || source.trim().is_empty()
+            || source.len() > 4096
+            || source.contains('\0')
+        {
+            return Err("invalid_document".into());
+        }
+        self.parts.push(source);
+        Ok(())
+    }
     fn inline(&mut self, content: &'a Value) -> Result<(), String> {
         for node in content.as_array().ok_or("invalid_document")? {
             match node["type"].as_str() {
+                Some("math_inline") => {
+                    self.identity(node)?;
+                    self.math(node)?;
+                }
                 Some("hard_break") => self.parts.push("\n"),
                 Some("text") => {
                     let marks = node["marks"].as_array().ok_or("invalid_document")?;
@@ -116,6 +132,7 @@ impl<'a> Walker<'a> {
                         | "horizontal_rule"
                         | "table"
                         | "image"
+                        | "math_block"
                 ),
             };
             if !allowed {
@@ -131,6 +148,7 @@ impl<'a> Walker<'a> {
     fn block(&mut self, node: &'a Value, depth: usize) -> Result<(), String> {
         self.identity(node)?;
         match node["type"].as_str() {
+            Some("math_block") => self.math(node)?,
             Some("paragraph" | "heading") => {
                 if node["type"] == "heading"
                     && !node["attrs"]["level"]
@@ -234,7 +252,9 @@ pub fn plain(node: &Value) -> String {
     match node["type"].as_str() {
         Some("text") => node["text"].as_str().unwrap_or("").into(),
         Some("hard_break") => "\n".into(),
-        Some("code_block") => node["source"].as_str().unwrap_or("").into(),
+        Some("code_block" | "math_block" | "math_inline") => {
+            node["source"].as_str().unwrap_or("").into()
+        }
         Some("image") => format!(
             "{}{}",
             node["altText"].as_str().unwrap_or(""),
@@ -319,6 +339,43 @@ fn validate_assets(document: &Value) -> Result<(), String> {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn math_sources_survive_validation_and_plain_projection() {
+        let mut doc = super::super::domain::canonical("", Id::new_v4(), Id::new_v4());
+        let inline = serde_json::json!({"id":Id::new_v4(),"type":"math_inline","schemaVersion":1,"sourceType":"latex","source":"x^2","metadata":{},"extensions":{},"renderArtifacts":[]});
+        doc["content"][0]["content"] = serde_json::json!([inline]);
+        doc["content"].as_array_mut().unwrap().push(serde_json::json!({"id":Id::new_v4(),"type":"math_block","schemaVersion":1,"sourceType":"latex","source":"y+1","displayMode":"block","metadata":{},"extensions":{},"renderArtifacts":[]}));
+        assert_eq!(parts(&doc).unwrap().join(""), "x^2\ny+1");
+        assert_eq!(plain(&doc), "x^2\ny+1");
+        let registry = super::super::domain::registry();
+        let blank = super::super::domain::blank_document(&registry, "ja").unwrap();
+        let scene = blank
+            .graph()
+            .nodes()
+            .values()
+            .find(|n| n.type_id == super::super::domain::SCENE)
+            .unwrap()
+            .id;
+        let mut editor = unge_core::Editor::new(blank, 256).unwrap();
+        editor
+            .execute(unge_core::Command::SetProperty {
+                id: scene,
+                key: "canonical".into(),
+                value: Some(doc.clone()),
+            })
+            .unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("math.json");
+        super::super::save(&path, editor.document()).unwrap();
+        let restored = super::super::load(&path).unwrap();
+        assert_eq!(
+            restored.to_json().unwrap(),
+            editor.document().to_json().unwrap()
+        );
+
+        doc["content"][0]["content"][0]["source"] = serde_json::json!("x".repeat(4097));
+        assert!(parts(&doc).is_err());
+    }
     #[test]
     fn formatting_preserves_borrowed_text_and_rejects_unsafe_links() {
         let mut doc = crate::domain::canonical("日本語😀", Id::new_v4(), Id::new_v4());

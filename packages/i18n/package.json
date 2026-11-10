@@ -6,10 +6,10 @@
   "exports": "./src/index.js",
   "scripts": {
     "build": "bun -e \"import('./src/index.js')\"",
-    "check": "bun -e \"import('./src/index.js')\""
+    "check": "bun test"
   },
   "dependencies": {
-    "i18next": "^26.5.11"
+    "i18next": "^27.0.1"
   }
 }
 
