@@ -9,7 +9,7 @@
     "check": "bun test"
   },
   "dependencies": {
-    "i18next": "^27.0.1"
+    "i18next": "^27.1.2"
   }
 }
 

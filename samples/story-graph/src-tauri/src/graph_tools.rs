@@ -1,4 +1,4 @@
-//! Graph tools own transient selection/tool state in Rust; child WebViews only edit projections.
+//! Graph tools own transient selection/tool state in Rust; independent WebviewWindows only edit projections.
 use super::*;
 
 #[derive(Default)]
@@ -22,17 +22,18 @@ fn authorize(webview: &tauri::Webview) -> std::result::Result<(), String> {
         Err("unknown_view".into())
     }
 }
-pub fn layout(app: &tauri::AppHandle) {
-    if let (Some(canvas), Some(panel)) =
-        (app.get_window("canvas"), app.get_webview("graph-inspector"))
-        && let (Ok(size), Ok(scale)) = (canvas.inner_size(), canvas.scale_factor())
-    {
-        let width = (size.width as f64 / scale - ICON_RAIL_WIDTH).clamp(1., 300.);
-        let _ = panel.set_position(tauri::LogicalPosition::new(
-            size.width as f64 / scale - width,
-            0.,
-        ));
-        let _ = panel.set_size(tauri::LogicalSize::new(width, size.height as f64 / scale));
+pub fn show_windows(app: &tauri::AppHandle, visible: bool) {
+    let inspector = app
+        .try_state::<Tools>()
+        .and_then(|tools| tools.state.lock().ok().map(|state| state.open))
+        .unwrap_or(false);
+    for (label, show) in [
+        ("graph-rail", visible),
+        ("graph-inspector", visible && inspector),
+    ] {
+        if let Some(panel) = app.get_webview_window(label) {
+            let _ = if show { panel.show() } else { panel.hide() };
+        }
     }
 }
 fn show(app: &tauri::AppHandle, open: bool) {
@@ -41,22 +42,17 @@ fn show(app: &tauri::AppHandle, open: bool) {
     {
         state.open = open;
     }
-    layout(app);
-    if let Some(panel) = app.get_webview("graph-inspector") {
-        let _ = if open { panel.show() } else { panel.hide() };
+    if let Some(panel) = app.get_webview_window("graph-inspector") {
+        let canvas_visible = app
+            .get_webview_window("canvas")
+            .is_some_and(|canvas| canvas.is_visible().unwrap_or(false));
+        let _ = if open && canvas_visible {
+            panel.show()
+        } else {
+            panel.hide()
+        };
     }
     let _ = app.emit("graph://changed", ());
-}
-pub fn blocks_pointer(app: &tauri::AppHandle, position: [f32; 2]) -> bool {
-    let open = app
-        .try_state::<Tools>()
-        .and_then(|tools| tools.state.lock().ok().map(|s| s.open))
-        .unwrap_or(false);
-    let width = app
-        .get_window("canvas")
-        .and_then(|w| Some(w.inner_size().ok()?.width as f64 / w.scale_factor().ok()?))
-        .unwrap_or(1100.);
-    open && f64::from(position[0]) >= (width - 300.).max(ICON_RAIL_WIDTH)
 }
 fn node_hit(doc: &Document, point: [f32; 2]) -> Option<Id> {
     doc.placement()
@@ -284,35 +280,7 @@ pub fn graph_state(
     value["open"] = json!(state.open);
     Ok(value)
 }
-// Fit into the canvas area that is not covered by the rail or inspector.
-fn frame_rects(viewport: &mut Viewport, rects: &[Rect], inspector_open: bool) {
-    if rects.is_empty() {
-        return;
-    }
-    let left = rects.iter().map(|r| r.x).fold(f32::INFINITY, f32::min);
-    let top = rects.iter().map(|r| r.y).fold(f32::INFINITY, f32::min);
-    let right = rects
-        .iter()
-        .map(|r| r.x + r.width)
-        .fold(f32::NEG_INFINITY, f32::max);
-    let bottom = rects
-        .iter()
-        .map(|r| r.y + r.height)
-        .fold(f32::NEG_INFINITY, f32::max);
-    let rail = ICON_RAIL_WIDTH as f32;
-    let panel = if inspector_open { 300. } else { 0. };
-    let width = (viewport.size[0] - rail - panel).max(1.);
-    let height = viewport.size[1];
-    viewport.zoom = (width / (right - left + 80.))
-        .min(height / (bottom - top + 80.))
-        .clamp(0.02, 2.);
-    viewport.origin = [
-        (left + right) * 0.5 - (rail + width * 0.5) / viewport.zoom,
-        (top + bottom) * 0.5 - height * 0.5 / viewport.zoom,
-    ];
-}
-
-fn frame_embedded(viewport: &mut Viewport, rects: &[Rect]) {
+fn frame_viewport(viewport: &mut Viewport, rects: &[Rect]) {
     if rects.is_empty() {
         return;
     }
@@ -403,9 +371,9 @@ pub async fn graph_action(
                     factor as f32,
                 );
             } else {
-                let (edge, open) = {
+                let edge = {
                     let state = tools.state.lock().map_err(|_| "state_unavailable")?;
-                    (state.edge, state.open)
+                    state.edge
                 };
                 let rects = host
                     .engine
@@ -420,11 +388,7 @@ pub async fn graph_action(
                 if kind == "focus" && rects.is_empty() {
                     return Err("missing_selection".into());
                 }
-                frame_rects(&mut viewport, &rects, open);
-                if super::docked_graph::visible() {
-                    // Embedded Surface bounds already exclude the rail and form.
-                    frame_embedded(&mut viewport, &rects);
-                }
+                frame_viewport(&mut viewport, &rects);
             }
             host.engine
                 .dispatch("controls", Request::SetViewport { viewport })
@@ -651,34 +615,22 @@ pub fn minimap_click(app: &tauri::AppHandle, engine: &Engine, position: [f32; 2]
 mod tests {
     use super::*;
     #[test]
-    fn framing_centers_content_in_unobscured_canvas() {
+    fn framing_centers_content_in_full_canvas() {
         let rects = [Rect {
             x: -120.,
             y: 80.,
             width: 600.,
             height: 240.,
         }];
-        for inspector in [false, true] {
-            let mut view = Viewport {
-                origin: [0., 0.],
-                zoom: 1.,
-                size: [1100., 800.],
-            };
-            frame_rects(&mut view, &rects, inspector);
-            view.validate().unwrap();
-            let center = [
-                (180. - view.origin[0]) * view.zoom,
-                (200. - view.origin[1]) * view.zoom,
-            ];
-            let expected =
-                (ICON_RAIL_WIDTH as f32 + 1100. - if inspector { 300. } else { 0. }) * 0.5;
-            assert!((center[0] - expected).abs() < 0.001);
-            assert!((center[1] - 400.).abs() < 0.001);
-            assert!((-120. - view.origin[0]) * view.zoom > ICON_RAIL_WIDTH as f32);
-            assert!(
-                (480. - view.origin[0]) * view.zoom < 1100. - if inspector { 300. } else { 0. }
-            );
-        }
+        let mut view = Viewport {
+            origin: [0., 0.],
+            zoom: 1.,
+            size: [1100., 800.],
+        };
+        frame_viewport(&mut view, &rects);
+        view.validate().unwrap();
+        assert!(((180. - view.origin[0]) * view.zoom - 550.).abs() < 0.001);
+        assert!(((200. - view.origin[1]) * view.zoom - 400.).abs() < 0.001);
     }
 
     #[test]

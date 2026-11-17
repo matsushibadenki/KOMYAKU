@@ -5,6 +5,12 @@
 - 🔴 [Later] planned, but not the closest next step
 - ⭕️ [Pending] Anything that can't be tested in the dev environment is on hold for now.
 
+## 独立ウインドウ — 2026-11-17
+
+- 🟢 [Done] 人物相関図・グラフツール・情報パネルを親子関係のないTauri WebviewWindowへ変更。グラフ本体はRust/wgpu描画を維持し、描画面を覆わないよう空のWebViewのみ非表示にする。
+- 🟢 [Done] グラフの全体表示とポインター操作をウインドウの全面に適用。ツールと情報パネルは個別に移動・閉じる操作ができ、原稿と選択の正本はRustで共有。
+- ⭕️ [Pending] OS別の実ウインドウ表示・フォーカス・GPU描画の確認。
+
 ## Symbio数式入力 — 2026-11-10
 
 - 🟢 [Done] Symbioから数式キーボード・編集規則・記号データ・分類・翻訳・CSSと同梱MathLiveを実コピー。無改変ファイルの原本パス／SHA-256とMIT／MathLiveライセンスを保持。コピー元の編集ルールテストもimportパスのみ調整して実行。

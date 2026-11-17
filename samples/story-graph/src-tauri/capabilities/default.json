@@ -5,6 +5,8 @@
     "controls",
     "editor",
     "canvas",
+    "graph-rail",
+    "graph-inspector",
     "navigator",
     "inspector",
     "history"

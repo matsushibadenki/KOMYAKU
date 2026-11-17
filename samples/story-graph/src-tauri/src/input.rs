@@ -146,12 +146,6 @@ impl Plugin<EventLoopMessage> for Input {
                 let Some(position) = self.position else {
                     return false;
                 };
-                if (position[0] < super::ICON_RAIL_WIDTH as f32
-                    || super::graph_tools::blocks_pointer(&self.app, position))
-                    && self.button.is_none()
-                {
-                    return false;
-                }
                 if *state == ElementState::Pressed && self.button.is_none() {
                     if let Ok(summary) = self.engine.dispatch("controls", Request::Summary) {
                         self.revision = summary.revision;
@@ -191,11 +185,6 @@ impl Plugin<EventLoopMessage> for Input {
                 if let (Some(position), Ok(state)) =
                     (self.position, self.engine.view_state("controls"))
                 {
-                    if position[0] < super::ICON_RAIL_WIDTH as f32
-                        || super::graph_tools::blocks_pointer(&self.app, position)
-                    {
-                        return false;
-                    }
                     let dy = match delta {
                         MouseScrollDelta::LineDelta(_, y) => f64::from(*y) * 40.,
                         MouseScrollDelta::PixelDelta(p) => p.y / scale,

@@ -38,3 +38,6 @@ form button:hover {background:var(--graph-selected)}form button:active {backgrou
 .icon-menu-extension {display:none}
 .graph-tools-divider {height:1px;min-height:1px;background:var(--graph-rail-rule);margin:7px 5px;flex-shrink:0}
 .graph-tools-bottom {display:flex;flex-direction:column;gap:3px;margin-top:auto;padding-top:12px;flex-shrink:0}
+
+body:has(> .icon-rail) {display:flex;justify-content:center;}
+body > .icon-rail {border-right:0;}

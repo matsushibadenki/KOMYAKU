@@ -36,7 +36,6 @@ mod shared_history;
 mod shared_workspace;
 mod state_rules;
 mod workspace_storage;
-const ICON_RAIL_WIDTH: f64 = 48.0;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
@@ -1496,18 +1495,26 @@ fn canvas(window: tauri::WebviewWindow) -> std::result::Result<(), String> {
     if let Some(canvas) = window.app_handle().get_window("canvas") {
         let store = window.app_handle().state::<preferences::Store>();
         let settings = store.value.lock().map_err(|_| "state_unavailable")?;
-        let title = match settings.language.as_str() {
-            "en" => "Character relationships",
-            "zh-CN" => "人物关系图",
-            _ => "人物相関図",
+        let (title, tools, inspector) = match settings.language.as_str() {
+            "en" => ("Character relationships", "Graph Tools", "Graph Inspector"),
+            "zh-CN" => ("人物关系图", "图谱工具", "图谱检查器"),
+            _ => ("人物相関図", "グラフツール", "グラフ情報"),
         };
+        drop(settings);
+        for (label, title) in [("graph-rail", tools), ("graph-inspector", inspector)] {
+            if let Some(panel) = window.app_handle().get_webview_window(label) {
+                panel
+                    .set_title(&format!("{title} · KOMYAKU"))
+                    .map_err(|_| "panel_failed")?;
+            }
+        }
         canvas
             .set_title(&format!("{title} · KOMYAKU"))
             .map_err(|_| "panel_failed")?;
-        canvas
-            .show()
-            .and_then(|_| canvas.set_focus())
-            .map_err(|_| "panel_failed")?;
+        canvas.show().map_err(|_| "panel_failed")?;
+        graph_tools::show_windows(window.app_handle(), true);
+        canvas.set_focus().map_err(|_| "panel_failed")?;
+        redraw(window.app_handle());
         let _ = window.app_handle().emit("graph://changed", ());
     }
     Ok(())
@@ -1729,15 +1736,25 @@ async fn import_aozora(
             "zh-CN" => "导入青空文库文本",
             _ => "青空文庫のテキストを読み込む",
         };
-        let Some(path) = rfd::FileDialog::new().set_title(title).add_filter("Aozora Bunko", &["txt"]).pick_file() else { return Ok(false); };
+        let Some(path) = rfd::FileDialog::new()
+            .set_title(title)
+            .add_filter("Aozora Bunko", &["txt"])
+            .pick_file()
+        else {
+            return Ok(false);
+        };
         let doc = aozora::read(&path, &registry, &settings.language)?;
-        domain::Validator(registry).validate(&doc).map_err(|_| "aozora_invalid")?;
+        domain::Validator(registry)
+            .validate(&doc)
+            .map_err(|_| "aozora_invalid")?;
         let title = doc.title.clone();
         let library = library::Library { root };
         let directory = library.restore_document(doc, title, settings)?;
         launch_workspace(&directory, &library.root, true).map_err(|_| "backup_open_failed")?;
         Ok(true)
-    }).await.map_err(|_| "aozora_invalid".to_owned())?
+    })
+    .await
+    .map_err(|_| "aozora_invalid".to_owned())?
 }
 fn main() {
     tauri::Builder::default()
@@ -1885,7 +1902,7 @@ fn main() {
                 .register_view(
                     "controls",
                     Viewport {
-                        origin: [-(ICON_RAIL_WIDTH as f32) / 0.8, 0.],
+                        origin: [0., 0.],
                         zoom: 0.8,
                         size: [1100., 800.],
                     },
@@ -1915,41 +1932,55 @@ fn main() {
             if let Some(controls) = app.get_window("controls") {
                 app.state::<layout::Store>().apply(&controls);
             }
-            let canvas = tauri::WindowBuilder::new(app, "canvas")
-                .title("人物相関図 · KOMYAKU")
-                .visible(false)
-                .inner_size(1100., 800.)
-                .build()?;
+            tauri::WebviewWindowBuilder::new(
+                app,
+                "canvas",
+                tauri::WebviewUrl::App("graph-canvas.html".into()),
+            )
+            .title("人物相関図 · KOMYAKU")
+            .visible(false)
+            .inner_size(1100., 800.)
+            .build()?;
+            // The native surface fills the window; keep the companion WebView
+            // hidden so it cannot cover the GPU surface or consume input.
+            app.get_webview("canvas")
+                .ok_or("missing canvas webview")?
+                .hide()?;
+            let canvas = app.get_window("canvas").ok_or("missing canvas window")?;
             app.state::<layout::Store>().apply(&canvas);
             let size = canvas.inner_size()?;
-            canvas.add_child(
-                tauri::webview::WebviewBuilder::new(
+            for (label, page, title, width, height, x) in [
+                (
                     "graph-rail",
-                    tauri::WebviewUrl::App("graph-rail.html".into()),
+                    "graph-rail.html",
+                    "Graph Tools · KOMYAKU",
+                    120.,
+                    620.,
+                    72.,
                 ),
-                tauri::LogicalPosition::new(0., 0.),
-                tauri::LogicalSize::new(
-                    ICON_RAIL_WIDTH,
-                    size.height as f64 / canvas.scale_factor()?,
+                (
+                    "graph-inspector",
+                    "graph-inspector.html",
+                    "Graph Inspector · KOMYAKU",
+                    320.,
+                    480.,
+                    220.,
                 ),
-            )?;
-            canvas
-                .add_child(
-                    tauri::webview::WebviewBuilder::new(
-                        "graph-inspector",
-                        tauri::WebviewUrl::App("graph-inspector.html".into()),
-                    ),
-                    tauri::LogicalPosition::new(800., 0.),
-                    tauri::LogicalSize::new(300., 800.),
-                )?
-                .hide()?;
+            ] {
+                tauri::WebviewWindowBuilder::new(app, label, tauri::WebviewUrl::App(page.into()))
+                    .title(title)
+                    .inner_size(width, height)
+                    .position(x, 96.)
+                    .min_inner_size(width, 240.)
+                    .visible(false)
+                    .build()?;
+            }
             app.manage(graph_tools::Tools::default());
             app.manage(portrait_tools::Store::default());
-            let mut renderer = pollster::block_on(SurfaceRenderer::new(
+            let renderer = pollster::block_on(SurfaceRenderer::new(
                 Arc::new(canvas.clone()),
                 [size.width, size.height],
             ))?;
-            renderer.set_left_ui_width(ICON_RAIL_WIDTH as f32);
             engine
                 .attach_renderer("controls", renderer)
                 .map_err(|e| e.message)?;
@@ -2152,20 +2183,16 @@ fn main() {
                         | tauri::WindowEvent::Focused(true)
                 )
             {
-                if let (Some(rail), Ok(size), Ok(scale)) = (
-                    window.app_handle().get_webview("graph-rail"),
-                    window.inner_size(),
-                    window.scale_factor(),
-                ) {
-                    let _ = rail.set_size(tauri::LogicalSize::new(
-                        ICON_RAIL_WIDTH,
-                        size.height as f64 / scale,
-                    ));
-                }
-                graph_tools::layout(window.app_handle());
                 redraw(window.app_handle());
             }
             if window.label() == "canvas"
+                && let tauri::WindowEvent::CloseRequested { api, .. } = event
+            {
+                api.prevent_close();
+                let _ = window.hide();
+                graph_tools::show_windows(window.app_handle(), false);
+            }
+            if ["graph-rail", "graph-inspector"].contains(&window.label())
                 && let tauri::WindowEvent::CloseRequested { api, .. } = event
             {
                 api.prevent_close();
